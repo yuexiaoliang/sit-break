@@ -100,6 +100,7 @@ struct AppState {
 
 struct PanelState {
     toggled_at: Mutex<Option<Instant>>,
+    auto_hidden_at: Mutex<Option<Instant>>,
 }
 
 fn settings_path(app: &AppHandle) -> Option<std::path::PathBuf> {
@@ -171,16 +172,26 @@ fn position_above_taskbar(window: &WebviewWindow) {
     let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 
-fn toggle_panel(app: &AppHandle, icon_rect: Option<tauri::Rect>) {
+fn toggle_panel(app: &AppHandle, cursor: Option<PhysicalPosition<f64>>) {
     let panel_state = app.state::<PanelState>();
     *panel_state.toggled_at.lock().unwrap() = Some(Instant::now());
+    // 面板显示时点击托盘会先触发失焦自动收起，紧接着才是 Click 事件；
+    // 若刚被收起（就是本次点击所为），则视为已响应本次「隐藏」，不再重新弹出
+    let recent_auto_hide = panel_state
+        .auto_hidden_at
+        .lock()
+        .unwrap()
+        .map(|t| t.elapsed() < Duration::from_millis(500))
+        .unwrap_or(false);
     drop(panel_state);
     if let Some(panel) = app.get_webview_window("panel") {
         if panel.is_visible().unwrap_or(false) {
             let _ = panel.hide();
+        } else if recent_auto_hide && cursor.is_some() {
+            // 托盘点击：刚被本次点击收起，保持隐藏
         } else {
-            match icon_rect {
-                Some(r) => position_near_tray(&panel, r),
+            match cursor {
+                Some(c) => position_near_tray(&panel, c),
                 None => position_above_taskbar(&panel),
             }
             let _ = panel.show();
@@ -189,24 +200,15 @@ fn toggle_panel(app: &AppHandle, icon_rect: Option<tauri::Rect>) {
     }
 }
 
-fn position_near_tray(window: &WebviewWindow, icon_rect: tauri::Rect) {
+fn position_near_tray(window: &WebviewWindow, cursor: PhysicalPosition<f64>) {
     let ws = window.outer_size().unwrap_or_default();
-    let cursor = icon_rect.position.to_physical::<f64>(1.0);
-    let icon_size = icon_rect.size.to_physical::<f64>(1.0);
     let monitor = window
-        .current_monitor()
+        .app_handle()
+        .monitor_from_point(cursor.x, cursor.y)
         .ok()
-        .flatten()
-        .or_else(|| {
-            window
-                .app_handle()
-                .monitor_from_point(cursor.x, cursor.y)
-                .ok()
-                .flatten()
-        });
-    // 默认出现在托盘图标正上方，水平方向与图标居中
-    let icon_cx = cursor.x + icon_size.width / 2.0;
-    let mut x = icon_cx - ws.width as f64 / 2.0;
+        .flatten();
+    // 面板水平居中于点击点，垂直方向贴在光标上方
+    let mut x = cursor.x - ws.width as f64 / 2.0;
     let mut y = cursor.y - ws.height as f64 - 8.0;
     if let Some(m) = &monitor {
         let (mx, my) = (m.position().x as f64, m.position().y as f64);
@@ -218,8 +220,8 @@ fn position_near_tray(window: &WebviewWindow, icon_rect: tauri::Rect) {
             x = mx + mw - ws.width as f64 - 8.0;
         }
         if y < my {
-            // 上方放不下（如任务栏在顶部）→ 放到图标下方
-            y = cursor.y + icon_size.height + 8.0;
+            // 上方放不下（如任务栏在顶部）→ 放到光标下方
+            y = cursor.y + 8.0;
         }
         if y + ws.height as f64 > my + mh {
             y = my + mh - ws.height as f64 - 8.0;
@@ -731,19 +733,23 @@ pub fn run() {
                 .tooltip("Sit Break")
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
+                    // Windows 下一次点击会先后触发 Down/Up 两个事件，只在 Up 时切换，
+                    // 否则一次点击会 toggle 两次导致面板闪现后消失
                     if let tauri::tray::TrayIconEvent::Click {
-                        rect,
+                        position,
                         button_state: tauri::tray::MouseButtonState::Up,
                         ..
                     } = event
                     {
-                        toggle_panel(tray.app_handle(), Some(rect));
+                        // 直接用点击时的光标位置定位，图标 rect 在部分场景（任务栏溢出区等）会不准
+                        toggle_panel(tray.app_handle(), Some(position));
                     }
                 })
                 .build(&handle)?;
 
             handle.manage(PanelState {
                 toggled_at: Mutex::new(None),
+                auto_hidden_at: Mutex::new(None),
             });
 
             // ---- 窗口事件：关闭一律隐藏 ----
@@ -796,6 +802,11 @@ pub fn run() {
                             .unwrap_or(false);
                         if !recent {
                             let _ = panel.hide();
+                            // 记录时间，供托盘 Click 判断「是否刚被本次点击收起」
+                            *app.state::<PanelState>()
+                                .auto_hidden_at
+                                .lock()
+                                .unwrap() = Some(Instant::now());
                         }
                     }
                     _ => {}

@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { STR, currentLang, applyStatic, fmt } from "./i18n";
+import { STR, initLang, fmt } from "./i18n";
 
 interface ReminderPayload {
   breakSeconds: number;
@@ -94,7 +94,8 @@ document.getElementById("btnEnd")!.addEventListener("click", () => invoke("end_b
 window.addEventListener("contextmenu", (e) => e.preventDefault());
 
 (async () => {
-  const lang = await currentLang();
-  S = STR[lang];
-  applyStatic(lang);
+  S = STR[await initLang()];
 })();
+listen("settings_changed", async () => {
+  S = STR[await initLang()];
+});

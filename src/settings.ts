@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { currentLang, applyStatic } from "./i18n";
+import { currentLang, applyStatic, initLang } from "./i18n";
 
 interface Settings {
   work_minutes: number;
@@ -18,7 +18,10 @@ const workMin = document.getElementById("workMin") as HTMLInputElement;
 const breakMin = document.getElementById("breakMin") as HTMLInputElement;
 const widgetSize = document.getElementById("widgetSize") as HTMLInputElement;
 const tipsList = document.getElementById("tipsList") as HTMLTextAreaElement;
-const language = document.getElementById("language") as HTMLSelectElement;
+const langBtn = document.getElementById("langBtn") as HTMLButtonElement;
+const langLabel = document.getElementById("langLabel")!;
+const langMenu = document.getElementById("langMenu") as HTMLElement;
+const langOpts = [...langMenu.querySelectorAll<HTMLButtonElement>(".selopt")];
 const btnSave = document.getElementById("btnSave") as HTMLButtonElement;
 const toast = document.getElementById("toast")!;
 
@@ -32,13 +35,42 @@ function setSwitch(key: string, on: boolean) {
   switches[key].classList.toggle("on", on);
 }
 
+// ---- 自定义语言下拉框 ----
+let langValue = "system";
+
+function setLang(value: string) {
+  langValue = value;
+  const opt = langOpts.find((o) => o.dataset.value === value);
+  langLabel.textContent = opt?.textContent ?? value;
+  langOpts.forEach((o) => o.classList.toggle("active", o === opt));
+}
+
+function closeLangMenu() {
+  langMenu.hidden = true;
+  langBtn.classList.remove("open");
+}
+
+langBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  const open = langMenu.hidden === true;
+  langMenu.hidden = !open;
+  langBtn.classList.toggle("open", open);
+});
+langOpts.forEach((o) =>
+  o.addEventListener("click", () => {
+    setLang(o.dataset.value!);
+    closeLangMenu();
+  })
+);
+document.addEventListener("click", closeLangMenu);
+
 async function load() {
   const s = await invoke<Settings>("get_settings");
   workMin.value = String(s.work_minutes);
   breakMin.value = String(s.break_minutes);
   widgetSize.value = String(Math.min(140, Math.max(40, s.widget_size)));
   tipsList.value = s.tips.join("\n");
-  language.value = ["zh", "en"].includes(s.language) ? s.language : "system";
+  setLang(["zh", "en"].includes(s.language) ? s.language : "system");
   setSwitch("sound", s.sound);
   setSwitch("show_widget", s.show_widget);
   setSwitch("autostart", s.autostart);
@@ -52,7 +84,7 @@ function current(): Settings {
     sound: switches.sound.classList.contains("on"),
     show_widget: switches.show_widget.classList.contains("on"),
     autostart: switches.autostart.classList.contains("on"),
-    language: language.value,
+    language: langValue,
     tips: tipsList.value
       .split("\n")
       .map((t) => t.trim())
@@ -69,6 +101,7 @@ btnSave.addEventListener("click", async () => {
   try {
     await invoke("save_settings", { settings: current() });
     await load(); // 语言切换后文案与默认小字可能已变，重新加载
+    applyStatic(await currentLang()); // 保存后立即刷新本页文案
     toast.classList.add("show");
     setTimeout(() => {
       toast.classList.remove("show");
@@ -81,7 +114,13 @@ btnSave.addEventListener("click", async () => {
 
 document.getElementById("btnClose")!.addEventListener("click", () => invoke("hide_settings"));
 window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") invoke("hide_settings");
+  if (e.key === "Escape") {
+    if (!langMenu.hidden) {
+      closeLangMenu();
+      return;
+    }
+    invoke("hide_settings");
+  }
 });
 window.addEventListener("contextmenu", (e) => e.preventDefault());
 
@@ -96,12 +135,11 @@ shead.addEventListener("mousedown", (e) => {
 });
 
 await load();
-listen("settings_open", load);
+listen("settings_open", async () => {
+  await load();
+  applyStatic(await currentLang());
+});
 
 // 语言初始化：静态文案 + 语言下拉框
-(async () => {
-  const lang = await currentLang();
-  applyStatic(lang);
-  const select = document.querySelector<HTMLElement>(".selwrap select")!;
-  if (lang === "en") select.style.fontWeight = "600";
-})();
+await initLang();
+setLang(langValue); // 文案语言可能已变，同步选中项的显示文本

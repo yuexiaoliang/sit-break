@@ -91,3 +91,10 @@ export function applyStatic(lang: Lang) {
     if (v !== undefined) el.textContent = v;
   });
 }
+
+// 读取当前语言并刷新静态文案；语言切换后各窗口调用它重新生效
+export async function initLang(): Promise<Lang> {
+  const lang = await currentLang();
+  applyStatic(lang);
+  return lang;
+}

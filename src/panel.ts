@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { STR, currentLang, applyStatic, fmt } from "./i18n";
+import { STR, initLang, fmt } from "./i18n";
 
 interface Tick {
   mode: "work" | "remind" | "break";
@@ -107,9 +107,10 @@ document.getElementById("pQuit")!.addEventListener("click", () => invoke("quit_a
 window.addEventListener("contextmenu", (e) => e.preventDefault());
 
 (async () => {
-  const lang = await currentLang();
-  S = STR[lang];
-  applyStatic(lang);
+  S = STR[await initLang()];
   await refresh();
 })();
-listen("settings_changed", refresh);
+listen("settings_changed", async () => {
+  S = STR[await initLang()];
+  await refresh();
+});

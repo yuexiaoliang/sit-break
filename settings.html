@@ -26,7 +26,17 @@
     </div>
     <div class="frow">
       <label data-i18n="language">语言</label>
-      <span class="selwrap"><select id="language"><option value="system" data-i18n="langSys">跟随系统</option><option value="zh">中文</option><option value="en">English</option></select></span>
+      <span class="selwrap" id="langWrap">
+        <button type="button" class="selbtn" id="langBtn">
+          <span id="langLabel">跟随系统</span>
+          <svg class="ic chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <span class="selmenu" id="langMenu" hidden>
+          <button type="button" class="selopt" data-value="system" data-i18n="langSys">跟随系统</button>
+          <button type="button" class="selopt" data-value="zh">中文</button>
+          <button type="button" class="selopt" data-value="en">English</button>
+        </span>
+      </span>
     </div>
 
     <div class="toggles">
