@@ -67,6 +67,8 @@ run("cargo update -p sit-break", { cwd: "src-tauri" });
 run("git add -A");
 run(`git commit -m "chore(release): v${version}"`);
 run(`git tag v${version}`);
-run("git push origin main --follow-tags");
+run("git push origin main");
+// 轻量 tag 不会被 --follow-tags 顺带推送，必须显式推送才能触发 Release 工作流
+run(`git push origin v${version}`);
 
 console.log(`\n\x1b[32m✓ v${version} 已推送，Release 流水线将自动构建并发布。\x1b[0m`);
