@@ -1,6 +1,6 @@
 [package]
 name = "sit-break"
-version = "0.1.0"
+version = "0.2.0"
 description = "久坐提醒小助手"
 authors = ["fed01"]
 edition = "2021"
