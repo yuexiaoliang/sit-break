@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3edc9c"/>
+      <stop offset="1" stop-color="#0f9c68"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
+
+  <!-- 头 -->
+  <circle cx="512" cy="296" r="76" fill="#ffffff"/>
+
+  <!-- 上举的手臂 -->
+  <rect x="356" y="330" width="46" height="220" rx="23" fill="#ffffff" transform="rotate(32 379 340)"/>
+  <rect x="622" y="330" width="46" height="220" rx="23" fill="#ffffff" transform="rotate(-32 645 340)"/>
+
+  <!-- 躯干 -->
+  <rect x="464" y="404" width="96" height="230" rx="46" fill="#ffffff"/>
+
+  <!-- 腿 -->
+  <rect x="430" y="580" width="52" height="240" rx="26" fill="#ffffff" transform="rotate(7 456 590)"/>
+  <rect x="542" y="580" width="52" height="240" rx="26" fill="#ffffff" transform="rotate(-7 568 590)"/>
+</svg>

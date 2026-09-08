@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sit Break</title>
+  <link rel="stylesheet" href="/src/ui.css" />
+</head>
+<body class="reminder-page">
+  <div class="card" id="cardRemind">
+    <span class="badge"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span id="satText">已连续坐了 45 分钟</span></span>
+    <h2 data-i18n="timeToMove">该起来活动一下了</h2>
+    <p class="sub" data-i18n="standUp">站起来走两步，身体会谢谢你</p>
+    <div class="tip"><svg class="ic" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg><span id="tipText"></span></div>
+    <div class="btns">
+      <button class="btn btn-primary" id="btnBreak">开始休息</button>
+      <button class="btn btn-ghost" id="btnPostpone" data-i18n="snooze">再等等</button>
+    </div>
+  </div>
+
+  <div class="card dark" id="cardBreak" hidden>
+    <span class="badge"><svg class="ic" viewBox="0 0 24 24"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/></svg><span data-i18n="onBreak">休息中</span></span>
+    <div class="ring-wrap">
+      <svg width="148" height="148">
+        <defs>
+          <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#4fe0a8" />
+            <stop offset="100%" stop-color="#2fc186" />
+          </linearGradient>
+        </defs>
+        <circle class="ring-bg" cx="74" cy="74" r="64" fill="none" stroke-width="8" />
+        <circle class="ring-fg" id="ring" cx="74" cy="74" r="64" fill="none" stroke-width="8"
+          stroke-dasharray="402.1" stroke-dashoffset="0" />
+      </svg>
+      <div class="ring-text">
+        <span class="time" id="breakTime">0:00</span>
+        <span class="cap" id="ringCap"></span>
+      </div>
+    </div>
+    <div class="stretch" id="stretchText"></div>
+    <div class="btns" style="width: 100%">
+      <button class="btn btn-ghost" id="btnEnd" data-i18n="endBreak">提前结束休息</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/reminder.ts"></script>
+</body>
+</html>

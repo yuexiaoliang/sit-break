@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sit Break</title>
+  <link rel="stylesheet" href="/src/ui.css" />
+</head>
+<body class="panel-page">
+  <div class="pcard">
+    <div class="phead">
+      <span class="dot" id="pdot"></span>
+      <span class="pmode" id="pmode">工作中</span>
+      <span class="ptime" id="ptime">--:--</span>
+    </div>
+
+    <div class="pactions">
+      <button class="pbtn" id="pPause"><svg class="ic" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></svg><span id="pPauseText" data-i18n="pause">暂停计时</span></button>
+      <button class="pbtn" id="pReset"><svg class="ic" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg><span data-i18n="reset">重置计时</span></button>
+    </div>
+
+    <div class="psec">
+      <div class="plabel"><span data-i18n="interval">提醒间隔</span><span class="cur" id="ivCur"></span></div>
+      <div class="pchips" id="ivChips"></div>
+    </div>
+
+    <div class="psec">
+      <div class="plabel"><span data-i18n="breakLen">休息时长</span><span class="cur" id="bkCur"></span></div>
+      <div class="pchips" id="bkChips"></div>
+    </div>
+
+    <div class="pfoot">
+      <button class="pbtn" id="pSettings"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span data-i18n="settings">设置…</span></button>
+      <button class="pbtn" id="pQuit"><svg class="ic" viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg><span data-i18n="quit">退出</span></button>
+    </div>
+  </div>
+  <script type="module" src="/src/panel.ts"></script>
+</body>
+</html>
