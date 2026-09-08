@@ -71,14 +71,14 @@ Work timer ──0──▶ Reminder popup ──Take a break──▶ Break cou
 
 ## CI & Releases
 
-- **CI**（`.github/workflows/ci.yml`）：push / PR 时自动执行前端类型检查与构建（`tsc + vite`）、`cargo check`、`cargo clippy`
-- **Release**（`.github/workflows/release.yml`）：推送 `v*` 标签时自动构建，发布 NSIS 安装包、MSI 安装包和便携版 exe 到 GitHub Releases
+- **CI**（`.github/workflows/ci.yml`）：type-check + frontend build (`tsc + vite`), `cargo check` and `cargo clippy` on every push / PR
+- **Release**（`.github/workflows/release.yml`）：pushing a `v*` tag builds and publishes the NSIS installer, MSI installer and portable exe to GitHub Releases
 
-发布新版本：更新 `src-tauri/tauri.conf.json` 和 `package.json` 中的 `version`，然后：
+Cut a release with one command (bumps all three version files, updates Cargo.lock, commits, tags and pushes):
 
 ```bash
-git tag v0.x.y
-git push origin v0.x.y
+npm run release -- patch   # or minor / major / an explicit version like 1.2.3
+# dry-run without touching files: npm run release -- patch --dry-run
 ```
 
 ## License

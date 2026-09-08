@@ -74,11 +74,11 @@ npm run tauri build  # 产物输出到 src-tauri/target/release
 - **CI**（`.github/workflows/ci.yml`）：push / PR 自动执行前端类型检查与构建、`cargo check`、`cargo clippy`
 - **Release**（`.github/workflows/release.yml`）：推送 `v*` 标签自动构建并发布 NSIS / MSI 安装包与便携版 exe 到 GitHub Releases
 
-发布新版本：更新 `src-tauri/tauri.conf.json` 和 `package.json` 中的 `version`，然后：
+发布新版本只需一条命令（自动同步三处版本号、更新 Cargo.lock、commit + tag + push）：
 
 ```bash
-git tag v0.x.y
-git push origin v0.x.y
+npm run release -- patch   # 或 minor / major / 指定版本号如 1.2.3
+# 先试跑不改文件：npm run release -- patch --dry-run
 ```
 
 ## 许可证
