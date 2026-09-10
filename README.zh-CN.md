@@ -13,6 +13,31 @@
 
 <!-- 关键词：久坐提醒、坐姿提醒、休息提醒、悬浮倒计时、系统托盘、Windows 11、Tauri、Rust -->
 
+## 截图
+
+<p align="center">
+  <img src="docs/screenshots/widget.png" alt="悬浮倒计时球" width="140" />
+</p>
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/panel.png" alt="托盘面板" width="272" /></td>
+    <td align="center"><img src="docs/screenshots/settings.png" alt="设置窗口" width="320" /></td>
+  </tr>
+  <tr>
+    <td align="center">托盘面板</td>
+    <td align="center">设置</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/reminder.png" alt="久坐提醒" width="380" /></td>
+    <td align="center"><img src="docs/screenshots/break.png" alt="休息倒计时" width="380" /></td>
+  </tr>
+  <tr>
+    <td align="center">久坐提醒</td>
+    <td align="center">休息倒计时</td>
+  </tr>
+</table>
+
 ## 为什么选 Sit Break
 
 - **小巧**：独立 exe 仅 4 MB；空闲时**零窗口、零 WebView**，只剩托盘图标和悬浮球

@@ -13,6 +13,31 @@
 
 <!-- Keywords: sedentary reminder, sitting reminder, break reminder, stand up reminder, desk break, floating countdown timer, system tray app, 久坐提醒, Windows 11, Tauri, Rust -->
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/widget.png" alt="Floating countdown ball" width="140" />
+</p>
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/panel.png" alt="Tray panel" width="272" /></td>
+    <td align="center"><img src="docs/screenshots/settings.png" alt="Settings window" width="320" /></td>
+  </tr>
+  <tr>
+    <td align="center">Tray panel</td>
+    <td align="center">Settings</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/reminder.png" alt="Break reminder" width="380" /></td>
+    <td align="center"><img src="docs/screenshots/break.png" alt="Break countdown" width="380" /></td>
+  </tr>
+  <tr>
+    <td align="center">Break reminder</td>
+    <td align="center">Break countdown</td>
+  </tr>
+</table>
+
 ## Why Sit Break
 
 - **Tiny** — a 4 MB standalone executable; when idle it runs with **zero windows and zero webviews**, just a tray icon and a floating timer ball
