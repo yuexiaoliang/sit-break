@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
-use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
+use tauri_plugin_autostart::MacosLauncher;
+#[cfg(not(windows))]
+use tauri_plugin_autostart::ManagerExt;
 
 const POSTPONE_SECS: u64 = 5 * 60;
 
@@ -155,6 +157,59 @@ fn idle_reset_limit_secs(settings: &Settings) -> u64 {
     } else {
         u64::MAX
     }
+}
+
+// auto-launch 0.5.0 写 Run 键时不给路径加引号，安装目录 "Sit Break" 含空格会导致开机无法启动；
+// Windows 下自己写注册表（路径加引号），其他平台仍走插件。
+#[cfg(windows)]
+fn autostart_set_reg(name: &str, exe: &std::path::Path, enable: bool) -> Result<(), String> {
+    use winreg::enums::*;
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let key = hkcu
+        .open_subkey_with_flags(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", KEY_SET_VALUE)
+        .map_err(|e| e.to_string())?;
+    if enable {
+        key.set_value(name, &format!("\"{}\"", exe.display()))
+            .map_err(|e| e.to_string())?;
+    } else {
+        let _ = key.delete_value(name);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn autostart_reg_is_enabled(name: &str) -> bool {
+    use winreg::enums::*;
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    hkcu.open_subkey_with_flags(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", KEY_READ)
+        .ok()
+        .and_then(|k| k.get_value::<String, _>(name).ok())
+        .is_some()
+}
+
+#[cfg(windows)]
+fn autostart_set(app: &AppHandle, enable: bool) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    autostart_set_reg(&app.package_info().name, &exe, enable)
+}
+
+#[cfg(windows)]
+fn autostart_is_enabled(app: &AppHandle) -> bool {
+    autostart_reg_is_enabled(&app.package_info().name)
+}
+
+#[cfg(not(windows))]
+fn autostart_set(app: &AppHandle, enable: bool) -> Result<(), String> {
+    let al = app.autolaunch();
+    let r = if enable { al.enable() } else { al.disable() };
+    r.map_err(|e| e.to_string())
+}
+
+#[cfg(not(windows))]
+fn autostart_is_enabled(app: &AppHandle) -> bool {
+    app.autolaunch().is_enabled().unwrap_or(false)
 }
 
 fn position_bottom_right(window: &WebviewWindow) {
@@ -387,14 +442,8 @@ fn save_settings(
     app: AppHandle,
     settings: Settings,
 ) -> Result<(), String> {
-    let al = app.autolaunch();
-    let enabled = al.is_enabled().unwrap_or(false);
-    if settings.autostart != enabled {
-        if settings.autostart {
-            al.enable().map_err(|e| e.to_string())?;
-        } else {
-            al.disable().map_err(|e| e.to_string())?;
-        }
+    if settings.autostart != autostart_is_enabled(&app) {
+        autostart_set(&app, settings.autostart)?;
     }
     let widget_size = settings.widget_size.clamp(40, 140);
     let mut settings = Settings { widget_size, ..settings };
@@ -659,7 +708,7 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let mut settings = load_settings_from_disk(&handle);
-            let autostart_enabled = handle.autolaunch().is_enabled().unwrap_or(false);
+            let autostart_enabled = autostart_is_enabled(&handle);
             settings.autostart = autostart_enabled;
             handle.manage(Mutex::new(AppState {
                 mode: Mode::Work,
@@ -834,4 +883,30 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn autostart_registry_roundtrip() {
+        let exe = std::env::current_exe().unwrap();
+        let name = "Sit Break Test";
+        autostart_set_reg(name, &exe, true).unwrap();
+        assert!(autostart_reg_is_enabled(name));
+        // 路径必须带引号，否则安装目录 "Sit Break" 含空格会导致开机无法启动
+        {
+            use winreg::enums::*;
+            let hkcu = winreg::RegKey::predef(HKEY_CURRENT_USER);
+            let v: String = hkcu
+                .open_subkey_with_flags(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", KEY_READ)
+                .unwrap()
+                .get_value(name)
+                .unwrap();
+            assert!(v.starts_with('"') && v.ends_with('"'), "value not quoted: {v}");
+        }
+        autostart_set_reg(name, &exe, false).unwrap();
+        assert!(!autostart_reg_is_enabled(name));
+    }
 }
