@@ -9,6 +9,7 @@ interface Settings {
   sound: boolean;
   show_widget: boolean;
   autostart: boolean;
+  idle_reset: boolean;
   language: string;
   widget_size: number;
   tips: string[];
@@ -29,6 +30,7 @@ const switches = {
   sound: document.getElementById("swSound")!,
   show_widget: document.getElementById("swWidget")!,
   autostart: document.getElementById("swAuto")!,
+  idle_reset: document.getElementById("swIdleReset")!,
 } as Record<string, HTMLElement>;
 
 function setSwitch(key: string, on: boolean) {
@@ -74,6 +76,7 @@ async function load() {
   setSwitch("sound", s.sound);
   setSwitch("show_widget", s.show_widget);
   setSwitch("autostart", s.autostart);
+  setSwitch("idle_reset", s.idle_reset);
 }
 
 function current(): Settings {
@@ -84,6 +87,7 @@ function current(): Settings {
     sound: switches.sound.classList.contains("on"),
     show_widget: switches.show_widget.classList.contains("on"),
     autostart: switches.autostart.classList.contains("on"),
+    idle_reset: switches.idle_reset.classList.contains("on"),
     language: langValue,
     tips: tipsList.value
       .split("\n")
@@ -124,14 +128,14 @@ window.addEventListener("keydown", (e) => {
 });
 window.addEventListener("contextmenu", (e) => e.preventDefault());
 
-// 标题栏拖动（点在文字/图标上也生效）
+// 整个窗口都可拖动（输入框、按钮、开关、下拉框除外）
 const win = getCurrentWindow();
-const shead = document.querySelector<HTMLElement>(".shead")!;
-shead.addEventListener("mousedown", (e) => {
-  if (e.button === 0 && !(e.target as HTMLElement).closest("button")) {
-    e.preventDefault();
-    win.startDragging();
-  }
+document.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  const t = e.target as HTMLElement;
+  if (t.closest("button, input, textarea, select, .switch, .selwrap")) return;
+  e.preventDefault();
+  win.startDragging();
 });
 
 await load();

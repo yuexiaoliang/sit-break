@@ -12,6 +12,7 @@
       <button class="sclose" id="btnClose" title="关闭"><svg class="ic" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
 
+    <div class="sbody">
     <div class="frow">
       <label data-i18n="interval">提醒间隔</label>
       <span><input type="number" id="workMin" min="1" max="240" /><span class="unit"><span data-i18n="minutesUnit">分钟</span></span></span>
@@ -52,6 +53,10 @@
         <label data-i18n="autostart">开机自启</label>
         <span class="switch" id="swAuto"><span class="track"></span><span class="knob"></span></span>
       </div>
+      <div class="frow">
+        <label data-i18n="idleReset">离开自动重置</label>
+        <span class="switch" id="swIdleReset"><span class="track"></span><span class="knob"></span></span>
+      </div>
     </div>
 
     <div class="ftips">
@@ -60,6 +65,7 @@
     </div>
 
     <button class="save" id="btnSave"><span data-i18n="save">保存</span></button>
+    </div>
   </div>
   <div class="toast" id="toast" data-i18n="saved">已保存 ✓</div>
   <script type="module" src="/src/settings.ts"></script>

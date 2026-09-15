@@ -7,7 +7,6 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
 
-const IDLE_RESET_SECS: u64 = 120;
 const POSTPONE_SECS: u64 = 5 * 60;
 
 const TIPS: &[&str] = &[
@@ -52,6 +51,7 @@ struct Settings {
     sound: bool,
     show_widget: bool,
     autostart: bool,
+    idle_reset: bool,
     language: String,
     widget_size: u32,
     tips: Vec<String>,
@@ -65,6 +65,7 @@ impl Default for Settings {
             sound: true,
             show_widget: true,
             autostart: false,
+            idle_reset: true,
             language: "system".to_string(),
             widget_size: 64,
             tips: default_tips(),
@@ -145,6 +146,15 @@ fn idle_secs() -> u64 {
 #[cfg(not(windows))]
 fn idle_secs() -> u64 {
     0
+}
+
+/// 空闲自动重置的阈值（秒）：与设置的休息时长一致；关闭该功能时返回 u64::MAX 永不触发
+fn idle_reset_limit_secs(settings: &Settings) -> u64 {
+    if settings.idle_reset {
+        settings.break_minutes as u64 * 60
+    } else {
+        u64::MAX
+    }
 }
 
 fn position_bottom_right(window: &WebviewWindow) {
@@ -536,11 +546,12 @@ fn run_timer(app: AppHandle) {
             match st.mode {
                 Mode::Work => {
                     // 休息刚结束的宽限期内直接走表（起身活动没有键鼠输入是正常的）
+                    let idle_limit = idle_reset_limit_secs(&st.settings);
                     let in_grace = st
                         .break_ended_at
-                        .map(|t| t.elapsed() < Duration::from_secs(IDLE_RESET_SECS))
+                        .map(|t| t.elapsed() < Duration::from_secs(idle_limit))
                         .unwrap_or(false);
-                    if !in_grace && idle_secs() >= IDLE_RESET_SECS {
+                    if !in_grace && idle_secs() >= idle_limit {
                         st.remaining = st.settings.work_minutes as u64 * 60;
                     } else {
                         st.remaining = st.remaining.saturating_sub(1);
@@ -590,7 +601,7 @@ fn run_timer(app: AppHandle) {
                 }
                 Mode::Remind => {
                     // 用户没理会提醒且已离开电脑 → 视为已经活动过，重置
-                    if idle_secs() >= IDLE_RESET_SECS {
+                    if idle_secs() >= idle_reset_limit_secs(&st.settings) {
                         drop(st);
                         back_to_work(&app);
                         last_minute = u64::MAX;

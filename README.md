@@ -53,7 +53,7 @@
 | 🔔 Break reminder popup | Glassmorphism card in the corner with a random stretch tip and a snooze option |
 | 🧘 Break countdown | Circular progress ring, auto-resumes work timer when the break ends |
 | ↻ One-click reset | Reset the countdown anytime from the tray panel or floating ball menu |
-| 💤 Idle detection | No keyboard/mouse for 2 minutes → timer resets automatically |
+| 💤 Idle detection | Away for your break length (no keyboard/mouse) → timer resets automatically; can be turned off |
 | 🚀 Launch at startup | Optional, one toggle in settings |
 | 🔔 Sound cue | Gentle two-tone chime when a reminder pops up (optional) |
 | ✏️ Custom tips | Write your own reminder tips, one per line, shown at random |

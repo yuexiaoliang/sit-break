@@ -295,13 +295,14 @@ body.settings-page { display: flex; padding: 6px; }
   border: 1px solid rgba(255, 255, 255, .95);
   box-shadow: 0 24px 60px -18px rgba(30, 80, 50, .3);
   display: flex; flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
   animation: rise .2s ease-out;
 }
-.scard::-webkit-scrollbar { width: 8px; }
-.scard::-webkit-scrollbar-track { background: transparent; }
-.scard::-webkit-scrollbar-thumb { background: rgba(31, 174, 116, .28); border-radius: 99px; }
-.scard::-webkit-scrollbar-thumb:hover { background: rgba(31, 174, 116, .45); }
+.sbody { flex: 1; min-height: 0; overflow-y: auto; }
+.sbody::-webkit-scrollbar { width: 8px; }
+.sbody::-webkit-scrollbar-track { background: transparent; }
+.sbody::-webkit-scrollbar-thumb { background: rgba(31, 174, 116, .28); border-radius: 99px; }
+.sbody::-webkit-scrollbar-thumb:hover { background: rgba(31, 174, 116, .45); }
 .shead {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 14px;
@@ -378,16 +379,16 @@ body.settings-page { display: flex; padding: 6px; }
 .ftips textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(47, 193, 134, .14); }
 
 /* 细圆角滚动条 */
-.scard::-webkit-scrollbar,
+.sbody::-webkit-scrollbar,
 .ftips textarea::-webkit-scrollbar { width: 8px; }
-.scard::-webkit-scrollbar-track,
+.sbody::-webkit-scrollbar-track,
 .ftips textarea::-webkit-scrollbar-track { background: transparent; }
-.scard::-webkit-scrollbar-thumb,
+.sbody::-webkit-scrollbar-thumb,
 .ftips textarea::-webkit-scrollbar-thumb {
   background: rgba(31, 174, 116, .28);
   border-radius: 99px;
 }
-.scard::-webkit-scrollbar-thumb:hover,
+.sbody::-webkit-scrollbar-thumb:hover,
 .ftips textarea::-webkit-scrollbar-thumb:hover { background: rgba(31, 174, 116, .45); }
 .switch { position: relative; width: 38px; height: 21px; flex: none; cursor: pointer; }
 .switch .track {
@@ -456,6 +457,6 @@ body.settings-page { display: flex; padding: 6px; }
   .selopt { color: #eef4f0; }
   .selopt:hover { background: rgba(79, 224, 168, .12); }
   .selopt.active { color: #4fe0a8; background: rgba(79, 224, 168, .14); }
-  .scard::-webkit-scrollbar-thumb,
+  .sbody::-webkit-scrollbar-thumb,
   .ftips textarea::-webkit-scrollbar-thumb { background: rgba(79, 224, 168, .3); }
 }
