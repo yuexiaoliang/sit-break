@@ -7,8 +7,12 @@ on:
 
 jobs:
   check:
-    name: Type-check & compile
-    runs-on: windows-latest
+    name: Check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -18,6 +22,8 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -35,4 +41,12 @@ jobs:
 
       - name: Cargo clippy
         working-directory: src-tauri
-        run: cargo clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Cargo tests
+        working-directory: src-tauri
+        run: cargo test --locked --lib

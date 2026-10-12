@@ -28,6 +28,7 @@ body.widget-page { display: flex; align-items: center; justify-content: center; 
   background:
     radial-gradient(circle at 30% 22%, rgba(255, 255, 255, .5), rgba(255, 255, 255, .12) 55%, rgba(255, 255, 255, .04) 100%),
     rgba(18, 26, 22, .42);
+  -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   box-shadow:
     inset 0 1px 1px rgba(255, 255, 255, .35),
@@ -41,8 +42,8 @@ body.widget-page { display: flex; align-items: center; justify-content: center; 
 }
 
 .ball svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
-.ring-bg { fill: none; stroke: rgba(127, 140, 133, .28); stroke-width: 7; }
-.ring-fg {
+.ball .ring-bg { fill: none; stroke: rgba(127, 140, 133, .28); stroke-width: 7; }
+.ball .ring-fg {
   fill: none; stroke: url(#ballGrad); stroke-width: 7; stroke-linecap: round;
   stroke-dasharray: 100; stroke-dashoffset: 0;
   filter: drop-shadow(0 0 5px rgba(47, 193, 134, .55));
@@ -95,7 +96,7 @@ body.widget-page { display: flex; align-items: center; justify-content: center; 
       inset 0 1px 1px rgba(255, 255, 255, .12),
       0 14px 36px -10px rgba(0, 0, 0, .7);
   }
-  .ring-bg { stroke: rgba(255, 255, 255, .1); }
+  .ball .ring-bg { stroke: rgba(255, 255, 255, .1); }
   .num { color: #ecf6f1; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
   .cap { color: #7d8d84; }
   .ball.paused .num { color: #e3c257; }
@@ -108,6 +109,7 @@ body.reminder-page { display: flex; }
 .card {
   flex: 1; margin: 6px; border-radius: 20px; padding: 28px 26px 22px;
   background: rgba(255, 255, 255, .92);
+  -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, .9);
   box-shadow: 0 24px 60px -18px rgba(30, 80, 50, .3);
@@ -168,8 +170,8 @@ body.reminder-page { display: flex; }
 
 .ring-wrap { position: relative; width: 148px; height: 148px; margin: 16px auto 4px; }
 .ring-wrap svg { transform: rotate(-90deg); }
-.ring-bg { stroke: rgba(255, 255, 255, .08); }
-.ring-fg { stroke: url(#ringGrad); stroke-linecap: round; transition: stroke-dashoffset .9s linear; }
+.ring-wrap .ring-bg { stroke: rgba(255, 255, 255, .08); }
+.ring-wrap .ring-fg { stroke: url(#ringGrad); stroke-linecap: round; transition: stroke-dashoffset .9s linear; }
 .ring-text {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
@@ -209,6 +211,7 @@ body.panel-page { display: flex; padding: 6px; }
 .pcard {
   flex: 1; border-radius: 16px; padding: 16px 16px 14px;
   background: rgba(255, 255, 255, .95);
+  -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, .95);
   box-shadow: 0 24px 60px -18px rgba(30, 80, 50, .35);
@@ -291,6 +294,7 @@ body.settings-page { display: flex; padding: 6px; }
 .scard {
   flex: 1; border-radius: 16px; padding: 18px 22px 18px;
   background: rgba(255, 255, 255, .95);
+  -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, .95);
   box-shadow: 0 24px 60px -18px rgba(30, 80, 50, .3);

@@ -138,6 +138,11 @@ document.addEventListener("mousedown", (e) => {
   win.startDragging();
 });
 
+const platform = await invoke<string>("get_platform");
+document.querySelectorAll<HTMLElement>("[data-widget-setting]").forEach((row) => {
+  row.hidden = platform === "macos";
+});
+
 await load();
 listen("settings_open", async () => {
   await load();

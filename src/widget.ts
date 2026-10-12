@@ -4,6 +4,7 @@ import {
   getCurrentWindow,
   LogicalSize,
   PhysicalPosition,
+  availableMonitors,
 } from "@tauri-apps/api/window";
 
 interface Tick {
@@ -55,9 +56,10 @@ function applySize(size: number) {
   ball.style.width = `${size}px`;
   ball.style.height = `${size}px`;
   num.style.fontSize = `${Math.round(size * 0.3)}px`;
-  // Windows 最小窗口宽度约 136px，窗口过小会被强制拉宽导致球偏移；
-  // 固定不小于 140 的正方形，球居中
-  const winSize = Math.max(size + 24, 140);
+  // Windows 有最小窗口宽度限制；macOS 只留出阴影所需的边距。
+  const winSize = navigator.userAgent.includes("Windows")
+    ? Math.max(size + 24, 140)
+    : size + 24;
   win.setSize(new LogicalSize(winSize, winSize));
 }
 
@@ -103,6 +105,7 @@ ball.addEventListener(
 
 listen("settings_changed", async () => {
   await loadSize();
+  render(await invoke<Tick>("timer_info"));
 });
 
 // 恢复上次拖动的位置
@@ -110,7 +113,22 @@ const saved = localStorage.getItem("widgetPos");
 if (saved) {
   try {
     const { x, y } = JSON.parse(saved);
-    await win.setPosition(new PhysicalPosition(x, y));
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      const size = await win.outerSize();
+      const monitors = await availableMonitors();
+      const monitor = monitors.find(({ workArea: area }) =>
+        x + size.width / 2 >= area.position.x &&
+        x + size.width / 2 < area.position.x + area.size.width &&
+        y + size.height / 2 >= area.position.y &&
+        y + size.height / 2 < area.position.y + area.size.height
+      );
+      if (monitor) {
+        const area = monitor.workArea;
+        const safeX = Math.max(area.position.x, Math.min(x, area.position.x + area.size.width - size.width));
+        const safeY = Math.max(area.position.y, Math.min(y, area.position.y + area.size.height - size.height));
+        await win.setPosition(new PhysicalPosition(safeX, safeY));
+      }
+    }
   } catch {
     // 位置失效时忽略（如换了显示器）
   }

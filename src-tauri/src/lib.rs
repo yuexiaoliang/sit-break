@@ -4,10 +4,15 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::tray::TrayIconBuilder;
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
 use tauri_plugin_autostart::MacosLauncher;
 #[cfg(not(windows))]
 use tauri_plugin_autostart::ManagerExt;
+
+mod platform;
+use platform::idle_secs;
 
 const POSTPONE_SECS: u64 = 5 * 60;
 
@@ -65,7 +70,7 @@ impl Default for Settings {
             work_minutes: 45,
             break_minutes: 5,
             sound: true,
-            show_widget: true,
+            show_widget: !cfg!(target_os = "macos"),
             autostart: false,
             idle_reset: true,
             language: "system".to_string(),
@@ -84,6 +89,32 @@ fn is_zh(settings: &Settings) -> bool {
             .map(|l| l.to_lowercase().starts_with("zh"))
             .unwrap_or(true),
     }
+}
+
+fn choose_tip(settings: &Settings, previous: Option<&str>, rng: &mut fastrand::Rng) -> String {
+    let mut tips: Vec<&str> = settings
+        .tips
+        .iter()
+        .map(|tip| tip.trim())
+        .filter(|tip| !tip.is_empty())
+        .collect();
+    if tips.is_empty() {
+        tips.extend_from_slice(if is_zh(settings) { TIPS } else { TIPS_EN });
+    }
+
+    // Exclude every copy of the previous text, so duplicate custom entries do
+    // not cause consecutive repeats. A single distinct tip remains usable.
+    let alternatives: Vec<&str> = tips
+        .iter()
+        .copied()
+        .filter(|tip| Some(*tip) != previous)
+        .collect();
+    let candidates = if alternatives.is_empty() {
+        &tips
+    } else {
+        &alternatives
+    };
+    candidates[rng.usize(..candidates.len())].to_string()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -107,7 +138,10 @@ struct PanelState {
 }
 
 fn settings_path(app: &AppHandle) -> Option<std::path::PathBuf> {
-    app.path().app_data_dir().ok().map(|d| d.join("settings.json"))
+    app.path()
+        .app_data_dir()
+        .ok()
+        .map(|d| d.join("settings.json"))
 }
 
 fn load_settings_from_disk(app: &AppHandle) -> Settings {
@@ -128,28 +162,6 @@ fn persist(app: &AppHandle, settings: &Settings) {
     }
 }
 
-#[cfg(windows)]
-fn idle_secs() -> u64 {
-    use windows::Win32::System::SystemInformation::GetTickCount;
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
-    unsafe {
-        let mut info = LASTINPUTINFO {
-            cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
-            dwTime: 0,
-        };
-        if GetLastInputInfo(&mut info).as_bool() {
-            (GetTickCount().wrapping_sub(info.dwTime)) as u64 / 1000
-        } else {
-            0
-        }
-    }
-}
-
-#[cfg(not(windows))]
-fn idle_secs() -> u64 {
-    0
-}
-
 /// 空闲自动重置的阈值（秒）：与设置的休息时长一致；关闭该功能时返回 u64::MAX 永不触发
 fn idle_reset_limit_secs(settings: &Settings) -> u64 {
     if settings.idle_reset {
@@ -167,7 +179,10 @@ fn autostart_set_reg(name: &str, exe: &std::path::Path, enable: bool) -> Result<
     use winreg::RegKey;
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let key = hkcu
-        .open_subkey_with_flags(r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", KEY_SET_VALUE)
+        .open_subkey_with_flags(
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+            KEY_SET_VALUE,
+        )
         .map_err(|e| e.to_string())?;
     if enable {
         key.set_value(name, &format!("\"{}\"", exe.display()))
@@ -216,24 +231,46 @@ fn position_bottom_right(window: &WebviewWindow) {
     let Ok(Some(monitor)) = window.current_monitor() else {
         return;
     };
-    let ms = monitor.size();
+    let area = monitor.work_area();
     let ws = window.outer_size().unwrap_or_default();
     let margin = (24.0 * monitor.scale_factor()) as i32;
-    let x = ms.width as i32 - ws.width as i32 - margin;
-    let y = ms.height as i32 - ws.height as i32 - margin;
+    let x = clamp_axis(i32::MAX, area.position.x, area.size.width, ws.width, margin);
+    let y = clamp_axis(
+        i32::MAX,
+        area.position.y,
+        area.size.height,
+        ws.height,
+        margin,
+    );
     let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 
-fn position_above_taskbar(window: &WebviewWindow) {
+fn clamp_axis(candidate: i32, origin: i32, available: u32, window: u32, margin: i32) -> i32 {
+    if window >= available {
+        return origin;
+    }
+    let margin = margin.min((available - window) as i32 / 2).max(0);
+    candidate.clamp(
+        origin + margin,
+        origin + available as i32 - window as i32 - margin,
+    )
+}
+
+fn position_panel_default(window: &WebviewWindow) {
     let Ok(Some(monitor)) = window.current_monitor() else {
         return;
     };
-    let ms = monitor.size();
+    let area = monitor.work_area();
     let ws = window.outer_size().unwrap_or_default();
     let margin = (16.0 * monitor.scale_factor()) as i32;
-    let taskbar = (60.0 * monitor.scale_factor()) as i32;
-    let x = ms.width as i32 - ws.width as i32 - margin;
-    let y = ms.height as i32 - ws.height as i32 - taskbar;
+    let x = clamp_axis(i32::MAX, area.position.x, area.size.width, ws.width, margin);
+    // macOS's menu bar is at the top; Windows's taskbar is usually at the bottom.
+    let edge = if cfg!(target_os = "macos") {
+        i32::MIN
+    } else {
+        i32::MAX
+    };
+    let y = clamp_axis(edge, area.position.y, area.size.height, ws.height, margin);
     let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 
@@ -248,7 +285,6 @@ fn toggle_panel(app: &AppHandle, cursor: Option<PhysicalPosition<f64>>) {
         .unwrap()
         .map(|t| t.elapsed() < Duration::from_millis(500))
         .unwrap_or(false);
-    drop(panel_state);
     if let Some(panel) = app.get_webview_window("panel") {
         if panel.is_visible().unwrap_or(false) {
             let _ = panel.hide();
@@ -257,7 +293,7 @@ fn toggle_panel(app: &AppHandle, cursor: Option<PhysicalPosition<f64>>) {
         } else {
             match cursor {
                 Some(c) => position_near_tray(&panel, c),
-                None => position_above_taskbar(&panel),
+                None => position_panel_default(&panel),
             }
             let _ = panel.show();
             let _ = panel.set_focus();
@@ -273,26 +309,19 @@ fn position_near_tray(window: &WebviewWindow, cursor: PhysicalPosition<f64>) {
         .ok()
         .flatten();
     // 面板水平居中于点击点，垂直方向贴在光标上方
-    let mut x = cursor.x - ws.width as f64 / 2.0;
-    let mut y = cursor.y - ws.height as f64 - 8.0;
+    let mut x = cursor.x as i32 - ws.width as i32 / 2;
+    let mut y = cursor.y as i32 - ws.height as i32 - 8;
     if let Some(m) = &monitor {
-        let (mx, my) = (m.position().x as f64, m.position().y as f64);
-        let (mw, mh) = (m.size().width as f64, m.size().height as f64);
-        if x < mx {
-            x = mx + 8.0;
-        }
-        if x + ws.width as f64 > mx + mw {
-            x = mx + mw - ws.width as f64 - 8.0;
-        }
-        if y < my {
+        let area = m.work_area();
+        let margin = (8.0 * m.scale_factor()) as i32;
+        if y < area.position.y {
             // 上方放不下（如任务栏在顶部）→ 放到光标下方
-            y = cursor.y + 8.0;
+            y = cursor.y as i32 + margin;
         }
-        if y + ws.height as f64 > my + mh {
-            y = my + mh - ws.height as f64 - 8.0;
-        }
+        x = clamp_axis(x, area.position.x, area.size.width, ws.width, margin);
+        y = clamp_axis(y, area.position.y, area.size.height, ws.height, margin);
     }
-    let _ = window.set_position(PhysicalPosition::new(x as i32, y as i32));
+    let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 
 fn update_windows(app: &AppHandle) {
@@ -345,11 +374,28 @@ fn fmt_mmss(secs: u64) -> String {
     format!("{}:{:02}", secs / 60, secs % 60)
 }
 
+#[cfg(any(target_os = "macos", test))]
+fn menu_bar_title(mode: Mode, remaining: u64, paused: bool, zh: bool) -> String {
+    let time = format!("{:02}:{:02}", remaining / 60, remaining % 60);
+    let title = match mode {
+        Mode::Work => time,
+        Mode::Break => format!("{} {time}", if zh { "休息" } else { "Break" }),
+        Mode::Remind => if zh { "起身" } else { "Move" }.to_string(),
+    };
+    if paused {
+        format!("⏸ {title}")
+    } else {
+        title
+    }
+}
+
 fn update_tray(app: &AppHandle) {
     let st = app.state::<Mutex<AppState>>();
     let st = st.lock().unwrap();
+    #[cfg(target_os = "macos")]
+    let title = menu_bar_title(st.mode, st.remaining, st.paused, is_zh(&st.settings));
     let tooltip = match st.mode {
-        Mode::Work if st.paused => {
+        _ if st.paused => {
             if is_zh(&st.settings) {
                 format!("Sit Break · 已暂停（{}）", fmt_mmss(st.remaining))
             } else {
@@ -380,6 +426,8 @@ fn update_tray(app: &AppHandle) {
     };
     drop(st);
     if let Some(tray) = app.tray_by_id("main-tray") {
+        #[cfg(target_os = "macos")]
+        let _ = tray.set_title(Some(title));
         let _ = tray.set_tooltip(Some(tooltip));
     }
 }
@@ -392,8 +440,8 @@ fn back_to_work(app: &AppHandle) {
     st.break_ended_at = Some(Instant::now());
     drop(st);
     update_windows(app);
-    emit_state(&app);
-    update_tray(&app);
+    emit_state(app);
+    update_tray(app);
 }
 
 #[tauri::command]
@@ -405,9 +453,13 @@ fn apply_interval(app: AppHandle, minutes: u32) {
         st.remaining = minutes as u64 * 60;
     }
     drop(st);
-    persist(&app, &app.state::<Mutex<AppState>>().lock().unwrap().settings);
+    persist(
+        &app,
+        &app.state::<Mutex<AppState>>().lock().unwrap().settings,
+    );
     emit_state(&app);
     update_tray(&app);
+    let _ = app.emit("settings_changed", ());
 }
 
 #[tauri::command]
@@ -416,14 +468,27 @@ fn apply_break(app: AppHandle, minutes: u32) {
     let mut st = state.lock().unwrap();
     st.settings.break_minutes = minutes;
     drop(st);
-    persist(&app, &app.state::<Mutex<AppState>>().lock().unwrap().settings);
+    persist(
+        &app,
+        &app.state::<Mutex<AppState>>().lock().unwrap().settings,
+    );
+    let _ = app.emit("settings_changed", ());
 }
 
 // ---------------- Tauri commands ----------------
 
 #[tauri::command]
+fn get_platform() -> &'static str {
+    std::env::consts::OS
+}
+
+#[tauri::command]
 fn get_settings(app: AppHandle) -> Settings {
-    app.state::<Mutex<AppState>>().lock().unwrap().settings.clone()
+    app.state::<Mutex<AppState>>()
+        .lock()
+        .unwrap()
+        .settings
+        .clone()
 }
 
 #[tauri::command]
@@ -438,21 +503,29 @@ fn timer_info(app: AppHandle) -> serde_json::Value {
 }
 
 #[tauri::command]
-fn save_settings(
-    app: AppHandle,
-    settings: Settings,
-) -> Result<(), String> {
+fn save_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
     if settings.autostart != autostart_is_enabled(&app) {
         autostart_set(&app, settings.autostart)?;
     }
     let widget_size = settings.widget_size.clamp(40, 140);
-    let mut settings = Settings { widget_size, ..settings };
+    let mut settings = Settings {
+        widget_size,
+        ..settings
+    };
 
     // 切换语言时，若提示列表仍是另一语言的默认文案，则跟随切换（不覆盖自定义内容）
     let zh_now = is_zh(&settings);
-    let other_defaults = if zh_now { default_tips_en() } else { default_tips() };
+    let other_defaults = if zh_now {
+        default_tips_en()
+    } else {
+        default_tips()
+    };
     if settings.tips == other_defaults {
-        settings.tips = if zh_now { default_tips() } else { default_tips_en() };
+        settings.tips = if zh_now {
+            default_tips()
+        } else {
+            default_tips_en()
+        };
     }
 
     let was_showing_widget;
@@ -552,7 +625,6 @@ fn toggle_pause(app: AppHandle) {
         st.paused = !st.paused;
         st.paused
     };
-    drop(state);
     let _ = paused;
     emit_state(&app);
     update_tray(&app);
@@ -584,8 +656,26 @@ fn quit_app(app: AppHandle) {
 fn run_timer(app: AppHandle) {
     std::thread::spawn(move || {
         let mut last_minute = u64::MAX;
+        let mut tip_rng = fastrand::Rng::new();
+        let mut previous_tip: Option<String> = None;
+        #[cfg(windows)]
+        let mut tray_light_theme = None;
         loop {
             std::thread::sleep(Duration::from_secs(1));
+            // The taskbar follows system mode independently of the app theme.
+            #[cfg(windows)]
+            if let Some(light_theme) = platform::system_uses_light_theme() {
+                if tray_light_theme != Some(light_theme) {
+                    if let Some(tray) = app.tray_by_id("main-tray") {
+                        if tray
+                            .set_icon(Some(monochrome_tray_icon(light_theme)))
+                            .is_ok()
+                        {
+                            tray_light_theme = Some(light_theme);
+                        }
+                    }
+                }
+            }
             let state = app.state::<Mutex<AppState>>();
             let mut st = state.lock().unwrap();
             if st.paused {
@@ -612,21 +702,9 @@ fn run_timer(app: AppHandle) {
                                 .max(60);
                             let sound = st.settings.sound;
                             let sat = st.settings.work_minutes;
-                            let tip_idx = (std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .map(|d| d.as_nanos() as usize)
-                                .unwrap_or(0))
-                                % TIPS.len();
-                            let tip = {
-                                let list = &st.settings.tips;
-                                let n = if list.is_empty() { TIPS.len() } else { list.len() };
-                                let idx = tip_idx % n;
-                                if list.is_empty() {
-                                    TIPS[idx].to_string()
-                                } else {
-                                    list[idx].clone()
-                                }
-                            };
+                            let tip =
+                                choose_tip(&st.settings, previous_tip.as_deref(), &mut tip_rng);
+                            previous_tip = Some(tip.clone());
                             drop(st);
                             update_windows(&app);
                             let _ = app.emit(
@@ -660,16 +738,15 @@ fn run_timer(app: AppHandle) {
             }
             drop(st);
 
-            // 悬浮条每秒走字；托盘 tooltip 每分钟刷新一次
+            // macOS 菜单栏每秒显示倒计时；Windows 工作状态仍按分钟更新 tooltip。
             let state = app.state::<Mutex<AppState>>();
             let minute = state.lock().unwrap().remaining / 60;
             let mode_changed = {
                 let st = state.lock().unwrap();
                 st.mode != Mode::Work
             };
-            drop(state);
             emit_state(&app);
-            if mode_changed || minute != last_minute {
+            if cfg!(target_os = "macos") || mode_changed || minute != last_minute {
                 last_minute = minute;
                 update_tray(&app);
             }
@@ -678,6 +755,48 @@ fn run_timer(app: AppHandle) {
 }
 
 // ---------------- app entry ----------------
+
+#[cfg(not(target_os = "macos"))]
+fn widget_window_size(size: u32) -> f64 {
+    let size = size as f64 + 24.0;
+    if cfg!(windows) {
+        size.max(140.0)
+    } else {
+        size
+    }
+}
+
+#[cfg(any(target_os = "macos", windows))]
+fn monochrome_tray_icon(use_black: bool) -> tauri::image::Image<'static> {
+    let image = tauri::include_image!("./icons/tray-icon.png");
+    if use_black {
+        return image;
+    }
+    let mut pixels = image.rgba().to_vec();
+    for pixel in pixels.as_chunks_mut::<4>().0 {
+        pixel[..3].fill(255);
+    }
+    tauri::image::Image::new_owned(pixels, image.width(), image.height())
+}
+
+#[cfg(target_os = "macos")]
+fn tray_icon(_app: &AppHandle) -> tauri::image::Image<'static> {
+    // The transparent, 2x ring template is automatically tinted by AppKit.
+    monochrome_tray_icon(true)
+}
+
+#[cfg(windows)]
+fn tray_icon(app: &AppHandle) -> tauri::image::Image<'static> {
+    match platform::system_uses_light_theme() {
+        Some(light_theme) => monochrome_tray_icon(light_theme),
+        None => app.default_window_icon().unwrap().clone(),
+    }
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn tray_icon(app: &AppHandle) -> tauri::image::Image<'static> {
+    app.default_window_icon().unwrap().clone()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -691,6 +810,7 @@ pub fn run() {
             None,
         ))
         .invoke_handler(tauri::generate_handler![
+            get_platform,
             get_settings,
             timer_info,
             save_settings,
@@ -706,6 +826,8 @@ pub fn run() {
             quit_app
         ])
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let handle = app.handle().clone();
             let mut settings = load_settings_from_disk(&handle);
             let autostart_enabled = autostart_is_enabled(&handle);
@@ -719,38 +841,44 @@ pub fn run() {
             }));
 
             // ---- 窗口（在 manage 之后创建，页面加载时状态已就绪）----
-            let widget = WebviewWindowBuilder::new(
-                &handle,
-                "widget",
-                WebviewUrl::App("widget.html".into()),
-            )
-            .title("Sit Break")
-            .inner_size(
-                (settings.widget_size as f64 + 24.0).max(140.0),
-                (settings.widget_size as f64 + 24.0).max(140.0),
-            )
-            .visible(false)
-            .decorations(false)
-            .transparent(true)
-            .shadow(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .resizable(false)
-            .focused(false)
-            .build()?;
+            #[cfg(not(target_os = "macos"))]
+            let widget =
+                WebviewWindowBuilder::new(&handle, "widget", WebviewUrl::App("widget.html".into()))
+                    .title("Sit Break")
+                    .inner_size(
+                        widget_window_size(settings.widget_size),
+                        widget_window_size(settings.widget_size),
+                    )
+                    .visible(false)
+                    .decorations(false)
+                    .transparent(true)
+                    .accept_first_mouse(true)
+                    .shadow(false)
+                    .always_on_top(true)
+                    .visible_on_all_workspaces(cfg!(target_os = "macos"))
+                    .skip_taskbar(true)
+                    .resizable(false)
+                    .focused(false)
+                    .build()?;
             let zh = is_zh(&settings);
             let reminder = WebviewWindowBuilder::new(
                 &handle,
                 "reminder",
                 WebviewUrl::App("reminder.html".into()),
             )
-            .title(if zh { "Sit Break 提醒" } else { "Sit Break Reminder" })
+            .title(if zh {
+                "Sit Break 提醒"
+            } else {
+                "Sit Break Reminder"
+            })
             .inner_size(380.0, 368.0)
             .visible(false)
             .decorations(false)
             .transparent(true)
+            .accept_first_mouse(true)
             .shadow(false)
             .always_on_top(true)
+            .visible_on_all_workspaces(cfg!(target_os = "macos"))
             .skip_taskbar(true)
             .resizable(false)
             .focused(false)
@@ -760,36 +888,47 @@ pub fn run() {
                 "settings",
                 WebviewUrl::App("settings.html".into()),
             )
-            .title(if zh { "Sit Break 设置" } else { "Sit Break Settings" })
+            .title(if zh {
+                "Sit Break 设置"
+            } else {
+                "Sit Break Settings"
+            })
             .inner_size(320.0, 580.0)
             .visible(false)
             .decorations(false)
             .transparent(true)
+            .accept_first_mouse(true)
             .shadow(false)
             .skip_taskbar(true)
             .resizable(false)
             .center()
-            .build()?;
-            let panel = WebviewWindowBuilder::new(
-                &handle,
-                "panel",
-                WebviewUrl::App("panel.html".into()),
-            )
-            .title("Sit Break")
-            .inner_size(272.0, 340.0)
-            .visible(false)
-            .decorations(false)
-            .transparent(true)
-            .shadow(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .resizable(false)
             .focused(false)
             .build()?;
+            let panel =
+                WebviewWindowBuilder::new(&handle, "panel", WebviewUrl::App("panel.html".into()))
+                    .title("Sit Break")
+                    .inner_size(272.0, 340.0)
+                    .visible(false)
+                    .decorations(false)
+                    .transparent(true)
+                    .accept_first_mouse(true)
+                    .shadow(false)
+                    .always_on_top(true)
+                    .visible_on_all_workspaces(cfg!(target_os = "macos"))
+                    .skip_taskbar(true)
+                    .resizable(false)
+                    .focused(false)
+                    .build()?;
+
+            #[cfg(target_os = "macos")]
+            for window in [&reminder, &panel] {
+                platform::configure_overlay(window)?;
+            }
 
             // ---- 托盘（左/右键均弹出面板，无原生菜单）----
             let _tray = TrayIconBuilder::with_id("main-tray")
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon(&handle))
+                .icon_as_template(cfg!(target_os = "macos"))
                 .tooltip("Sit Break")
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(|tray, event| {
@@ -806,6 +945,9 @@ pub fn run() {
                     }
                 })
                 .build(&handle)?;
+
+            #[cfg(target_os = "macos")]
+            platform::configure_menu_bar(&_tray)?;
 
             handle.manage(PanelState {
                 toggled_at: Mutex::new(None),
@@ -834,6 +976,7 @@ pub fn run() {
                     }
                 }
             });
+            #[cfg(not(target_os = "macos"))]
             widget.on_window_event({
                 let wh = widget.clone();
                 move |event| {
@@ -863,10 +1006,8 @@ pub fn run() {
                         if !recent {
                             let _ = panel.hide();
                             // 记录时间，供托盘 Click 判断「是否刚被本次点击收起」
-                            *app.state::<PanelState>()
-                                .auto_hidden_at
-                                .lock()
-                                .unwrap() = Some(Instant::now());
+                            *app.state::<PanelState>().auto_hidden_at.lock().unwrap() =
+                                Some(Instant::now());
                         }
                     }
                     _ => {}
@@ -874,6 +1015,7 @@ pub fn run() {
             });
 
             update_tray(&handle);
+            #[cfg(not(target_os = "macos"))]
             if settings.show_widget {
                 let _ = widget.show();
                 position_bottom_right(&widget);
@@ -883,6 +1025,150 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tip_tests {
+    use super::{choose_tip, Settings, TIPS, TIPS_EN};
+    use std::collections::HashSet;
+
+    #[test]
+    fn consecutive_reminders_do_not_repeat_the_previous_tip() {
+        let settings = Settings::default();
+        let mut rng = fastrand::Rng::with_seed(42);
+        let mut previous = TIPS[0].to_string();
+        for _ in 0..100 {
+            let tip = choose_tip(&settings, Some(&previous), &mut rng);
+            assert_ne!(tip, previous);
+            assert!(settings.tips.contains(&tip));
+            previous = tip;
+        }
+    }
+
+    #[test]
+    fn custom_tips_beyond_the_first_ten_can_be_selected() {
+        let settings = Settings {
+            tips: (0..25).map(|i| format!("Custom tip {i}")).collect(),
+            ..Settings::default()
+        };
+        let mut rng = fastrand::Rng::with_seed(7);
+        let mut seen = HashSet::new();
+        let mut previous: Option<String> = None;
+        for _ in 0..1000 {
+            let tip = choose_tip(&settings, previous.as_deref(), &mut rng);
+            assert!(settings.tips.contains(&tip));
+            seen.insert(tip.clone());
+            previous = Some(tip);
+        }
+        assert_eq!(seen.len(), settings.tips.len());
+    }
+
+    #[test]
+    fn empty_or_blank_custom_tips_use_defaults_in_the_selected_language() {
+        let mut settings = Settings {
+            tips: vec!["  ".into(), "\n".into()],
+            language: "en".into(),
+            ..Settings::default()
+        };
+        let mut rng = fastrand::Rng::with_seed(1);
+        assert!(TIPS_EN.contains(&choose_tip(&settings, None, &mut rng).as_str()));
+        settings.language = "zh".into();
+        settings.tips.clear();
+        assert!(TIPS.contains(&choose_tip(&settings, None, &mut rng).as_str()));
+    }
+
+    #[test]
+    fn a_single_distinct_custom_tip_remains_usable() {
+        let settings = Settings {
+            tips: vec!["Only tip".into(), "Only tip".into()],
+            ..Settings::default()
+        };
+        let mut rng = fastrand::Rng::with_seed(1);
+        assert_eq!(choose_tip(&settings, None, &mut rng), "Only tip");
+        assert_eq!(
+            choose_tip(&settings, Some("Only tip"), &mut rng),
+            "Only tip"
+        );
+    }
+
+    #[test]
+    fn duplicate_text_is_excluded_when_an_alternative_exists() {
+        let settings = Settings {
+            tips: vec!["Same".into(), "Same".into(), "Different".into()],
+            ..Settings::default()
+        };
+        let mut rng = fastrand::Rng::with_seed(1);
+        assert_eq!(choose_tip(&settings, Some("Same"), &mut rng), "Different");
+    }
+
+    #[test]
+    fn editing_the_tip_list_does_not_reuse_old_entries() {
+        let mut settings = Settings {
+            tips: vec!["Old tip".into()],
+            ..Settings::default()
+        };
+        let mut rng = fastrand::Rng::with_seed(1);
+        let previous = choose_tip(&settings, None, &mut rng);
+        settings.tips = vec!["New tip".into(), "Another new tip".into()];
+        let tip = choose_tip(&settings, Some(&previous), &mut rng);
+        assert!(settings.tips.contains(&tip));
+    }
+}
+
+#[cfg(test)]
+mod menu_bar_tests {
+    use super::{menu_bar_title, Mode};
+
+    #[test]
+    fn working_countdown_shows_seconds_and_padded_minutes() {
+        assert_eq!(menu_bar_title(Mode::Work, 2700, false, true), "45:00");
+        assert_eq!(menu_bar_title(Mode::Work, 2699, false, true), "44:59");
+        assert_eq!(menu_bar_title(Mode::Work, 59, false, false), "00:59");
+        assert_eq!(menu_bar_title(Mode::Work, 14400, false, false), "240:00");
+    }
+
+    #[test]
+    fn pause_is_visible_during_work_and_breaks() {
+        assert_eq!(menu_bar_title(Mode::Work, 120, true, true), "⏸ 02:00");
+        assert_eq!(
+            menu_bar_title(Mode::Break, 120, true, false),
+            "⏸ Break 02:00"
+        );
+    }
+
+    #[test]
+    fn break_and_reminder_status_follow_the_selected_language() {
+        assert_eq!(menu_bar_title(Mode::Break, 285, false, true), "休息 04:45");
+        assert_eq!(
+            menu_bar_title(Mode::Break, 285, false, false),
+            "Break 04:45"
+        );
+        assert_eq!(menu_bar_title(Mode::Remind, 0, false, true), "起身");
+        assert_eq!(menu_bar_title(Mode::Remind, 0, false, false), "Move");
+    }
+}
+
+#[cfg(test)]
+mod window_position_tests {
+    use super::clamp_axis;
+
+    #[test]
+    fn bottom_right_respects_secondary_monitor_origin() {
+        assert_eq!(clamp_axis(i32::MAX, -1920, 1920, 380, 24), -404);
+        assert_eq!(clamp_axis(i32::MAX, 1080, 1080, 368, 24), 1768);
+    }
+
+    #[test]
+    fn panel_stays_below_menu_bar_and_inside_work_area() {
+        assert_eq!(clamp_axis(-320, 48, 1700, 680, 16), 64);
+        assert_eq!(clamp_axis(2000, 48, 1700, 680, 16), 1052);
+    }
+
+    #[test]
+    fn small_work_areas_do_not_produce_invalid_clamp_bounds() {
+        assert_eq!(clamp_axis(1000, -100, 300, 380, 24), -100);
+        assert_eq!(clamp_axis(1000, 100, 390, 380, 24), 105);
+    }
 }
 
 #[cfg(all(test, windows))]
@@ -904,7 +1190,10 @@ mod tests {
                 .unwrap()
                 .get_value(name)
                 .unwrap();
-            assert!(v.starts_with('"') && v.ends_with('"'), "value not quoted: {v}");
+            assert!(
+                v.starts_with('"') && v.ends_with('"'),
+                "value not quoted: {v}"
+            );
         }
         autostart_set_reg(name, &exe, false).unwrap();
         assert!(!autostart_reg_is_enabled(name));

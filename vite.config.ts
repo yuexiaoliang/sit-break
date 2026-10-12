@@ -16,6 +16,8 @@ export default defineConfig(() => ({
     },
   },
   build: {
+    // Safari 15 / macOS Monterey supports the top-level await used by our pages.
+    target: "safari15",
     rollupOptions: {
       input: {
         widget: resolve(root, "widget.html"),

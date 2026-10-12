@@ -6,10 +6,20 @@ on:
 
 jobs:
   release:
-    name: Build & publish release
+    name: Build & publish (${{ matrix.platform }})
     permissions:
       contents: write
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - platform: windows-latest
+            args: ''
+            rust-targets: ''
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
 
@@ -19,6 +29,8 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -32,13 +44,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          args: ${{ matrix.args }}
           tagName: ${{ github.ref_name }}
           releaseName: "Sit Break ${{ github.ref_name }}"
-          releaseBody: "Download the installer below. 下载下面的安装包即可安装使用。"
+          releaseBody: "macOS: download the universal DMG (Apple Silicon + Intel). Windows: download the installer or portable exe. macOS 下载通用 DMG；Windows 下载安装包或便携版。"
           releaseDraft: false
           prerelease: false
 
       - name: Upload portable exe
+        if: matrix.platform == 'windows-latest'
         run: gh release upload ${{ github.ref_name }} src-tauri/target/release/sit-break.exe --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
