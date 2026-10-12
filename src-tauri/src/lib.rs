@@ -789,13 +789,19 @@ fn tray_icon(_app: &AppHandle) -> tauri::image::Image<'static> {
 fn tray_icon(app: &AppHandle) -> tauri::image::Image<'static> {
     match platform::system_uses_light_theme() {
         Some(light_theme) => monochrome_tray_icon(light_theme),
-        None => app.default_window_icon().unwrap().clone(),
+        None => owned_window_icon(app.default_window_icon().unwrap()),
     }
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
 fn tray_icon(app: &AppHandle) -> tauri::image::Image<'static> {
-    app.default_window_icon().unwrap().clone()
+    owned_window_icon(app.default_window_icon().unwrap())
+}
+
+#[cfg(any(not(target_os = "macos"), test))]
+fn owned_window_icon(image: &tauri::image::Image<'_>) -> tauri::image::Image<'static> {
+    // Detach the pixels from the borrowed app icon before handing them to the tray.
+    image.clone().to_owned()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1025,6 +1031,22 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tray_icon_tests {
+    use super::owned_window_icon;
+
+    #[test]
+    fn owned_icon_preserves_pixels_after_source_is_dropped() {
+        let icon = {
+            let rgba = vec![255, 255, 255, 255, 0, 0, 0, 0];
+            let borrowed = tauri::image::Image::new(&rgba, 2, 1);
+            owned_window_icon(&borrowed)
+        };
+        assert_eq!((icon.width(), icon.height()), (2, 1));
+        assert_eq!(icon.rgba(), &[255, 255, 255, 255, 0, 0, 0, 0]);
+    }
 }
 
 #[cfg(test)]
