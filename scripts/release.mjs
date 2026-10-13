@@ -1,4 +1,4 @@
-// Release automation: bump version across package.json / tauri.conf.json / Cargo.toml,
+// Release automation: bump version across package.json / package-lock.json / tauri.conf.json / Cargo.toml,
 // sync Cargo.lock, commit, tag and push — then the Release workflow builds & publishes.
 // Usage: npm run release -- patch|minor|major|x.y.z [--dry-run]
 import { readFileSync, writeFileSync } from "node:fs";
@@ -39,9 +39,20 @@ if (dirty && !DRY) fail("Working tree is not clean. Commit or stash first.");
 
 console.log(`\x1b[32m${current} → ${version}\x1b[0m\n`);
 
+if (DRY) {
+  console.log("\x1b[33m--dry-run: 未修改文件、提交或推送。去掉 --dry-run 执行正式发布。\x1b[0m");
+  process.exit(0);
+}
+
 // 1. package.json
 pkg.version = version;
 writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+
+// npm 锁文件中的项目版本也必须同步，依赖版本保持不变。
+const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
+lock.version = version;
+lock.packages[""].version = version;
+writeFileSync("package-lock.json", JSON.stringify(lock, null, 2) + "\n");
 
 // 2. src-tauri/tauri.conf.json
 const confPath = "src-tauri/tauri.conf.json";
@@ -53,12 +64,7 @@ const cargoPath = "src-tauri/Cargo.toml";
 const cargo = readFileSync(cargoPath, "utf8");
 writeFileSync(cargoPath, cargo.replace(/^(version\s*=\s*")[^"]+(")/m, `$1${version}$2`));
 
-console.log(`✔ package.json / tauri.conf.json / Cargo.toml → ${version}`);
-
-if (DRY) {
-  console.log("\n\x1b[33m--dry-run: 未提交/推送。去掉 --dry-run 执行正式发布。\x1b[0m");
-  process.exit(0);
-}
+console.log(`✔ package.json / package-lock.json / tauri.conf.json / Cargo.toml → ${version}`);
 
 // 4. 同步 Cargo.lock
 run("cargo update -p sit-break", { cwd: "src-tauri" });

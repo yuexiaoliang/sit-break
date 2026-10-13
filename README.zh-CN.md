@@ -123,7 +123,7 @@ macOS 菜单栏应用不显示 Dock 图标或桌面悬浮球；圆环标志旁�
 - **CI**（`.github/workflows/ci.yml`）：macOS / Windows 上执行前端类型检查与构建、`cargo check`、`cargo clippy`、Rust 测试
 - **Release**（`.github/workflows/release.yml`）：推送 `v*` 标签自动构建 macOS 通用 DMG、Windows NSIS / MSI 安装包与便携版 exe
 
-发布新版本只需一条命令（自动同步三处版本号、更新 Cargo.lock、commit + tag + push）：
+发布新版本只需一条命令（自动同步 npm、Tauri 和 Rust 的版本号及锁文件，commit + tag + push）：
 
 ```bash
 npm run release -- patch   # 或 minor / major / 指定版本号如 1.2.3

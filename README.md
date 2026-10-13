@@ -123,7 +123,7 @@ Regenerate the current desktop icons with `npm run icons`. See the [logo design]
 - **CI**（`.github/workflows/ci.yml`）：frontend type-check/build, `cargo check`, `cargo clippy` and Rust tests on macOS and Windows
 - **Release**（`.github/workflows/release.yml`）：pushing a `v*` tag builds the universal macOS DMG, Windows NSIS/MSI installers and portable exe
 
-Cut a release with one command (bumps all three version files, updates Cargo.lock, commits, tags and pushes):
+Cut a release with one command (syncs the npm, Tauri and Rust versions and lockfiles, commits, tags and pushes):
 
 ```bash
 npm run release -- patch   # or minor / major / an explicit version like 1.2.3
