@@ -1,7 +1,7 @@
 {
   "name": "sit-break",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.3.0",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"
