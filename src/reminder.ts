@@ -62,13 +62,13 @@ function renderState(state: TimerState) {
   const round = state.round ? `${fmt(S.roundNumber, { n: state.round.number })} · ` : "";
   if (state.mode === "remind") {
     document.getElementById("satText")!.textContent = round + fmt(S.satFor, { n: state.work_seconds / 60 });
-    tipText.textContent = state.tip ?? "";
+    if (tipText.textContent !== (state.tip ?? "")) tipText.textContent = state.tip ?? "";
     btnBreak.textContent = fmt(S.startBreak, { n: state.break_seconds / 60 });
     showRemindCard();
   } else if (state.mode === "break") {
     breakTimeEl.textContent = fmtTime(state.remaining);
     ringCap.textContent = round + (state.paused ? S.paused : fmt(S.untilBack, { t: fmtTime(state.remaining) }));
-    stretchText.textContent = state.tip ?? "";
+    if (stretchText.textContent !== (state.tip ?? "")) stretchText.textContent = state.tip ?? "";
     const progress = state.break_seconds > 0 ? state.remaining / state.break_seconds : 0;
     ring.style.strokeDashoffset = String(RING_LEN * (1 - progress));
     showBreakCard();
