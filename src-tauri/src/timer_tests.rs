@@ -852,3 +852,331 @@ fn simple_timer_keeps_its_existing_tip_rotation_when_postponed() {
     );
     assert_ne!(app.info().tip, first_tip);
 }
+
+fn two_period_settings() -> Settings {
+    let mut settings = scheduled_settings("12:00");
+    settings.schedules[0].periods[0].work_minutes = 55;
+    settings.schedules[0].periods[0].break_minutes = 5;
+    settings.schedules[0].periods.push(serde_json::from_value(serde_json::json!({
+        "id":"afternoon-period", "start":"13:30", "end":"18:00", "work_minutes":60, "break_minutes":5
+    })).unwrap());
+    settings
+}
+
+#[test]
+fn overlapping_periods_are_located_and_rejected_without_changing_running_progress() {
+    let mut app = TimerApp::new_at(
+        two_period_settings(),
+        fastrand::Rng::with_seed(42),
+        at(9, 0),
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        at(9, 1),
+    );
+    let progress = app.info();
+    let saved = serde_json::to_value(app.settings()).unwrap();
+    let path = std::env::temp_dir().join(format!("sit-break-overlap-{}.json", fastrand::u64(..)));
+    app.settings().save_to(&path).unwrap();
+    let mut draft = app.settings().clone();
+    draft.schedules[0].periods[1].start = "11:30".into();
+    assert!(draft.save_to(&path).is_err());
+    let result = app.dispatch(Action::SaveSettings(draft), at(9, 1));
+    assert!(result
+        .validation_errors
+        .iter()
+        .any(|error| error.code == "overlap"
+            && error.schedule_id.as_deref() == Some("morning")
+            && error.period_id.as_deref() == Some("afternoon-period")));
+    assert!(result.persist_settings.is_none());
+    assert_eq!(app.info(), progress);
+    assert_eq!(serde_json::to_value(app.settings()).unwrap(), saved);
+    let reloaded = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    assert_eq!(serde_json::to_value(reloaded.settings()).unwrap(), saved);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn morning_and_afternoon_keep_lunch_quiet_and_start_independent_rounds() {
+    let mut app = TimerApp::new_at(
+        two_period_settings(),
+        fastrand::Rng::with_seed(42),
+        at(9, 0),
+    );
+    assert_eq!(app.info().work_seconds, 3300);
+    assert_eq!(app.info().break_seconds, 300);
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3300,
+            idle_secs: 0,
+        },
+        at(9, 55),
+    );
+    app.dispatch(Action::StartBreak, at(9, 55));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 300,
+            idle_secs: 0,
+        },
+        at(10, 0),
+    );
+    assert_eq!(app.info().round.unwrap().number, 2);
+    let noon = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 7200,
+            idle_secs: 0,
+        },
+        at(12, 0),
+    );
+    assert_eq!(app.info().mode, Mode::Idle);
+    assert!(noon.events.is_empty());
+    let lunch = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 5340,
+            idle_secs: 0,
+        },
+        at(13, 29),
+    );
+    assert_eq!(app.info().mode, Mode::Idle);
+    assert!(lunch.events.is_empty());
+    let afternoon = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        at(13, 30),
+    );
+    assert!(afternoon.events.is_empty());
+    assert_eq!(app.info().mode, Mode::Work);
+    assert_eq!(app.info().remaining, 3600);
+    assert_eq!(app.info().work_seconds, 3600);
+    assert_eq!(app.info().break_seconds, 300);
+    let round = app.info().round.unwrap();
+    assert_eq!(round.period_id, "afternoon-period");
+    assert_eq!(round.number, 1);
+}
+
+#[test]
+fn a_long_break_crosses_lunch_and_next_period_without_starting_a_second_timer() {
+    let mut settings = two_period_settings();
+    settings.schedules[0].periods[0].break_minutes = 60;
+    settings.schedules[0].periods[1].start = "12:30".into();
+    let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(11, 0));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3300,
+            idle_secs: 0,
+        },
+        at(11, 55),
+    );
+    app.dispatch(Action::StartBreak, at(11, 55));
+    let after_noon = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 300,
+            idle_secs: 0,
+        },
+        at(12, 0),
+    );
+    assert_eq!(app.info().mode, Mode::Break);
+    assert_eq!(app.info().remaining, 3300);
+    assert!(after_noon.events.is_empty());
+    let during_afternoon = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 1800,
+            idle_secs: 0,
+        },
+        at(12, 30),
+    );
+    assert_eq!(app.info().mode, Mode::Break);
+    assert_eq!(app.info().remaining, 1500);
+    assert_eq!(app.info().round.unwrap().period_id, "morning-period");
+    assert!(during_afternoon.events.is_empty());
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 1500,
+            idle_secs: 0,
+        },
+        at(12, 55),
+    );
+    assert_eq!(app.info().mode, Mode::Work);
+    assert_eq!(app.info().remaining, 3600);
+    let round = app.info().round.unwrap();
+    assert_eq!(round.period_id, "afternoon-period");
+    assert_eq!(round.number, 1);
+}
+
+#[test]
+fn finishing_a_morning_break_in_lunch_stays_idle_until_afternoon() {
+    let mut app = TimerApp::new_at(
+        two_period_settings(),
+        fastrand::Rng::with_seed(42),
+        at(11, 3),
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3300,
+            idle_secs: 0,
+        },
+        at(11, 58),
+    );
+    app.dispatch(Action::StartBreak, at(11, 58));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 300,
+            idle_secs: 0,
+        },
+        at(12, 3),
+    );
+    assert_eq!(app.info().mode, Mode::Idle);
+    assert!(app.info().round.is_none());
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 5220,
+            idle_secs: 0,
+        },
+        at(13, 30),
+    );
+    assert_eq!(app.info().remaining, 3600);
+    assert_eq!(app.info().round.unwrap().number, 1);
+}
+
+#[test]
+fn adjacent_periods_are_allowed_and_boundary_selects_only_the_new_first_round() {
+    let mut settings = two_period_settings();
+    settings.schedules[0].periods[1].start = "12:00".into();
+    let mut app = TimerApp::new_at(Settings::default(), fastrand::Rng::with_seed(42), at(9, 0));
+    let saved = app.dispatch(Action::SaveSettings(settings), at(11, 50));
+    assert!(saved.validation_errors.is_empty());
+    let boundary = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 600,
+            idle_secs: 0,
+        },
+        at(12, 0),
+    );
+    assert!(boundary.events.is_empty());
+    assert_eq!(app.info().remaining, 3600);
+    assert_eq!(app.info().round.unwrap().period_id, "afternoon-period");
+    assert_eq!(app.info().round.unwrap().number, 1);
+}
+
+#[test]
+fn jumping_over_a_whole_period_never_catches_up_its_work_or_reminders() {
+    let mut app = TimerApp::new_at(
+        two_period_settings(),
+        fastrand::Rng::with_seed(42),
+        at(8, 59),
+    );
+    let skipped_morning = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 18060,
+            idle_secs: 0,
+        },
+        at(14, 0),
+    );
+    assert!(skipped_morning.events.is_empty());
+    assert_eq!(app.info().remaining, 3600);
+    assert_eq!(app.info().round.unwrap().period_id, "afternoon-period");
+    assert_eq!(app.info().round.unwrap().number, 1);
+    let skipped_afternoon = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 18000,
+            idle_secs: 0,
+        },
+        at(19, 0),
+    );
+    assert!(skipped_afternoon.events.is_empty());
+    assert_eq!(app.info().mode, Mode::Idle);
+    let mut tomorrow = at(9, 0);
+    tomorrow.local.as_mut().unwrap().date = "2026-10-15".into();
+    let next_day = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 50400,
+            idle_secs: 0,
+        },
+        tomorrow,
+    );
+    assert!(next_day.events.is_empty());
+    assert_eq!(app.info().mode, Mode::Idle);
+}
+
+#[test]
+fn multiple_periods_keep_their_independent_lengths_and_identities_after_reload() {
+    let path = std::env::temp_dir().join(format!("sit-break-periods-{}.json", fastrand::u64(..)));
+    let mut app = simple_timer();
+    let saved = app.dispatch(Action::SaveSettings(two_period_settings()), at(9, 0));
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let reloaded = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    let periods = &reloaded.settings().schedules[0].periods;
+    assert_eq!(periods.len(), 2);
+    assert_eq!(
+        (
+            &periods[0].id,
+            periods[0].work_minutes,
+            periods[0].break_minutes
+        ),
+        (&"morning-period".to_string(), 55, 5)
+    );
+    assert_eq!(
+        (
+            &periods[1].id,
+            periods[1].work_minutes,
+            periods[1].break_minutes
+        ),
+        (&"afternoon-period".to_string(), 60, 5)
+    );
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn overlap_reports_both_ranges_even_with_unsorted_nested_periods() {
+    let mut settings = two_period_settings();
+    settings.schedules[0].periods[1].start = "08:00".into();
+    settings.schedules[0].periods[1].end = "20:00".into();
+    settings.schedules[0].periods.reverse();
+    let mut app = simple_timer();
+    let rejected = app.dispatch(Action::SaveSettings(settings), at(9, 0));
+    let error = rejected
+        .validation_errors
+        .iter()
+        .find(|error| error.code == "overlap")
+        .unwrap();
+    assert_eq!(error.period_id.as_deref(), Some("morning-period"));
+    let conflict = error.conflict.as_ref().unwrap();
+    assert_eq!(conflict.period_id, "afternoon-period");
+    assert_eq!(conflict.start, "08:00");
+    assert_eq!(conflict.end, "20:00");
+}
+
+#[test]
+fn a_day_end_period_is_valid_but_a_single_overnight_period_must_be_split() {
+    let mut settings = two_period_settings();
+    settings.schedules[0].periods[1].start = "22:00".into();
+    settings.schedules[0].periods[1].end = "24:00".into();
+    let mut app = simple_timer();
+    let valid = app.dispatch(Action::SaveSettings(settings.clone()), at(23, 0));
+    assert!(valid.validation_errors.is_empty());
+    let progress = app.info();
+    settings.schedules[0].periods[1].end = "01:00".into();
+    let invalid = app.dispatch(Action::SaveSettings(settings), at(23, 0));
+    assert!(invalid
+        .validation_errors
+        .iter()
+        .any(|error| error.code == "end_before_start"
+            && error.period_id.as_deref() == Some("afternoon-period")));
+    assert_eq!(app.info(), progress);
+    let mut tomorrow = at(0, 0);
+    tomorrow.local.as_mut().unwrap().date = "2026-10-15".into();
+    let boundary = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3600,
+            idle_secs: 0,
+        },
+        tomorrow,
+    );
+    assert!(boundary.events.is_empty());
+    assert_eq!(app.info().mode, Mode::Idle);
+}

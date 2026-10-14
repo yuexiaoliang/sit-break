@@ -16,6 +16,7 @@ interface ValidationError {
   period_id: string | null;
   field: string;
   code: string;
+  conflict?: { schedule_id: string; period_id: string; start: string; end: string };
 }
 
 interface ScheduleDraft {
@@ -101,6 +102,35 @@ function localDate() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
+function clockMinutes(value: string): number | undefined {
+  if (!/^(?:([01]\d|2[0-3]):[0-5]\d|24:00)$/.test(value)) return undefined;
+  const [hour, minute] = value.split(":").map(Number);
+  return hour * 60 + minute;
+}
+
+function clockText(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+// 草稿的钟表区间只用于展示空档，执行与冲突校验仍由后端计时入口负责。
+function renderQuietGaps(schedule: ScheduleDraft, card: HTMLElement) {
+  const summary = card.querySelector<HTMLElement>(".quiet-periods")!;
+  summary.replaceChildren();
+  const ranges = schedule.periods.map((period) => ({ start: clockMinutes(period.start), end: clockMinutes(period.end) }))
+    .filter((range): range is { start: number; end: number } => range.start !== undefined && range.end !== undefined && range.start < range.end)
+    .sort((left, right) => left.start - right.start);
+  let coveredEnd = ranges[0]?.end;
+  for (const range of ranges.slice(1)) {
+    if (coveredEnd !== undefined && range.start > coveredEnd) {
+      const gap = document.createElement("p");
+      gap.textContent = fmt(S.quietPeriod, { start: clockText(coveredEnd), end: clockText(range.start) });
+      summary.appendChild(gap);
+    }
+    coveredEnd = Math.max(coveredEnd ?? range.end, range.end);
+  }
+  summary.hidden = summary.childElementCount === 0;
+}
+
 function renderSchedules() {
   scheduleList.replaceChildren();
   document.getElementById("emptySchedules")!.hidden = schedules.length > 0;
@@ -131,12 +161,18 @@ function renderSchedules() {
     });
     card.querySelector<HTMLElement>(".empty-periods")!.hidden = schedule.periods.length > 0;
     const addPeriod = card.querySelector<HTMLButtonElement>(".add-period")!;
-    addPeriod.hidden = schedule.periods.length > 0;
     addPeriod.addEventListener("click", () => {
-      schedule.periods.push({ id: crypto.randomUUID(), start: "09:00", end: "12:00", work_minutes: Number(workMin.value) || 45, break_minutes: Number(breakMin.value) || 5 });
+      const last = [...schedule.periods].sort((left, right) => (clockMinutes(left.end) ?? 0) - (clockMinutes(right.end) ?? 0)).slice(-1)[0];
+      const start = last ? clockMinutes(last.end) : 9 * 60;
+      const available = start !== undefined && start < 24 * 60;
+      schedule.periods.push({ id: crypto.randomUUID(), start: available ? clockText(start) : "", end: available ? clockText(Math.min(start + (last ? 120 : 180), 24 * 60)) : "", work_minutes: last?.work_minutes ?? (Number(workMin.value) || 45), break_minutes: last?.break_minutes ?? (Number(breakMin.value) || 5), ...{ overrides: [] } });
       renderSchedules();
     });
     const periods = card.querySelector<HTMLElement>(".period-list")!;
+    const gaps = document.createElement("div");
+    gaps.className = "quiet-periods";
+    gaps.setAttribute("aria-live", "polite");
+    periods.before(gaps);
     for (const period of schedule.periods) {
       const periodCard = document.createElement("section");
       periodCard.className = "period-card";
@@ -149,6 +185,7 @@ function renderSchedules() {
           input.removeAttribute("aria-invalid");
           if (field === "start" || field === "end") period[field] = input.value;
           else period[field] = Number(input.value);
+          if (field === "start" || field === "end") renderQuietGaps(schedule, card);
         });
       }
       periodCard.querySelector<HTMLButtonElement>(".text-button")!.addEventListener("click", () => {
@@ -157,6 +194,7 @@ function renderSchedules() {
       });
       periods.appendChild(periodCard);
     }
+    renderQuietGaps(schedule, card);
     scheduleList.appendChild(card);
   }
   applyStatic(activeLang());
@@ -244,8 +282,15 @@ function describeSaveError(error: unknown): string {
     const input = scope?.querySelector<HTMLInputElement>(`[data-field="${issue.field}"]`);
     input?.setAttribute("aria-invalid", "true");
     first ??= input ?? undefined;
-    const location = [schedule?.name, period ? `${period.start}–${period.end}` : ""].filter(Boolean).join(" · ");
-    return `${location ? `${location}: ` : ""}${S[`validation_${issue.code}`] ?? S.fixSchedule}`;
+    const location = [schedule?.name, schedule?.repeat.date, period ? `${period.start}–${period.end}` : ""].filter(Boolean).join(" · ");
+    let message = S[`validation_${issue.code}`] ?? S.fixSchedule;
+    if (issue.conflict) {
+      const otherCard = Array.from(scheduleList.querySelectorAll<HTMLElement>(".schedule-card")).find((item) => item.dataset.scheduleId === issue.conflict?.schedule_id);
+      const otherPeriod = Array.from(otherCard?.querySelectorAll<HTMLElement>(".period-card") ?? []).find((item) => item.dataset.periodId === issue.conflict?.period_id);
+      otherPeriod?.querySelector<HTMLInputElement>("[data-field=start]")?.setAttribute("aria-invalid", "true");
+      message = fmt(message, { other: `${issue.conflict.start}–${issue.conflict.end}` });
+    }
+    return `${location ? `${location}: ` : ""}${message}`;
   });
   first?.focus();
   return messages.join("\n");

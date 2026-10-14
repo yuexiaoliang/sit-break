@@ -27,11 +27,21 @@ pub struct Period {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PeriodConflict {
+    pub schedule_id: String,
+    pub period_id: String,
+    pub start: String,
+    pub end: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ValidationError {
     pub schedule_id: Option<String>,
     pub period_id: Option<String>,
     pub field: String,
     pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conflict: Option<PeriodConflict>,
 }
 
 pub fn minute_of_day(value: &str, allow_day_end: bool) -> Option<u32> {
@@ -67,6 +77,7 @@ impl crate::Settings {
                     period_id: period_id.map(str::to_owned),
                     field: field.into(),
                     code: code.into(),
+                    conflict: None,
                 });
             };
         if !(1..=240).contains(&self.work_minutes) {
@@ -109,6 +120,39 @@ impl crate::Settings {
                 }
                 if !(1..=60).contains(&period.break_minutes) {
                     report(sid, pid, "break_minutes", "break_range");
+                }
+            }
+        }
+        // 仅校验同一日程的日内时段；多份日程的日期/星期冲突由后续任务扩展。
+        for schedule in &self.schedules {
+            for (index, period) in schedule.periods.iter().enumerate() {
+                let Some((start, end)) = minute_of_day(&period.start, false)
+                    .zip(minute_of_day(&period.end, true))
+                    .filter(|(start, end)| start < end)
+                else {
+                    continue;
+                };
+                for other in &schedule.periods[..index] {
+                    let Some((other_start, other_end)) = minute_of_day(&other.start, false)
+                        .zip(minute_of_day(&other.end, true))
+                        .filter(|(start, end)| start < end)
+                    else {
+                        continue;
+                    };
+                    if start < other_end && other_start < end {
+                        errors.push(ValidationError {
+                            schedule_id: Some(schedule.id.clone()),
+                            period_id: Some(period.id.clone()),
+                            field: "start".into(),
+                            code: "overlap".into(),
+                            conflict: Some(PeriodConflict {
+                                schedule_id: schedule.id.clone(),
+                                period_id: other.id.clone(),
+                                start: other.start.clone(),
+                                end: other.end.clone(),
+                            }),
+                        });
+                    }
                 }
             }
         }
