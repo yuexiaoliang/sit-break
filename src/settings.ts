@@ -24,14 +24,21 @@ interface ValidationError {
   period_id: string | null;
   field: string;
   code: string;
-  conflict?: { schedule_id: string; period_id: string; start: string; end: string };
+  conflict?: { schedule_id: string; period_id: string; start: string; end: string; occurrence: RepeatDraft };
+}
+
+interface RepeatDraft {
+  kind: string;
+  date?: string;
+  weekdays?: number[];
+  [key: string]: unknown;
 }
 
 interface ScheduleDraft {
   id: string;
   name: string;
   enabled: boolean;
-  repeat: { kind: string; date?: string; [key: string]: unknown };
+  repeat: RepeatDraft;
   periods: PeriodDraft[];
   [key: string]: unknown;
 }
@@ -86,7 +93,8 @@ function renderMode() {
   // 隐藏的简单时长仍保留草稿，不参与当前可见表单的原生校验。
   workMin.disabled = scheduled;
   breakMin.disabled = scheduled;
-  document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("#scheduleSettings input, #scheduleSettings textarea").forEach((input) => { input.disabled = !scheduled; });
+  document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("#scheduleSettings input, #scheduleSettings textarea, #scheduleSettings select").forEach((input) => { input.disabled = !scheduled; });
+  scheduleList.querySelectorAll<HTMLInputElement>(".date-label[hidden] input").forEach((input) => { input.disabled = true; });
   document.getElementById("pageTitle")!.textContent = scheduled ? S.scheduleTitle : S.simpleTitle;
   document.getElementById("pageDescription")!.textContent = scheduled ? S.scheduleDescription : S.simpleDescription;
   document.getElementById("modeDescription")!.textContent = scheduled
@@ -119,6 +127,64 @@ function clockMinutes(value: string): number | undefined {
 
 function clockText(minutes: number): string {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+function repeatLabel(repeat: RepeatDraft): string {
+  if (repeat.kind === "once") return repeat.date ?? "";
+  const weekdays = [...(repeat.weekdays ?? [])].sort((left, right) => left - right);
+  if (weekdays.join() === "1,2,3,4,5,6,7") return S.everyDay;
+  if (weekdays.join() === "1,2,3,4,5") return S.workdays;
+  return weekdays.map((day) => S[`weekday${day}`] ?? "").filter(Boolean).join(S.weekdaySeparator);
+}
+
+function syncRepeatControls(schedule: ScheduleDraft, card: HTMLElement) {
+  card.querySelector<HTMLElement>(".repeat-options")!.setAttribute("aria-label", S.repeatRule);
+  const weekly = schedule.repeat.kind === "weekly";
+  card.querySelector<HTMLElement>(".date-label")!.hidden = weekly;
+  card.querySelector<HTMLElement>(".weekly-settings")!.hidden = !weekly;
+  const date = card.querySelector<HTMLInputElement>("input[type=date]")!;
+  date.value = schedule.repeat.date ?? "";
+  date.required = !weekly;
+  date.disabled = weekly || !isOn("use_schedule");
+  card.querySelectorAll<HTMLButtonElement>("[data-repeat-kind]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.repeatKind === schedule.repeat.kind));
+  });
+  card.querySelectorAll<HTMLButtonElement>("[data-weekday]").forEach((button) => {
+    const selected = (schedule.repeat.weekdays ?? []).includes(Number(button.dataset.weekday));
+    button.setAttribute("aria-pressed", String(selected));
+  });
+}
+
+function attachRepeatControls(schedule: ScheduleDraft, card: HTMLElement) {
+  card.querySelectorAll<HTMLButtonElement>("[data-repeat-kind]").forEach((button) => {
+    button.addEventListener("click", () => {
+      schedule.repeat.kind = button.dataset.repeatKind!;
+      if (schedule.repeat.kind === "once") schedule.repeat.date ??= localDate();
+      else schedule.repeat.weekdays ??= [1, 2, 3, 4, 5];
+      syncRepeatControls(schedule, card);
+    });
+  });
+  const date = card.querySelector<HTMLInputElement>("input[type=date]")!;
+  date.addEventListener("input", () => {
+    schedule.repeat.date = date.value;
+    date.removeAttribute("aria-invalid");
+  });
+  const setWeekdays = (weekdays: number[]) => {
+    schedule.repeat.weekdays = weekdays;
+    card.querySelector<HTMLElement>("[data-field=weekdays]")!.removeAttribute("aria-invalid");
+    syncRepeatControls(schedule, card);
+  };
+  card.querySelectorAll<HTMLButtonElement>("[data-weekday]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const day = Number(button.dataset.weekday);
+      const selected = new Set(schedule.repeat.weekdays ?? []);
+      if (selected.has(day)) selected.delete(day); else selected.add(day);
+      setWeekdays([...selected].sort((left, right) => left - right));
+    });
+  });
+  card.querySelector<HTMLButtonElement>(".choose-workdays")!.addEventListener("click", () => setWeekdays([1, 2, 3, 4, 5]));
+  card.querySelector<HTMLButtonElement>(".choose-everyday")!.addEventListener("click", () => setWeekdays([1, 2, 3, 4, 5, 6, 7]));
+  syncRepeatControls(schedule, card);
 }
 
 // 草稿的钟表区间只用于展示空档，执行与冲突校验仍由后端计时入口负责。
@@ -205,7 +271,7 @@ function renderSchedules() {
     const card = document.createElement("article");
     card.className = "schedule-card";
     card.dataset.scheduleId = schedule.id;
-    card.innerHTML = `<div class="schedule-card-header"><label><span data-i18n="scheduleName"></span><input type="text" maxlength="100" data-field="name" /></label><button type="button" class="switch" role="switch"></button></div><label class="date-label"><span data-i18n="onceDate"></span><input type="date" required data-field="date" /></label><div class="period-list"></div><div class="empty-periods"><h2 data-i18n="emptyPeriods"></h2><p data-i18n="emptyPeriodsDescription"></p></div><div class="schedule-actions"><button type="button" class="secondary-button add-period" data-i18n="addPeriod"></button><button type="button" class="secondary-button remove-schedule" data-i18n="removeSchedule"></button></div>`;
+    card.innerHTML = `<div class="schedule-card-header"><label><span data-i18n="scheduleName"></span><input type="text" maxlength="100" data-field="name" /></label><button type="button" class="switch" role="switch"></button></div><div class="repeat-label"><span data-i18n="repeatRule"></span><div class="repeat-options" role="group" data-i18n-label="repeatRule"><button type="button" data-repeat-kind="weekly" data-i18n="repeatWeekly" aria-pressed="false"></button><button type="button" data-repeat-kind="once" data-i18n="repeatOnce" aria-pressed="false"></button></div></div><label class="date-label"><span data-i18n="onceDate"></span><input type="date" required data-field="date" /></label><fieldset class="weekly-settings" data-field="weekdays" tabindex="-1"><legend data-i18n="repeatWeekdays"></legend><div class="weekday-buttons">${[1,2,3,4,5,6,7].map((day) => `<button type="button" class="weekday-button" data-weekday="${day}" data-i18n="weekday${day}" aria-pressed="false"></button>`).join("")}</div><div class="weekday-shortcuts"><button type="button" class="text-button choose-workdays" data-i18n="workdays"></button><button type="button" class="text-button choose-everyday" data-i18n="everyDay"></button></div></fieldset><div class="period-list"></div><div class="empty-periods"><h2 data-i18n="emptyPeriods"></h2><p data-i18n="emptyPeriodsDescription"></p></div><div class="schedule-actions"><button type="button" class="secondary-button add-period" data-i18n="addPeriod"></button><button type="button" class="secondary-button remove-schedule" data-i18n="removeSchedule"></button></div>`;
     const name = card.querySelector<HTMLInputElement>("input[type=text]")!;
     name.value = schedule.name;
     name.addEventListener("input", () => { schedule.name = name.value; });
@@ -216,11 +282,7 @@ function renderSchedules() {
       schedule.enabled = !schedule.enabled;
       enabled.setAttribute("aria-checked", String(schedule.enabled));
     });
-    const date = card.querySelector<HTMLInputElement>("input[type=date]")!;
-    date.value = schedule.repeat?.date ?? "";
-    date.addEventListener("input", () => {
-      schedule.repeat = { ...schedule.repeat, kind: "once", date: date.value };
-    });
+    attachRepeatControls(schedule, card);
     card.querySelector<HTMLButtonElement>(".remove-schedule")!.addEventListener("click", () => {
       schedules = schedules.filter((item) => item.id !== schedule.id);
       renderSchedules();
@@ -339,7 +401,7 @@ document.querySelectorAll<HTMLElement>("[data-duration]").forEach((group) => {
   input.addEventListener("input", renderDurations);
 });
 document.getElementById("addSchedule")!.addEventListener("click", () => {
-  schedules.push({ id: crypto.randomUUID(), name: S.newSchedule, enabled: true, repeat: { kind: "once", date: localDate() }, periods: [] });
+  schedules.push({ id: crypto.randomUUID(), name: S.newSchedule, enabled: true, repeat: { kind: "weekly", weekdays: [1, 2, 3, 4, 5] }, periods: [] });
   renderSchedules();
   scheduleList.lastElementChild?.querySelector<HTMLInputElement>("input[type=text]")?.focus();
 });
@@ -347,23 +409,25 @@ document.getElementById("addSchedule")!.addEventListener("click", () => {
 function describeSaveError(error: unknown): string {
   const failure = error as { kind?: string; errors?: ValidationError[]; message?: string };
   if (failure.kind !== "validation" || !failure.errors) return `${S.saveFailed} ${failure.message ?? String(error)}`;
-  let first: HTMLInputElement | undefined;
+  let first: HTMLElement | undefined;
   const messages = failure.errors.map((issue) => {
     const schedule = schedules.find((item) => item.id === issue.schedule_id);
     const period = schedule?.periods.find((item) => item.id === issue.period_id);
     const card = Array.from(scheduleList.querySelectorAll<HTMLElement>(".schedule-card")).find((item) => item.dataset.scheduleId === issue.schedule_id);
     const scope = issue.period_id ? Array.from(card?.querySelectorAll<HTMLElement>(".period-card") ?? []).find((item) => item.dataset.periodId === issue.period_id) : card;
-    const input = scope?.querySelector<HTMLInputElement>(`[data-field="${issue.field}"]`);
+    const input = scope?.querySelector<HTMLElement>(`[data-field="${issue.field}"]`);
     input?.setAttribute("aria-invalid", "true");
     if (input?.closest("details")) input.closest("details")!.open = true;
     first ??= input ?? undefined;
-    const location = [schedule?.name, schedule?.repeat.date, period ? `${period.start}–${period.end}` : ""].filter(Boolean).join(" · ");
+    const location = [schedule?.name, schedule ? repeatLabel(schedule.repeat) : "", period ? `${period.start}–${period.end}` : ""].filter(Boolean).join(" · ");
     let message = S[`validation_${issue.code}`] ?? S.fixSchedule;
     if (issue.conflict) {
       const otherCard = Array.from(scheduleList.querySelectorAll<HTMLElement>(".schedule-card")).find((item) => item.dataset.scheduleId === issue.conflict?.schedule_id);
       const otherPeriod = Array.from(otherCard?.querySelectorAll<HTMLElement>(".period-card") ?? []).find((item) => item.dataset.periodId === issue.conflict?.period_id);
       otherPeriod?.querySelector<HTMLInputElement>("[data-field=start]")?.setAttribute("aria-invalid", "true");
-      message = fmt(message, { other: `${issue.conflict.start}–${issue.conflict.end}` });
+      const otherSchedule = schedules.find((item) => item.id === issue.conflict?.schedule_id);
+      const occurrence = repeatLabel(issue.conflict.occurrence);
+      message = fmt(message, { other: [otherSchedule?.name, occurrence, `${issue.conflict.start}–${issue.conflict.end}`].filter(Boolean).join(" · ") });
     }
     return `${location ? `${location}: ` : ""}${message}`;
   });
