@@ -130,3 +130,14 @@ input[aria-invalid=true] { border-color: var(--error); }
 #saveStatus { white-space: pre-line; }
 
 .quiet-periods { border: 1px dashed var(--border); border-radius: 8px; background: var(--soft); padding: 9px 12px; margin-top: 14px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.round-adjustments { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
+.round-adjustments summary { cursor: pointer; color: var(--green-ink); font-size: 13px; font-weight: 600; }
+.round-adjustments summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.adjustment-count { margin-left: 6px; color: var(--muted); font-size: 12px; }
+.round-adjustment { border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 12px 0; background: var(--surface); }
+.round-adjustment-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.round-adjustment-head label { max-width: 130px; }
+.round-content { margin-top: 12px; }
+.round-content textarea { display: block; width: 100%; min-height: 68px; resize: vertical; margin-top: 4px; line-height: 1.6; }
+.round-list + button { margin-top: 10px; }
+@media (max-width: 400px) { .round-adjustment { padding: 10px; } .round-adjustment .period-grid { gap: 10px; } }
