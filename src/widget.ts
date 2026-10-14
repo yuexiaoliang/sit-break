@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { STR, currentLang } from "./i18n";
 import {
   getCurrentWindow,
   LogicalSize,
@@ -8,7 +9,7 @@ import {
 } from "@tauri-apps/api/window";
 
 interface Tick {
-  mode: "work" | "remind" | "break";
+  mode: "work" | "remind" | "break" | "idle";
   remaining: number;
   paused: boolean;
 }
@@ -33,6 +34,7 @@ let workTotal = 45 * 60;
 let breakTotal = 5 * 60;
 let lastSize = 64;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let S = STR.zh;
 
 function render(t: Tick) {
   const total = t.mode === "break" ? breakTotal : workTotal;
@@ -42,13 +44,15 @@ function render(t: Tick) {
   const phi = progress * 2 * Math.PI;
   head.setAttribute("cx", String(50 + 43 * Math.cos(phi)));
   head.setAttribute("cy", String(50 + 43 * Math.sin(phi)));
-  head.style.opacity = t.paused ? "0" : "1";
+  head.style.opacity = t.paused || t.mode === "idle" ? "0" : "1";
   // 始终读秒，让用户每秒都能感知时间在走
   const mm = Math.floor(t.remaining / 60);
   const ss = t.remaining % 60;
-  num.textContent = `${mm}:${String(ss).padStart(2, "0")}`;
+  num.textContent = t.mode === "idle" ? S.idle : `${mm}:${String(ss).padStart(2, "0")}`;
+  num.style.fontSize = `${Math.round(lastSize * (t.mode === "idle" ? 0.24 : 0.3))}px`;
   ball.classList.toggle("paused", t.paused);
   ball.classList.toggle("break", t.mode === "break");
+  ball.classList.toggle("idle", t.mode === "idle");
 }
 
 function applySize(size: number) {
@@ -104,6 +108,7 @@ ball.addEventListener(
 );
 
 listen("settings_changed", async () => {
+  S = STR[await currentLang()];
   await loadSize();
   render(await invoke<Tick>("timer_info"));
 });
@@ -146,4 +151,5 @@ await win.onMoved(({ payload }) => {
 
 // 初始渲染放最后，即使失败也不影响拖动等已注册的能力
 await loadSize();
+S = STR[await currentLang()];
 render(await invoke<Tick>("timer_info"));

@@ -227,6 +227,11 @@ body.panel-page { display: flex; padding: 6px; }
   animation: pulse 2.4s ease-in-out infinite;
 }
 .phead .dot.paused { background: #c9b458; box-shadow: 0 0 0 4px rgba(201, 180, 88, .16); animation: none; }
+.phead .dot.idle { background: #8d9c95; box-shadow: 0 0 0 4px rgba(141, 156, 149, .14); animation: none; }
+.idle-status { margin-top: 7px; color: #66757a; font-size: 11px; line-height: 16px; }
+.pcard.idle .psec { margin-top: 6px; }
+.ball.idle .ring-fg { opacity: 0; }
+.ball.idle .num { color: #66757a; letter-spacing: 0; }
 .pmode { flex: 1; font-size: 13px; font-weight: 600; color: #44544a; }
 .ptime {
   font-size: 28px; font-weight: 700; letter-spacing: .5px; color: #24352c;
@@ -277,6 +282,7 @@ body.panel-page { display: flex; padding: 6px; }
     box-shadow: 0 24px 60px -18px rgba(0, 0, 0, .55);
   }
   .pmode { color: #aebcb3; }
+  .idle-status, .ball.idle .num { color: #a6b9b2; }
   .ptime { color: #eef4f0; }
   .plabel { color: #8fa098; }
   .plabel .cur { color: #4fe0a8; }

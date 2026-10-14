@@ -59,6 +59,8 @@ fn default_tips_en() -> Vec<String> {
 pub struct Settings {
     pub work_minutes: u32,
     pub break_minutes: u32,
+    pub use_schedule: bool,
+    pub schedules: Vec<serde_json::Value>,
     pub sound: bool,
     pub show_widget: bool,
     pub autostart: bool,
@@ -73,6 +75,8 @@ impl Default for Settings {
         Self {
             work_minutes: 45,
             break_minutes: 5,
+            use_schedule: false,
+            schedules: Vec::new(),
             sound: true,
             show_widget: !cfg!(target_os = "macos"),
             autostart: false,
@@ -81,6 +85,23 @@ impl Default for Settings {
             widget_size: 64,
             tips: default_tips(),
         }
+    }
+}
+
+impl Settings {
+    pub fn load_from(path: &std::path::Path) -> Self {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save_to(&self, path: &std::path::Path) -> Result<(), String> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        std::fs::write(path, text).map_err(|e| e.to_string())
     }
 }
 
@@ -137,19 +158,13 @@ fn settings_path(app: &AppHandle) -> Option<std::path::PathBuf> {
 
 fn load_settings_from_disk(app: &AppHandle) -> Settings {
     settings_path(app)
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|text| serde_json::from_str(&text).ok())
+        .map(|path| Settings::load_from(&path))
         .unwrap_or_default()
 }
 
 fn persist(app: &AppHandle, settings: &Settings) {
     if let Some(path) = settings_path(app) {
-        if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
-        }
-        if let Ok(text) = serde_json::to_string_pretty(settings) {
-            let _ = std::fs::write(path, text);
-        }
+        let _ = settings.save_to(&path);
     }
 }
 
@@ -169,17 +184,22 @@ fn autostart_set_reg(name: &str, exe: &std::path::Path, enable: bool) -> Result<
     use winreg::enums::*;
     use winreg::RegKey;
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let key = hkcu
-        .open_subkey_with_flags(
-            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
-            KEY_SET_VALUE,
-        )
-        .map_err(|e| e.to_string())?;
+    let path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
     if enable {
+        let (key, _) = hkcu.create_subkey(path).map_err(|e| e.to_string())?;
         key.set_value(name, &format!("\"{}\"", exe.display()))
             .map_err(|e| e.to_string())?;
     } else {
-        let _ = key.delete_value(name);
+        let key = match hkcu.open_subkey_with_flags(path, KEY_SET_VALUE) {
+            Ok(key) => key,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(error) => return Err(error.to_string()),
+        };
+        if let Err(error) = key.delete_value(name) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                return Err(error.to_string());
+            }
+        }
     }
     Ok(())
 }
@@ -325,7 +345,7 @@ fn update_windows(app: &AppHandle) {
     let widget = app.get_webview_window("widget");
     let reminder = app.get_webview_window("reminder");
     match mode {
-        Mode::Work => {
+        Mode::Work | Mode::Idle => {
             if let Some(w) = &widget {
                 if show_widget {
                     let _ = w.show();
@@ -398,6 +418,7 @@ fn menu_bar_title(mode: Mode, remaining: u64, paused: bool, zh: bool) -> String 
         Mode::Work => time,
         Mode::Break => format!("{} {time}", if zh { "休息" } else { "Break" }),
         Mode::Remind => if zh { "起身" } else { "Move" }.to_string(),
+        Mode::Idle => if zh { "待机" } else { "Idle" }.to_string(),
     };
     if paused {
         format!("⏸ {title}")
@@ -439,6 +460,13 @@ fn update_tray(app: &AppHandle) {
                 "Sit Break · 该起来活动了！".to_string()
             } else {
                 "Sit Break · Time to move!".to_string()
+            }
+        }
+        Mode::Idle => {
+            if is_zh(st.settings()) {
+                "Sit Break · 待机，现在不提醒".to_string()
+            } else {
+                "Sit Break · Idle, no reminders now".to_string()
             }
         }
     };
@@ -745,14 +773,15 @@ pub fn run() {
             } else {
                 "Sit Break Settings"
             })
-            .inner_size(320.0, 580.0)
+            .inner_size(562.0, 785.0)
+            .min_inner_size(320.0, 420.0)
             .visible(false)
             .decorations(false)
             .transparent(true)
             .accept_first_mouse(true)
             .shadow(false)
             .skip_taskbar(true)
-            .resizable(false)
+            .resizable(true)
             .center()
             .focused(false)
             .build()?;
@@ -1047,6 +1076,8 @@ mod tests {
     fn autostart_registry_roundtrip() {
         let exe = std::env::current_exe().unwrap();
         let name = "Sit Break Test";
+        autostart_set_reg(name, &exe, false).unwrap();
+        assert!(!autostart_reg_is_enabled(name));
         autostart_set_reg(name, &exe, true).unwrap();
         assert!(autostart_reg_is_enabled(name));
         // 路径必须带引号，否则安装目录 "Sit Break" 含空格会导致开机无法启动
@@ -1065,5 +1096,6 @@ mod tests {
         }
         autostart_set_reg(name, &exe, false).unwrap();
         assert!(!autostart_reg_is_enabled(name));
+        autostart_set_reg(name, &exe, false).unwrap();
     }
 }

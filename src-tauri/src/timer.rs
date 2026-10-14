@@ -8,6 +8,7 @@ use crate::{choose_tip, idle_reset_limit_secs, Settings, POSTPONE_SECS};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
+    Idle,
     Work,
     Remind,
     Break,
@@ -67,11 +68,23 @@ pub struct TimerApp {
 }
 
 impl TimerApp {
+    pub fn load_from(path: &std::path::Path, tip_rng: fastrand::Rng) -> Self {
+        Self::new(Settings::load_from(path), tip_rng)
+    }
+
     pub fn new(settings: Settings, tip_rng: fastrand::Rng) -> Self {
         Self {
             info: TimerInfo {
-                mode: Mode::Work,
-                remaining: u64::from(settings.work_minutes) * 60,
+                mode: if settings.use_schedule {
+                    Mode::Idle
+                } else {
+                    Mode::Work
+                },
+                remaining: if settings.use_schedule {
+                    0
+                } else {
+                    u64::from(settings.work_minutes) * 60
+                },
                 paused: false,
             },
             settings,
@@ -100,6 +113,7 @@ impl TimerApp {
                 }
                 let idle_limit = idle_reset_limit_secs(&self.settings);
                 match self.info.mode {
+                    Mode::Idle => {}
                     Mode::Work => {
                         let in_grace = self
                             .break_ended_at
@@ -159,8 +173,16 @@ impl TimerApp {
             }
             Action::TogglePause => self.info.paused = !self.info.paused,
             Action::Reset => {
-                self.info.mode = Mode::Work;
-                self.info.remaining = u64::from(self.settings.work_minutes) * 60;
+                self.info.mode = if self.settings.use_schedule {
+                    Mode::Idle
+                } else {
+                    Mode::Work
+                };
+                self.info.remaining = if self.settings.use_schedule {
+                    0
+                } else {
+                    u64::from(self.settings.work_minutes) * 60
+                };
                 output.update_windows = true;
             }
             Action::Postpone => {
@@ -196,8 +218,22 @@ impl TimerApp {
             Action::SaveSettings(settings) => {
                 output.update_windows = self.settings.show_widget != settings.show_widget;
                 let work_changed = self.settings.work_minutes != settings.work_minutes;
+                let mode_changed = self.settings.use_schedule != settings.use_schedule;
                 self.settings = settings;
-                if self.info.mode == Mode::Work {
+                if mode_changed && self.info.mode != Mode::Break {
+                    self.info.mode = if self.settings.use_schedule {
+                        Mode::Idle
+                    } else {
+                        Mode::Work
+                    };
+                    self.info.remaining = if self.settings.use_schedule {
+                        0
+                    } else {
+                        u64::from(self.settings.work_minutes) * 60
+                    };
+                    self.break_ended_at = None;
+                    output.update_windows = true;
+                } else if self.info.mode == Mode::Work {
                     let interval = u64::from(self.settings.work_minutes) * 60;
                     if work_changed || self.info.remaining > interval {
                         self.info.remaining = interval;
@@ -213,8 +249,16 @@ impl TimerApp {
     }
 
     fn back_to_work(&mut self, now: Duration) {
-        self.info.mode = Mode::Work;
-        self.info.remaining = u64::from(self.settings.work_minutes) * 60;
+        self.info.mode = if self.settings.use_schedule {
+            Mode::Idle
+        } else {
+            Mode::Work
+        };
+        self.info.remaining = if self.settings.use_schedule {
+            0
+        } else {
+            u64::from(self.settings.work_minutes) * 60
+        };
         self.break_ended_at = Some(now);
     }
 }

@@ -17,6 +17,180 @@ fn simple_timer() -> TimerApp {
 }
 
 #[test]
+fn upgrading_old_settings_keeps_simple_timer_and_all_shared_preferences() {
+    let path =
+        std::env::temp_dir().join(format!("sit-break-old-settings-{}.json", fastrand::u64(..)));
+    std::fs::write(
+        &path,
+        r#"{"work_minutes":30,"break_minutes":3,"sound":false,"show_widget":false,"autostart":true,"idle_reset":false,"language":"en","widget_size":96,"tips":["Walk"]}"#,
+    )
+    .unwrap();
+    let app = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    assert_eq!(app.info().mode, Mode::Work);
+    assert_eq!(app.info().remaining, 1800);
+    let settings = serde_json::to_value(app.settings()).unwrap();
+    assert_eq!(settings["use_schedule"], false);
+    assert_eq!(settings["schedules"], serde_json::json!([]));
+    assert_eq!(settings["break_minutes"], 3);
+    assert_eq!(settings["sound"], false);
+    assert_eq!(settings["show_widget"], false);
+    assert_eq!(settings["autostart"], true);
+    assert_eq!(settings["idle_reset"], false);
+    assert_eq!(settings["language"], "en");
+    assert_eq!(settings["widget_size"], 96);
+    assert_eq!(settings["tips"], serde_json::json!(["Walk"]));
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn empty_schedule_stays_idle_and_mode_switch_keeps_manual_pause() {
+    let mut app = simple_timer();
+    app.dispatch(Action::TogglePause, Duration::ZERO);
+    let mut settings = app.settings().clone();
+    settings.use_schedule = true;
+    let saved = app.dispatch(Action::SaveSettings(settings), Duration::ZERO);
+    assert!(saved.update_windows);
+    assert_eq!(
+        app.info(),
+        TimerInfo {
+            mode: Mode::Idle,
+            remaining: 0,
+            paused: true
+        }
+    );
+    app.dispatch(Action::Reset, Duration::ZERO);
+    app.dispatch(Action::StartBreak, Duration::ZERO);
+    app.dispatch(Action::Postpone, Duration::ZERO);
+    app.dispatch(Action::EndBreak, Duration::ZERO);
+    app.dispatch(Action::ApplyInterval(3), Duration::ZERO);
+    app.dispatch(Action::TogglePause, Duration::ZERO);
+    let tick = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 1000,
+            idle_secs: 1000,
+        },
+        Duration::from_secs(1000),
+    );
+    assert_eq!(app.info().mode, Mode::Idle);
+    assert!(tick.events.is_empty());
+    app.dispatch(Action::TogglePause, Duration::from_secs(1000));
+    let mut settings = app.settings().clone();
+    settings.use_schedule = false;
+    app.dispatch(Action::SaveSettings(settings), Duration::from_secs(1000));
+    assert_eq!(
+        app.info(),
+        TimerInfo {
+            mode: Mode::Work,
+            remaining: 180,
+            paused: true
+        }
+    );
+}
+
+#[test]
+fn switching_to_schedule_closes_reminder_but_allows_started_break_to_finish() {
+    let mut app = simple_timer();
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        Duration::from_secs(60),
+    );
+    let mut settings = app.settings().clone();
+    settings.use_schedule = true;
+    let saved = app.dispatch(Action::SaveSettings(settings), Duration::from_secs(60));
+    assert_eq!(app.info().mode, Mode::Idle);
+    assert!(saved.update_windows);
+    assert!(saved.events.is_empty());
+
+    let mut settings = app.settings().clone();
+    settings.use_schedule = false;
+    app.dispatch(Action::SaveSettings(settings), Duration::from_secs(60));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        Duration::from_secs(120),
+    );
+    app.dispatch(Action::StartBreak, Duration::from_secs(120));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 20,
+            idle_secs: 0,
+        },
+        Duration::from_secs(140),
+    );
+    app.dispatch(Action::TogglePause, Duration::from_secs(140));
+    let mut settings = app.settings().clone();
+    settings.use_schedule = true;
+    settings.break_minutes = 5;
+    app.dispatch(Action::SaveSettings(settings), Duration::from_secs(140));
+    assert_eq!(
+        app.info(),
+        TimerInfo {
+            mode: Mode::Break,
+            remaining: 40,
+            paused: true
+        }
+    );
+    app.dispatch(Action::TogglePause, Duration::from_secs(140));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 39,
+            idle_secs: 0,
+        },
+        Duration::from_secs(179),
+    );
+    assert_eq!(app.info().remaining, 1);
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 1,
+            idle_secs: 0,
+        },
+        Duration::from_secs(180),
+    );
+    assert_eq!(app.info().mode, Mode::Idle);
+}
+
+#[test]
+fn saving_shared_settings_and_shortcuts_retains_both_modes_after_reload() {
+    let path = std::env::temp_dir().join(format!(
+        "sit-break-schedule-settings-{}.json",
+        fastrand::u64(..)
+    ));
+    let schedule = serde_json::json!({"id":"saved-plan","name":"晨间安排","enabled":true,"repeat":{"kind":"once","date":"2026-10-14"},"periods":[]});
+    let mut app = simple_timer();
+    let mut settings = app.settings().clone();
+    settings.use_schedule = true;
+    settings.schedules = vec![schedule.clone()];
+    app.dispatch(Action::SaveSettings(settings), Duration::ZERO);
+    app.dispatch(Action::ApplyInterval(30), Duration::ZERO);
+    app.dispatch(Action::ApplyBreak(3), Duration::ZERO);
+    let mut settings = app.settings().clone();
+    settings.language = "en".into();
+    settings.sound = false;
+    let saved = app.dispatch(Action::SaveSettings(settings), Duration::ZERO);
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let mut reloaded = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    assert_eq!(reloaded.info().mode, Mode::Idle);
+    assert_eq!(reloaded.settings().schedules, vec![schedule.clone()]);
+    assert_eq!(reloaded.settings().break_minutes, 3);
+    assert_eq!(reloaded.settings().language, "en");
+    assert!(!reloaded.settings().sound);
+    let mut settings = reloaded.settings().clone();
+    settings.use_schedule = false;
+    let saved = reloaded.dispatch(Action::SaveSettings(settings), Duration::ZERO);
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let reloaded = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    assert_eq!(reloaded.info().mode, Mode::Work);
+    assert_eq!(reloaded.info().remaining, 1800);
+    assert_eq!(reloaded.settings().schedules, vec![schedule]);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn manual_pause_freezes_time_and_reset_preserves_pause() {
     let mut app = simple_timer();
     app.dispatch(
