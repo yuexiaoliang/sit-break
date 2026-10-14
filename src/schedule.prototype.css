@@ -1,5 +1,5 @@
 /* 已确认的时段卡片原型：统一窗口宽度，明暗主题共用布局。 */
-html:has(body.settings-prototype) { overflow-y: scroll; overflow-x: auto; height: auto; min-height: 100%; background: #edf1ee; }
+html:has(body.settings-prototype) { overflow-y: scroll; overflow-x: auto; scrollbar-gutter: stable; height: auto; min-height: 100%; background: #edf1ee; }
 html:has(body.settings-prototype[data-theme=dark]) { background: #111b17; color-scheme: dark; }
 body.settings-prototype {
   --ui-page: #edf1ee;
@@ -25,6 +25,7 @@ body.settings-prototype {
   --ui-switch-off: #b7c2c1;
   --ui-thumb: #fff;
   --ui-shadow: #263d3010;
+  --ui-backdrop: #10241b70;
   --ui-morning: #f0f6e9;
   --ui-morning-ink: #657640;
   --ui-afternoon: #fcf3e8;
@@ -75,6 +76,7 @@ body.settings-prototype[data-theme=dark] {
   --ui-switch-off: #607267;
   --ui-thumb: #eaf5ee;
   --ui-shadow: #00000033;
+  --ui-backdrop: #050c08a6;
   --ui-morning: #34412b;
   --ui-morning-ink: #c5d99c;
   --ui-afternoon: #443a2b;
@@ -232,15 +234,28 @@ body.settings-prototype[data-theme=dark] {
 .add-period { width: 100%; border-style: dashed; background: var(--ui-field); margin-top: 1px; min-height: 40px; }
 .gap-label { display: flex; align-items: center; gap: 9px; font-size: 11px; color: var(--ui-muted); margin: 17px 12px; }
 .gap-label::before, .gap-label::after { content: ''; height: 1px; flex: 1; background: var(--ui-divider); }
-.agenda { background: var(--ui-soft); border: 1px solid var(--ui-border); border-radius: 11px; padding: 19px; align-self: start; }
-.agenda h3 { font-size: 15px; margin: 0 0 4px; }
-.agenda-note { color: var(--ui-muted); font-size: 11px; margin-bottom: 20px; }
+/* 概览按需打开，标题和操作始终可见；长日程只在浮窗内滚动。 */
+html:has(.schedule-preview[open]) { overflow: hidden; }
+.schedule-preview-trigger { flex-shrink: 0; }
+.schedule-preview { width: min(460px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 48px); margin: auto; padding: 0; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-soft); color: var(--ui-ink); box-shadow: 0 20px 70px #00000033; overflow: hidden; }
+.schedule-preview[open] { display: flex; flex-direction: column; }
+.schedule-preview::backdrop { background: var(--ui-backdrop); backdrop-filter: blur(3px); }
+.preview-head { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding: 20px 22px 17px; border-bottom: 1px solid var(--ui-divider); flex: none; }
+.preview-head h2 { font-size: 20px; line-height: 28px; font-weight: 650; }
+.preview-head p { margin-top: 5px; font-size: 12px; line-height: 19px; color: var(--ui-muted); overflow-wrap: anywhere; }
+.preview-head .close-button { flex: none; margin-top: 1px; }
+.preview-scroll { padding: 22px 24px 0; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+.agenda-empty { text-align: center; padding: 26px 0 44px; }
+.agenda-empty h3 { font-size: 15px; margin-bottom: 8px; }
+.agenda-empty p { color: var(--ui-muted); font-size: 12px; }
+.preview-footer { padding: 16px 22px 20px; border-top: 1px solid var(--ui-divider); flex: none; }
+.preview-footer p { font-size: 12px; color: var(--ui-muted); line-height: 19px; margin-bottom: 12px; }
+.preview-footer .pbutton { width: 100%; min-height: 39px; }
 .agenda-item { padding-left: 15px; margin-left: 3px; border-left: 1px solid var(--ui-selected-border); padding-bottom: 23px; position: relative; }
 .agenda-item::before { content: ''; position: absolute; width: 7px; height: 7px; background: var(--ui-green); border: 3px solid var(--ui-soft); box-sizing: content-box; border-radius: 50%; top: 3px; left: -7px; }
 .agenda-item time { font-size: 12px; font-weight: 650; color: var(--ui-muted); }
 .agenda-item p { font-size: 12px; margin: 4px 0 6px; color: var(--ui-ink); line-height: 1.7; }
 .agenda-item .muted { color: var(--ui-muted); font-size: 11px; }
-.agenda .pbutton { width: 100%; }
 .mini-tag { font-size: 10px; padding: 3px 7px; border-radius: 5px; color: var(--ui-green-ink); background: var(--ui-selected); }
 .empty-periods { background: var(--ui-soft); border: 1px dashed var(--ui-border); border-radius: 10px; padding: 32px 20px; text-align: center; margin-bottom: 14px; }
 .empty-periods h3 { font-size: 15px; margin-bottom: 7px; }
@@ -309,6 +324,10 @@ body.settings-prototype[data-theme=dark] {
   .settings-prototype .shead { padding: 0 14px; }
   .page-heading h1 { font-size: 25px; }
   .page-heading { gap: 10px; }
+  .schedule-preview { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 11px; }
+  .preview-head { padding: 16px; }
+  .preview-scroll { padding: 18px 18px 0; }
+  .preview-footer { padding: 14px 16px 16px; }
   .durations { gap: 26px; }
   .duration-field { gap: 5px; padding: 0 7px 0 10px; }
   .settings-prototype .duration-field input { font-size: 27px; }

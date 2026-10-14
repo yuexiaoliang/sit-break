@@ -130,16 +130,16 @@ function periodCard(p: Period, index: number) {
 function agenda() {
   const s = plan();
   const items = s.periods.slice().sort((a, b) => minutes(a.start) - minutes(b.start));
-  return `<aside class="agenda"><h3>这一天，大致这样</h3><p class="agenda-note">${escape(repeatLabel())} · 时间为预计</p>${items.map((p, i) => {
+  return `<div class="agenda">${items.length ? "" : '<div class="agenda-empty"><h3>还没有执行时段</h3><p>添加时段后，这里会显示当天概览。</p></div>'}${items.map((p, i) => {
     const first = resolveRound(p, 1), second = resolveRound(p, 2);
     const firstEnd = minutes(p.start) + first.work;
     const gap = i > 0 && minutes(p.start) > minutes(items[i - 1].end);
     return `${gap ? `<div class="agenda-item"><time>${items[i - 1].end} — ${p.start}</time><p>留给自己，不提醒</p></div>` : ""}<div class="agenda-item"><time>${p.start} — ${p.end}</time><p>${escape(p.name)} · 工作 ${p.work} / 休息 ${p.rest}</p><span class="mini-tag">${firstEnd < minutes(p.end) ? `${time(firstEnd)} 首次休息` : "时段结束后待机"}</span><p class="muted">第一轮 ${first.work}/${first.rest}${p.adjustments[0]?.content ? ` · ${escape(first.content)}` : ""}<br>第二轮 ${second.work}/${second.rest}${p.adjustments.find((a) => a.round === 2)?.content ? ` · ${escape(second.content)}` : ""}</p></div>`;
-  }).join("")}<p class="agenda-note" style="margin-bottom:12px">${items.length ? "晚开始休息，后面的轮次跟着顺延。" : "添加时段后，这里会显示当天概览。"}</p>${button(`${icon("play")} 看看实际怎么运行`, "run", "", "primary")}</aside>`;
+  }).join("")}</div>`;
 }
 
 function ScheduleEditor() {
-  return `<div class="schedule-layout"><div>${nameEditor()}${repeatEditor()}${!plan().periods.length ? '<div class="empty-periods"><h3>还没有执行时段</h3><p>添加一个时段，设定它的工作与休息节奏。</p></div>' : ""}${plan().periods.map((p, i) => `${i && minutes(p.start) > minutes(plan().periods[i - 1].end) ? `<div class="gap-label">${plan().periods[i - 1].end}–${p.start} 不提醒</div>` : ""}${periodCard(p, i)}`).join("")}${button(`${icon("plus")} 添加执行时段`, "add-period", "", "add-period")}</div>${agenda()}</div>`;
+  return `<div class="schedule-layout"><div>${nameEditor()}${repeatEditor()}${!plan().periods.length ? '<div class="empty-periods"><h3>还没有执行时段</h3><p>添加一个时段，设定它的工作与休息节奏。</p></div>' : ""}${plan().periods.map((p, i) => `${i && minutes(p.start) > minutes(plan().periods[i - 1].end) ? `<div class="gap-label">${plan().periods[i - 1].end}–${p.start} 不提醒</div>` : ""}${periodCard(p, i)}`).join("")}${button(`${icon("plus")} 添加执行时段`, "add-period", "", "add-period")}</div></div>`;
 }
 
 function runsOnDemoDay(s: Schedule) {
@@ -285,9 +285,9 @@ function render() {
   root.classList.toggle("closed", state.closed);
   const modeControl = `<div class="mode-row ${state.useSchedule ? "" : "optional-schedule"}"><div><strong>使用日程</strong><p class="muted">${state.useSchedule ? `按时段执行，空档不提醒。关闭后回到简单计时 ${state.simple.work}/${state.simple.rest}。` : "按星期和时段安排不同节奏。"}</p></div>${switchButton("使用日程", state.useSchedule, "use-schedule")}</div>`;
   const scheduleEditor = `<div class="schedule-tabs" aria-label="日程列表">${state.schedules.map((s) => `<button class="schedule-tab ${s.id === state.selected ? "selected" : ""}" aria-pressed="${s.id === state.selected}" data-action="select-schedule" data-id="${s.id}">${escape(s.name)}${!s.enabled ? '<small>已关闭</small>' : ""}</button>`).join("")}${button(`${icon("plus")} 新建日程`, "add-schedule", "", "ghost small")}</div>${ScheduleEditor()}`;
-  const error = state.error ? `<div class="form-error" role="alert">${icon("alert")}<div><strong>请检查设置</strong><p>${escape(state.error)}</p></div></div>` : "";
+  const error = state.error ? `<div class="form-error" role="alert" tabindex="-1">${icon("alert")}<div><strong>请检查设置</strong><p>${escape(state.error)}</p></div></div>` : "";
   const editor = `${error}${state.useSchedule ? `${modeControl}${scheduleEditor}` : `${SimpleSettings()}${modeControl}`}${CommonSettings()}<div class="bottom-actions"><p class="muted">${state.useSchedule ? "按电脑本地时间执行，休息可以推迟。" : "到点先提醒，由你决定何时休息。"}</p>${button(state.saved ? `${icon("check")} 已保存` : "保存设置", "save", "", "primary save-button")}</div>`;
-  root.innerHTML = state.closed ? `<div class="closed-state">${icon("clock")}<h1>设置已收起</h1><p>随时回来调整自己的节奏。</p>${button("重新打开设置", "reopen", "", "primary")}</div>` : `<header class="shead"><span class="app-icon">${icon("clock")}</span><h3>Sit Break</h3><span class="header-slash">/</span><span class="header-label">${state.view === "run" ? "试运行" : "设置"}</span>${button(icon("close"), "close", 'aria-label="收起设置"', "close-button")}</header><main class="proto-body"><div class="page-heading"><div><h1>${state.view === "run" ? "按自己的节奏来" : state.useSchedule ? "日程安排" : "简单计时"}</h1><p>${state.view === "run" ? "到点先提醒，准备好了再休息。" : state.useSchedule ? "设好平常的节奏，只调整不一样的那几轮。" : "设定工作与休息时长，到点提醒你。"}</p></div>${state.view === "run" ? button(`${icon("left")} 返回设置`, "edit", "", "ghost") : ""}</div>${state.view === "run" ? Simulation() : editor}</main>`;
+  root.innerHTML = state.closed ? `<div class="closed-state">${icon("clock")}<h1>设置已收起</h1><p>随时回来调整自己的节奏。</p>${button("重新打开设置", "reopen", "", "primary")}</div>` : `<header class="shead"><span class="app-icon">${icon("clock")}</span><h3>Sit Break</h3><span class="header-slash">/</span><span class="header-label">${state.view === "run" ? "试运行" : "设置"}</span>${button(icon("close"), "close", 'aria-label="收起设置"', "close-button")}</header><main class="proto-body"><div class="page-heading"><div><h1>${state.view === "run" ? "按自己的节奏来" : state.useSchedule ? "日程安排" : "简单计时"}</h1><p>${state.view === "run" ? "到点先提醒，准备好了再休息。" : state.useSchedule ? "设好平常的节奏，只调整不一样的那几轮。" : "设定工作与休息时长，到点提醒你。"}</p></div>${state.view === "run" ? button(`${icon("left")} 返回设置`, "edit", "", "ghost") : state.useSchedule ? button(`${icon("eye")} 预览日程`, "preview", 'aria-haspopup="dialog" aria-controls="schedule-preview"', "schedule-preview-trigger") : ""}</div>${state.view === "run" ? Simulation() : editor}</main>`;
   document.querySelector(".prototype-heading")!.innerHTML = `<span>交互原型 · 节奏优先</span><div class="preview-actions"><label class="theme-preview">外观<select aria-label="预览外观" data-preview-theme><option value="system" ${state.theme === "system" ? "selected" : ""}>跟随系统</option><option value="light" ${state.theme === "light" ? "selected" : ""}>浅色</option><option value="dark" ${state.theme === "dark" ? "selected" : ""}>深色</option></select></label><div class="platform-preview" aria-label="预览系统"><button data-preview-platform="macos" aria-pressed="${state.platform === "macos"}" class="${state.platform === "macos" ? "selected" : ""}">macOS</button><button data-preview-platform="windows" aria-pressed="${state.platform === "windows"}" class="${state.platform === "windows" ? "selected" : ""}">Windows</button></div>${button(`${icon(state.view === "run" ? "left" : "play")} ${state.view === "run" ? "返回设置" : "试运行"}`, state.view === "run" ? "edit" : "run", "", "small")}</div>`;
 }
 
@@ -306,6 +306,48 @@ const previewUrl = new URL(location.href);
 previewUrl.searchParams.delete("variant");
 history.replaceState(null, "", previewUrl);
 document.querySelector(".scard")!.insertAdjacentHTML("afterend", '<div class="prototype-heading"></div>');
+const schedulePreview = document.createElement("dialog");
+schedulePreview.id = "schedule-preview";
+schedulePreview.className = "schedule-preview";
+schedulePreview.setAttribute("aria-labelledby", "schedule-preview-title");
+schedulePreview.setAttribute("aria-describedby", "schedule-preview-description");
+document.body.append(schedulePreview);
+
+function openSchedulePreview() {
+  schedulePreview.innerHTML = `<header class="preview-head"><div><h2 id="schedule-preview-title">日程预览</h2><p id="schedule-preview-description">${escape(plan().name)} · ${escape(repeatLabel())} · 时间为预计</p></div>${button(icon("close"), "close-preview", 'aria-label="关闭日程预览" autofocus', "close-button")}</header><div class="preview-scroll">${agenda()}</div><footer class="preview-footer"><p>晚开始休息，后面的轮次跟着顺延。</p>${button(`${icon("play")} 看看实际怎么运行`, "preview-run", "", "primary")}</footer>`;
+  schedulePreview.showModal();
+}
+
+// 原生浮窗隔离背景并处理 Esc；Tab 在浮窗操作之间循环。
+schedulePreview.addEventListener("keydown", (event) => {
+  if (event.key !== "Tab") return;
+  const controls = schedulePreview.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+  const first = controls[0], last = controls[controls.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+});
+schedulePreview.addEventListener("click", (event) => {
+  if (event.target === schedulePreview) {
+    const rect = schedulePreview.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) schedulePreview.close();
+    return;
+  }
+  const action = (event.target as HTMLElement).closest<HTMLElement>("[data-action]")?.dataset.action;
+  if (action === "close-preview") schedulePreview.close();
+  if (action === "preview-run") {
+    schedulePreview.close();
+    if (save()) { state.view = "run"; resetSimulation(); }
+    render();
+    window.scrollTo({ top: 0 });
+    if (state.error) document.querySelector<HTMLElement>(".form-error")?.focus({ preventScroll: true });
+    else {
+      const heading = document.querySelector<HTMLElement>(".page-heading h1")!;
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+  }
+});
+
 document.querySelector(".prototype-heading")!.addEventListener("change", (event) => {
   const target = event.target as HTMLSelectElement;
   if (!target.matches("[data-preview-theme]")) return;
@@ -342,13 +384,13 @@ document.querySelector(".scard")!.addEventListener("input", (event) => {
     button.classList.toggle("selected", selected); button.setAttribute("aria-pressed", String(selected));
   });
   const saveButton = document.querySelector(".save-button"); if (saveButton) saveButton.textContent = "保存设置";
-  if (state.useSchedule) { const preview = document.querySelector(".agenda"); if (preview) preview.outerHTML = agenda(); }
   if (target.dataset.plan === "name") { const tab = document.querySelector(`[data-id="${state.selected}"]`); if (tab) tab.textContent = target.value; }
 });
 
 document.querySelector(".scard")!.addEventListener("click", (event) => {
   const el = (event.target as HTMLElement).closest<HTMLElement>("[data-action]");
   if (!el) return;
+  if (el.dataset.action === "preview") { openSchedulePreview(); return; }
   const p = plan().periods.find((item) => item.id === el.dataset.period);
   if (el.dataset.action !== "save") { state.error = ""; state.saved = false; }
   switch (el.dataset.action) {
