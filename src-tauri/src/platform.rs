@@ -1,3 +1,13 @@
+/// 系统适配层负责读取本地日历，计时规则本身不读取系统时钟。
+pub fn local_time() -> crate::timer::LocalTime {
+    use chrono::Timelike;
+    let now = chrono::Local::now();
+    crate::timer::LocalTime {
+        date: now.format("%Y-%m-%d").to_string(),
+        seconds_of_day: now.num_seconds_from_midnight(),
+    }
+}
+
 #[cfg(windows)]
 pub fn idle_secs() -> u64 {
     use windows::Win32::System::SystemInformation::GetTickCount;

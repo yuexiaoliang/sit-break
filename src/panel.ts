@@ -2,13 +2,10 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { STR, initLang, fmt } from "./i18n";
 
-interface Tick {
-  mode: "work" | "remind" | "break" | "idle";
-  remaining: number;
-  paused: boolean;
-}
+import type { TimerState } from "./timer-state";
 
 interface Settings {
+  use_schedule: boolean;
   work_minutes: number;
   break_minutes: number;
   sound: boolean;
@@ -33,13 +30,14 @@ const ivCur = document.getElementById("ivCur")!;
 const bkCur = document.getElementById("bkCur")!;
 
 let S = STR.zh;
-let lastTick: Tick | undefined;
+let lastTick: TimerState | undefined;
+let useSchedule = false;
 
 function fmtTime(secs: number): string {
   return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
 }
 
-function renderTick(t: Tick) {
+function renderTick(t: TimerState) {
   lastTick = t;
   ptime.textContent = t.mode === "idle" ? "—" : fmtTime(t.remaining);
   pdot.classList.toggle("idle", t.mode === "idle");
@@ -67,6 +65,9 @@ function renderTick(t: Tick) {
     pdot.classList.remove("paused");
     pPauseText.textContent = S.pause;
   }
+  if (t.round) pmode.textContent += ` · ${fmt(S.roundNumber, { n: t.round.number })}`;
+  ivCur.textContent = t.work_seconds ? fmt(t.round ? S.forN : S.everyN, { n: t.work_seconds / 60 }) : "—";
+  bkCur.textContent = t.break_seconds ? fmt(S.forN, { n: t.break_seconds / 60 }) : "—";
 }
 
 function renderChips(
@@ -96,6 +97,10 @@ let lastBreak = -1;
 
 async function refresh() {
   const s = await invoke<Settings>("get_settings");
+  useSchedule = s.use_schedule;
+  ivChips.hidden = useSchedule;
+  bkChips.hidden = useSchedule;
+  document.querySelector<HTMLElement>("[data-i18n=interval]")!.textContent = useSchedule ? S.workLength : S.interval;
   if (s.work_minutes !== lastWork) {
     renderChips(ivChips, INTERVAL_PRESETS, s.work_minutes, "apply_interval");
     lastWork = s.work_minutes;
@@ -104,12 +109,11 @@ async function refresh() {
     renderChips(bkChips, BREAK_PRESETS, s.break_minutes, "apply_break");
     lastBreak = s.break_minutes;
   }
-  ivCur.textContent = fmt(S.everyN, { n: s.work_minutes });
-  bkCur.textContent = fmt(S.forN, { n: s.break_minutes });
+  if (lastTick) renderTick(lastTick);
 }
 
-listen<Tick>("tick", ({ payload }) => renderTick(payload));
-renderTick(await invoke<Tick>("timer_info"));
+listen<TimerState>("tick", ({ payload }) => renderTick(payload));
+renderTick(await invoke<TimerState>("timer_info"));
 
 pPause.addEventListener("click", () => invoke("toggle_pause"));
 document.getElementById("pReset")!.addEventListener("click", () => invoke("reset_timer"));

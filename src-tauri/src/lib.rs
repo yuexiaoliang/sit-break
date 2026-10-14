@@ -12,11 +12,12 @@ use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_autostart::ManagerExt;
 
 mod platform;
+pub mod schedule;
 pub mod timer;
 #[cfg(test)]
 mod timer_tests;
 use platform::idle_secs;
-use timer::{Action, Mode, TimerApp, TimerEvent, TimerInfo, TimerOutput};
+use timer::{Action, Mode, TimerApp, TimerEvent, TimerInfo, TimerOutput, TimerTime};
 
 const POSTPONE_SECS: u64 = 5 * 60;
 
@@ -60,7 +61,7 @@ pub struct Settings {
     pub work_minutes: u32,
     pub break_minutes: u32,
     pub use_schedule: bool,
-    pub schedules: Vec<serde_json::Value>,
+    pub schedules: Vec<schedule::Schedule>,
     pub sound: bool,
     pub show_widget: bool,
     pub autostart: bool,
@@ -97,6 +98,10 @@ impl Settings {
     }
 
     pub fn save_to(&self, path: &std::path::Path) -> Result<(), String> {
+        let errors = self.validate();
+        if !errors.is_empty() {
+            return Err(serde_json::to_string(&errors).unwrap());
+        }
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
@@ -165,15 +170,6 @@ fn load_settings_from_disk(app: &AppHandle) -> Settings {
 fn persist(app: &AppHandle, settings: &Settings) {
     if let Some(path) = settings_path(app) {
         let _ = settings.save_to(&path);
-    }
-}
-
-/// 空闲自动重置的阈值（秒）：与设置的休息时长一致；关闭该功能时返回 u64::MAX 永不触发
-fn idle_reset_limit_secs(settings: &Settings) -> u64 {
-    if settings.idle_reset {
-        settings.break_minutes as u64 * 60
-    } else {
-        u64::MAX
     }
 }
 
@@ -369,8 +365,15 @@ fn update_windows(app: &AppHandle) {
     }
 }
 
+fn timer_time(app: &AppHandle) -> TimerTime {
+    TimerTime {
+        monotonic: app.state::<TimerClock>().0.elapsed(),
+        local: Some(platform::local_time()),
+    }
+}
+
 fn dispatch_timer(app: &AppHandle, action: Action) {
-    let now = app.state::<TimerClock>().0.elapsed();
+    let now = timer_time(app);
     let output = app
         .state::<Mutex<TimerApp>>()
         .lock()
@@ -432,7 +435,19 @@ fn update_tray(app: &AppHandle) {
     let st = st.lock().unwrap();
     let info = st.info();
     #[cfg(target_os = "macos")]
-    let title = menu_bar_title(info.mode, info.remaining, info.paused, is_zh(st.settings()));
+    let title = {
+        let status = menu_bar_title(info.mode, info.remaining, info.paused, is_zh(st.settings()));
+        info.round.as_ref().map_or(status.clone(), |round| {
+            format!(
+                "{} {status}",
+                if is_zh(st.settings()) {
+                    format!("第{}轮", round.number)
+                } else {
+                    format!("R{}", round.number)
+                }
+            )
+        })
+    };
     let tooltip = match info.mode {
         _ if info.paused => {
             if is_zh(st.settings()) {
@@ -469,6 +484,25 @@ fn update_tray(app: &AppHandle) {
                 "Sit Break · Idle, no reminders now".to_string()
             }
         }
+    };
+    let tooltip = if let Some(round) = &info.round {
+        if is_zh(st.settings()) {
+            format!(
+                "{tooltip} · 第 {} 轮 · 工作 {}/休息 {} 分钟",
+                round.number,
+                info.work_seconds / 60,
+                info.break_seconds / 60
+            )
+        } else {
+            format!(
+                "{tooltip} · Round {} · Work {}/break {} min",
+                round.number,
+                info.work_seconds / 60,
+                info.break_seconds / 60
+            )
+        }
+    } else {
+        tooltip
     };
     drop(st);
     if let Some(tray) = app.tray_by_id("main-tray") {
@@ -510,9 +544,14 @@ fn timer_info(app: AppHandle) -> TimerInfo {
 }
 
 #[tauri::command]
-fn save_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
+fn save_settings(app: AppHandle, settings: Settings) -> Result<(), serde_json::Value> {
+    let errors = settings.validate();
+    if !errors.is_empty() {
+        return Err(json!({ "kind": "validation", "errors": errors }));
+    }
     if settings.autostart != autostart_is_enabled(&app) {
-        autostart_set(&app, settings.autostart)?;
+        autostart_set(&app, settings.autostart)
+            .map_err(|message| json!({ "kind": "system", "message": message }))?;
     }
     let widget_size = settings.widget_size.clamp(40, 140);
     let mut settings = Settings {
@@ -608,7 +647,7 @@ fn run_timer(app: AppHandle) {
                     }
                 }
             }
-            let now = app.state::<TimerClock>().0.elapsed();
+            let now = timer_time(&app);
             let mut output = app.state::<Mutex<TimerApp>>().lock().unwrap().dispatch(
                 Action::Tick {
                     elapsed_secs: 1,
@@ -617,7 +656,7 @@ fn run_timer(app: AppHandle) {
                 now,
             );
             // 菜单栏每秒更新；Windows 工作中的 tooltip 仍按分钟更新。
-            if let Some(info) = output.state {
+            if let Some(info) = &output.state {
                 let minute = info.remaining / 60;
                 output.update_tray = cfg!(target_os = "macos")
                     || info.mode != Mode::Work
@@ -715,9 +754,10 @@ pub fn run() {
             let autostart_enabled = autostart_is_enabled(&handle);
             settings.autostart = autostart_enabled;
             handle.manage(TimerClock(Instant::now()));
-            handle.manage(Mutex::new(TimerApp::new(
+            handle.manage(Mutex::new(TimerApp::new_at(
                 settings.clone(),
                 fastrand::Rng::new(),
+                timer_time(&handle),
             )));
 
             // ---- 窗口（在 manage 之后创建，页面加载时状态已就绪）----
