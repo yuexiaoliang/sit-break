@@ -100,6 +100,9 @@ pub struct TimerApp {
     break_ended_at: Option<Duration>,
     tip_rng: fastrand::Rng,
     previous_tip: Option<String>,
+    // 日程已在本次持续离开中结束一轮，下一轮等待重新操作电脑。
+    schedule_idle_consumed: bool,
+    last_idle_secs: Option<u64>,
     restart_after_break: bool,
 }
 
@@ -127,6 +130,8 @@ impl TimerApp {
             break_ended_at: None,
             tip_rng,
             previous_tip: None,
+            schedule_idle_consumed: false,
+            last_idle_secs: None,
             restart_after_break: false,
         };
         let now = now.into();
@@ -169,11 +174,23 @@ impl TimerApp {
                 idle_secs,
             } => {
                 if !self.info.paused && !started {
+                    if self.settings.use_schedule {
+                        if idle_secs == 0
+                            || self
+                                .last_idle_secs
+                                .is_some_and(|previous| idle_secs < previous)
+                        {
+                            self.schedule_idle_consumed = false;
+                        }
+                        self.last_idle_secs = Some(idle_secs);
+                    }
                     let idle_limit = if self.settings.idle_reset {
                         self.info.break_seconds
                     } else {
                         u64::MAX
                     };
+                    let away_long_enough =
+                        self.settings.idle_reset && idle_secs >= self.info.break_seconds;
                     match self.info.mode {
                         Mode::Idle => {}
                         Mode::Work => {
@@ -181,7 +198,10 @@ impl TimerApp {
                                 now.monotonic.saturating_sub(ended)
                                     < Duration::from_secs(idle_limit)
                             });
-                            if !in_grace && idle_secs >= idle_limit {
+                            let consumed_away = self.settings.use_schedule
+                                && self.settings.idle_reset
+                                && self.schedule_idle_consumed;
+                            if consumed_away || (!in_grace && away_long_enough) {
                                 self.info.remaining = self.info.work_seconds;
                             } else {
                                 self.info.remaining =
@@ -211,12 +231,17 @@ impl TimerApp {
                         Mode::Break => {
                             self.info.remaining = self.info.remaining.saturating_sub(elapsed_secs);
                             if self.info.remaining == 0 {
+                                let consumed_away = self.settings.use_schedule && away_long_enough;
                                 self.finish_round(&now);
+                                self.schedule_idle_consumed |= consumed_away;
                                 output.update_windows = true;
                             }
                         }
                         Mode::Remind => {
-                            if idle_secs >= idle_limit {
+                            if away_long_enough
+                                && (!self.settings.use_schedule || !self.schedule_idle_consumed)
+                            {
+                                self.schedule_idle_consumed = self.settings.use_schedule;
                                 self.finish_round(&now);
                                 output.update_windows = true;
                             }
