@@ -29,14 +29,20 @@ chrono = "0.4"
 objc2 = { version = "0.6", default-features = false, features = ["std"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSWindow", "NSFont", "NSFontDescriptor", "NSStatusItem", "NSStatusBarButton",
-    "NSControl", "NSButton", "NSView", "NSResponder", "objc2-core-foundation",
+    "NSControl", "NSButton", "NSView", "NSResponder", "NSWorkspace", "objc2-core-foundation",
 ] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std", "NSNotification", "NSOperation", "NSString", "NSObject", "block2",
+] }
+block2 = { version = "0.6", default-features = false, features = ["std"] }
 
 [target."cfg(windows)".dependencies]
 winreg = "0.10"
 windows = { version = "0.62", features = [
     "Win32_System_SystemInformation",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_Power",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

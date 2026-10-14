@@ -84,6 +84,8 @@ pub struct TimerOutput {
 
 pub enum Action {
     Tick { elapsed_secs: u64, idle_secs: u64 },
+    Suspend { idle_secs: u64 },
+    Resume { elapsed_secs: u64, idle_secs: u64 },
     StartBreak,
     TogglePause,
     Reset,
@@ -176,6 +178,7 @@ pub struct TimerApp {
     last_raw_idle_secs: Option<u64>,
     resumed_idle: Option<ResumedIdle>,
     restart_after_break: bool,
+    suspended_idle: Option<u64>,
 }
 
 impl TimerApp {
@@ -338,6 +341,7 @@ impl TimerApp {
             last_raw_idle_secs: None,
             resumed_idle: None,
             restart_after_break: false,
+            suspended_idle: None,
         };
         let now = now.into();
         if app.settings.use_schedule {
@@ -381,11 +385,33 @@ impl TimerApp {
                 idle_secs,
             } => Action::Tick {
                 elapsed_secs,
-                idle_secs: self.normalize_idle_input(idle_secs, elapsed_secs),
+                idle_secs: self.normalize_idle_input(
+                    idle_secs,
+                    if self.suspended_idle.is_some() {
+                        0
+                    } else {
+                        elapsed_secs
+                    },
+                ),
+            },
+            Action::Suspend { idle_secs } => Action::Suspend {
+                idle_secs: self.normalize_idle_input(idle_secs, 0),
+            },
+            Action::Resume {
+                elapsed_secs,
+                idle_secs,
+            } => Action::Resume {
+                elapsed_secs,
+                idle_secs: if self.suspended_idle.is_some() {
+                    self.normalize_idle_input(idle_secs, 0)
+                } else {
+                    idle_secs
+                },
             },
             other => other,
         };
         let mut output = TimerOutput::default();
+        let resuming = matches!(action, Action::Resume { .. });
         // 无效保存优先返回，不让同一调用里的时间输入改变运行进度。
         if let Action::SaveSettings(settings) = &action {
             output.validation_errors = settings.validate();
@@ -405,8 +431,29 @@ impl TimerApp {
             Action::Tick {
                 elapsed_secs,
                 idle_secs,
+            }
+            | Action::Resume {
+                elapsed_secs,
+                idle_secs,
             } => {
-                if !self.info.paused && !started {
+                let sleeping_idle = if resuming {
+                    self.suspended_idle.take()
+                } else {
+                    None
+                };
+                if !self.info.paused
+                    && !started
+                    && self.suspended_idle.is_none()
+                    && (!resuming || sleeping_idle.is_some())
+                {
+                    let idle_secs = sleeping_idle
+                        .map(|before| before.saturating_add(elapsed_secs).max(idle_secs))
+                        .unwrap_or(idle_secs);
+                    let elapsed_secs = if resuming && self.info.mode != Mode::Break {
+                        0
+                    } else {
+                        elapsed_secs
+                    };
                     if self.settings.use_schedule {
                         if idle_secs == 0
                             || self
@@ -427,6 +474,12 @@ impl TimerApp {
                     match self.info.mode {
                         Mode::Idle => {}
                         Mode::Work => {
+                            if resuming && away_long_enough {
+                                // 含睡眠的离开阈值已经达到，不能被不含睡眠的
+                                // 普通单调时钟宽限遮住，也不继续延长旧宽限。
+                                self.break_ended_at = None;
+                                self.restored_grace_until = None;
+                            }
                             let in_grace = self
                                 .restored_grace_until
                                 .is_some_and(|until| now.monotonic < until)
@@ -484,6 +537,9 @@ impl TimerApp {
                         }
                     }
                 }
+            }
+            Action::Suspend { idle_secs } => {
+                self.suspended_idle.get_or_insert(idle_secs);
             }
             Action::StartBreak => {
                 if self.info.mode == Mode::Remind {

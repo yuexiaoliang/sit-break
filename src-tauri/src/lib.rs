@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::sync::{mpsc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -14,6 +14,7 @@ use tauri_plugin_autostart::ManagerExt;
 #[cfg(test)]
 mod editing_tests;
 mod platform;
+mod power;
 pub mod preview;
 #[cfg(test)]
 mod preview_tests;
@@ -22,6 +23,8 @@ mod recovery_tests;
 #[cfg(test)]
 mod recurrence_tests;
 pub mod schedule;
+#[cfg(test)]
+mod sleep_tests;
 pub mod timer;
 #[cfg(test)]
 mod timer_tests;
@@ -671,13 +674,29 @@ fn quit_app(app: AppHandle) {
 
 // ---------------- timer thread ----------------
 
-fn run_timer(app: AppHandle) {
+fn run_timer(app: AppHandle, power_events: mpsc::Receiver<power::PowerEvent>) {
     std::thread::spawn(move || {
         let mut last_minute = u64::MAX;
         #[cfg(windows)]
         let mut tray_light_theme = None;
         loop {
-            std::thread::sleep(Duration::from_secs(1));
+            // 原生唤醒结束等待；每次输入后重新等一秒，普通 tick 不再重复
+            // 累计已由 Resume 处理的睡眠区间。
+            let action = match power_events.recv_timeout(Duration::from_secs(1)) {
+                Ok(power::PowerEvent::Suspend { idle_secs }) => Action::Suspend { idle_secs },
+                Ok(power::PowerEvent::Resume {
+                    elapsed_secs,
+                    idle_secs,
+                }) => Action::Resume {
+                    elapsed_secs,
+                    idle_secs,
+                },
+                Err(mpsc::RecvTimeoutError::Timeout) => Action::Tick {
+                    elapsed_secs: 1,
+                    idle_secs: idle_secs(),
+                },
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            };
             // The taskbar follows system mode independently of the app theme.
             #[cfg(windows)]
             if let Some(light_theme) = platform::system_uses_light_theme() {
@@ -693,13 +712,11 @@ fn run_timer(app: AppHandle) {
                 }
             }
             let now = timer_time(&app);
-            let mut output = app.state::<Mutex<TimerApp>>().lock().unwrap().dispatch(
-                Action::Tick {
-                    elapsed_secs: 1,
-                    idle_secs: idle_secs(),
-                },
-                now,
-            );
+            let mut output = app
+                .state::<Mutex<TimerApp>>()
+                .lock()
+                .unwrap()
+                .dispatch(action, now);
             // 菜单栏每秒更新；Windows 工作中的 tooltip 仍按分钟更新。
             if let Some(info) = &output.state {
                 let minute = info.remaining / 60;
@@ -766,6 +783,7 @@ fn owned_window_icon(image: &tauri::image::Image<'_>) -> tauri::image::Image<'st
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let (power_sender, power_receiver) = mpsc::channel();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // 已有实例在运行：把它唤醒（弹出面板），本进程立即退出
@@ -792,7 +810,7 @@ pub fn run() {
             hide_settings,
             quit_app
         ])
-        .setup(|app| {
+        .setup(move |app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             let handle = app.handle().clone();
@@ -989,17 +1007,23 @@ pub fn run() {
                 position_bottom_right(&widget);
             }
             update_windows(&handle);
-            run_timer(handle.clone());
+            run_timer(handle.clone(), power_receiver);
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
-    app.run(|handle, event| {
+    let mut power_monitor = Some(
+        power::PowerMonitor::new(power_sender).expect("error registering system sleep monitor"),
+    );
+    app.run(move |handle, event| {
         if matches!(
             event,
             tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
         ) {
             persist_progress(handle);
+        }
+        if matches!(event, tauri::RunEvent::Exit) {
+            power_monitor.take();
         }
     });
 }
