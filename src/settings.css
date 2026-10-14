@@ -154,3 +154,37 @@ input[aria-invalid=true] { border-color: var(--error); }
 .round-content textarea { display: block; width: 100%; min-height: 68px; resize: vertical; margin-top: 4px; line-height: 1.6; }
 .round-list + button { margin-top: 10px; }
 @media (max-width: 400px) { .round-adjustment { padding: 10px; } .round-adjustment .period-grid { gap: 10px; } }
+
+/* 只读预览进入顶层，不改变设置页宽度与滚动位置。 */
+.page-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.preview-trigger { flex-shrink: 0; }
+.schedule-preview { width: min(460px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 48px); margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--soft); color: var(--ink); box-shadow: 0 20px 70px #00000033; overflow: hidden; }
+.schedule-preview[open] { display: flex; flex-direction: column; }
+.schedule-preview::backdrop { background: #10241b70; backdrop-filter: blur(3px); }
+.preview-head { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding: 20px 22px 17px; border-bottom: 1px solid var(--divider); flex: none; }
+.preview-head h2 { font-size: 20px; line-height: 28px; font-weight: 650; }
+.preview-head p { margin-top: 5px; font-size: 12px; line-height: 19px; color: var(--muted); }
+.preview-head .close-button { flex: none; }
+.preview-scroll { padding: 20px 22px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+.preview-scroll:focus-visible { outline: 2px solid var(--focus); outline-offset: -3px; }
+.preview-scroll::-webkit-scrollbar { width: 7px; }
+.preview-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+.preview-current, .preview-period { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 13px 14px; margin-top: 12px; }
+.preview-current { margin-top: 0; border-color: var(--green); }
+.preview-schedule { margin-top: 22px; }
+.preview-schedule:first-child { margin-top: 0; }
+.preview-scroll h3 { font-size: 16px; overflow-wrap: anywhere; }
+.preview-scroll h4 { font-size: 14px; }
+.preview-scroll .muted { margin-top: 4px; }
+.preview-plan-note, .preview-first-break { color: var(--green-ink); font-size: 12px; margin-top: 6px; }
+.preview-round { border-top: 1px solid var(--divider); margin-top: 12px; padding-top: 10px; }
+.preview-round h5 { font-size: 13px; }
+.preview-time { color: var(--green-ink); font-size: 12px; margin-top: 5px; }
+.preview-content-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; margin-top: 8px; user-select: text; }
+.preview-gap { padding: 10px 12px; border: 1px dashed var(--border); border-radius: 8px; margin-top: 12px; color: var(--muted); font-size: 12px; }
+.preview-empty { font-size: 13px; color: var(--muted); padding: 10px 0; }
+.preview-error { white-space: pre-line; overflow-wrap: anywhere; color: var(--error); font-size: 13px; }
+.preview-footer { padding: 16px 22px 20px; border-top: 1px solid var(--divider); flex: none; }
+.preview-footer p { font-size: 12px; color: var(--muted); line-height: 19px; }
+@media (prefers-color-scheme: dark) { .schedule-preview::backdrop { background: #050c08a6; } }
+@media (max-width: 400px) { .schedule-preview { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); border-radius: 11px; } .preview-head, .preview-scroll, .preview-footer { padding: 16px; } }
