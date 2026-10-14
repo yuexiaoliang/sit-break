@@ -234,7 +234,7 @@ body.settings-prototype[data-theme=dark] {
 .add-period { width: 100%; border-style: dashed; background: var(--ui-field); margin-top: 1px; min-height: 40px; }
 .gap-label { display: flex; align-items: center; gap: 9px; font-size: 11px; color: var(--ui-muted); margin: 17px 12px; }
 .gap-label::before, .gap-label::after { content: ''; height: 1px; flex: 1; background: var(--ui-divider); }
-/* 概览按需打开，标题和操作始终可见；长日程只在浮窗内滚动。 */
+/* 概览只读且按需打开，标题和关闭入口始终可见；长日程只在浮窗内滚动。 */
 html:has(.schedule-preview[open]) { overflow: hidden; }
 .schedule-preview-trigger { flex-shrink: 0; }
 .schedule-preview { width: min(460px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 48px); margin: auto; padding: 0; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-soft); color: var(--ui-ink); box-shadow: 0 20px 70px #00000033; overflow: hidden; }
@@ -245,12 +245,12 @@ html:has(.schedule-preview[open]) { overflow: hidden; }
 .preview-head p { margin-top: 5px; font-size: 12px; line-height: 19px; color: var(--ui-muted); overflow-wrap: anywhere; }
 .preview-head .close-button { flex: none; margin-top: 1px; }
 .preview-scroll { padding: 22px 24px 0; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+.preview-scroll:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: -3px; }
 .agenda-empty { text-align: center; padding: 26px 0 44px; }
 .agenda-empty h3 { font-size: 15px; margin-bottom: 8px; }
 .agenda-empty p { color: var(--ui-muted); font-size: 12px; }
 .preview-footer { padding: 16px 22px 20px; border-top: 1px solid var(--ui-divider); flex: none; }
-.preview-footer p { font-size: 12px; color: var(--ui-muted); line-height: 19px; margin-bottom: 12px; }
-.preview-footer .pbutton { width: 100%; min-height: 39px; }
+.preview-footer p { font-size: 12px; color: var(--ui-muted); line-height: 19px; }
 .agenda-item { padding-left: 15px; margin-left: 3px; border-left: 1px solid var(--ui-selected-border); padding-bottom: 23px; position: relative; }
 .agenda-item::before { content: ''; position: absolute; width: 7px; height: 7px; background: var(--ui-green); border: 3px solid var(--ui-soft); box-sizing: content-box; border-radius: 50%; top: 3px; left: -7px; }
 .agenda-item time { font-size: 12px; font-weight: 650; color: var(--ui-muted); }

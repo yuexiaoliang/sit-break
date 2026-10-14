@@ -314,14 +314,14 @@ schedulePreview.setAttribute("aria-describedby", "schedule-preview-description")
 document.body.append(schedulePreview);
 
 function openSchedulePreview() {
-  schedulePreview.innerHTML = `<header class="preview-head"><div><h2 id="schedule-preview-title">日程预览</h2><p id="schedule-preview-description">${escape(plan().name)} · ${escape(repeatLabel())} · 时间为预计</p></div>${button(icon("close"), "close-preview", 'aria-label="关闭日程预览" autofocus', "close-button")}</header><div class="preview-scroll">${agenda()}</div><footer class="preview-footer"><p>晚开始休息，后面的轮次跟着顺延。</p>${button(`${icon("play")} 看看实际怎么运行`, "preview-run", "", "primary")}</footer>`;
+  schedulePreview.innerHTML = `<header class="preview-head"><div><h2 id="schedule-preview-title">日程预览</h2><p id="schedule-preview-description">${escape(plan().name)} · ${escape(repeatLabel())} · 时间为预计</p></div>${button(icon("close"), "close-preview", 'aria-label="关闭日程预览" autofocus', "close-button")}</header><div class="preview-scroll" role="region" aria-label="预计日程" tabindex="0">${agenda()}</div><footer class="preview-footer"><p>晚开始休息，后面的轮次跟着顺延。</p></footer>`;
   schedulePreview.showModal();
 }
 
-// 原生浮窗隔离背景并处理 Esc；Tab 在浮窗操作之间循环。
+// 原生浮窗隔离背景并处理 Esc；Tab 在关闭入口和可滚动内容之间循环。
 schedulePreview.addEventListener("keydown", (event) => {
   if (event.key !== "Tab") return;
-  const controls = schedulePreview.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+  const controls = schedulePreview.querySelectorAll<HTMLElement>('button:not(:disabled), [tabindex="0"]');
   const first = controls[0], last = controls[controls.length - 1];
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
@@ -334,18 +334,6 @@ schedulePreview.addEventListener("click", (event) => {
   }
   const action = (event.target as HTMLElement).closest<HTMLElement>("[data-action]")?.dataset.action;
   if (action === "close-preview") schedulePreview.close();
-  if (action === "preview-run") {
-    schedulePreview.close();
-    if (save()) { state.view = "run"; resetSimulation(); }
-    render();
-    window.scrollTo({ top: 0 });
-    if (state.error) document.querySelector<HTMLElement>(".form-error")?.focus({ preventScroll: true });
-    else {
-      const heading = document.querySelector<HTMLElement>(".page-heading h1")!;
-      heading.tabIndex = -1;
-      heading.focus({ preventScroll: true });
-    }
-  }
 });
 
 document.querySelector(".prototype-heading")!.addEventListener("change", (event) => {

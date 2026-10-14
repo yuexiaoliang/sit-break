@@ -1,79 +1,68 @@
 {
+  "date": "2026-10-14",
+  "scope": "只读预览；试运行仅保留在原型外侧",
   "before": {
-    "height": 1524,
-    "inlineAgenda": false,
-    "width": 562,
-    "x": 19
-  },
-  "open": {
-    "dialogOpen": true,
-    "focused": "关闭日程预览",
-    "width": 562,
-    "x": 19
-  },
-  "tab": "看看实际怎么运行",
-  "tabWrap": null,
-  "escape": {
-    "focus": "preview",
-    "open": false,
-    "scrollY": 0,
+    "left": 19,
     "width": 562
   },
-  "draft": "日程预览\n\n我的工作日 · 周一至周五 · 时间为预计\n\n09:00 — 12:00\n\n上午 · 工作 55 / 休息 5\n\n09:50 首次休息\n\n第一轮 50/10 · 爬楼\n第二轮 55/5 · 深蹲\n\n12:00 — 13:30\n\n留给自己，不提醒\n\n13:30 — 18:00\n\n下午 · 工作 70 / 休息 5\n\n14:40 首次休息\n\n第一轮 70/5\n第二轮 70/5\n\n晚开始休息，后面的轮次跟着顺延。\n\n看看实际怎么运行",
-  "backdrop": {
-    "afternoonWork": "70",
+  "modal": {
+    "bounds": {
+      "bottom": 714.984375,
+      "height": 529.9765625,
+      "left": 70,
+      "right": 530,
+      "top": 185.0078125,
+      "width": 460,
+      "x": 70,
+      "y": 185.0078125
+    },
+    "buttons": [
+      "关闭日程预览"
+    ],
+    "dpr": 1,
+    "left": 19,
+    "width": 562
+  },
+  "tabForward": "预计日程",
+  "tabWrap": "关闭日程预览",
+  "tabBackward": "预计日程",
+  "escape": {
+    "focus": "预览日程",
+    "open": false
+  },
+  "draftPreview": "日程预览\n\n我的工作日 · 周一至周五 · 时间为预计\n\n09:00 — 12:00\n\n上午 · 工作 55 / 休息 5\n\n09:50 首次休息\n\n第一轮 50/10 · 爬楼\n第二轮 55/5 · 深蹲\n\n12:00 — 13:30\n\n留给自己，不提醒\n\n13:30 — 18:00\n\n下午 · 工作 60 / 休息 5\n\n14:30 首次休息\n\n第一轮 60/5\n第二轮 60/5\n\n晚开始休息，后面的轮次跟着顺延。",
+  "draftPreserved": {
     "name": "我的工作日",
     "open": false,
-    "saveLabel": "保存设置"
-  },
-  "tabWrapFixed": "关闭日程预览",
-  "shiftTab": "看看实际怎么运行",
-  "savedAfterPreview": {
-    "focus": "preview",
-    "label": "\n  \n  \n 已保存"
+    "savedButton": "保存设置"
   },
   "narrow": {
-    "clientHeight": 356,
-    "dialog": {
-      "bottom": 556,
-      "height": 544,
+    "body": 378,
+    "bounds": {
+      "bottom": 541.484375,
+      "height": 514.9765625,
       "left": 12,
       "right": 308,
-      "top": 12,
+      "top": 26.5078125,
       "width": 296,
       "x": 12,
-      "y": 12
+      "y": 26.5078125
     },
-    "dialogOverflow": false,
-    "footer": {
-      "bottom": 555,
-      "height": 101,
-      "left": 13,
-      "right": 307,
-      "top": 454,
-      "width": 294,
-      "x": 13,
-      "y": 454
-    },
-    "pageOverflow": false,
-    "pageScroll": 0,
-    "scrollHeight": 378
+    "pageWidth": 320,
+    "scroll": 378,
+    "viewport": 320
   },
-  "innerScroll": {
-    "page": 0,
-    "preview": 22
+  "shortViewportScroll": {
+    "contentHeight": 259,
+    "contentScroll": 111,
+    "contentTotal": 378,
+    "pageScroll": 0
   },
-  "backdropScroll": {
-    "page": 0,
-    "preview": 22
+  "externalTrial": {
+    "heading": "按自己的节奏来",
+    "remaining": true
   },
-  "invalidRun": {
-    "dialogOpen": false,
-    "error": "\n  \n  \n  \n  \n请检查设置“工作日 · 上午”与“工作日 · 下午”时间重叠；原安排保持不变。",
-    "focus": "form-error",
-    "hasDraft": "14:00",
-    "title": "日程安排"
-  },
-  "empty": "日程预览\n\n工作日 · 周一至周五 · 时间为预计\n\n还没有执行时段\n\n添加时段后，这里会显示当天概览。\n\n晚开始休息，后面的轮次跟着顺延。\n\n看看实际怎么运行",
-  "console": []
+  "savedPreserved": "已保存",
+  "logs": [],
+  "savedBeforePreview": "已保存"
 }
