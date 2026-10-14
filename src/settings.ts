@@ -3,12 +3,27 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { STR, applyStatic, currentLang, fmt, type Lang } from "./i18n";
 
+interface PeriodDraft {
+  id: string;
+  start: string;
+  end: string;
+  work_minutes: number;
+  break_minutes: number;
+}
+
+interface ValidationError {
+  schedule_id: string | null;
+  period_id: string | null;
+  field: string;
+  code: string;
+}
+
 interface ScheduleDraft {
   id: string;
   name: string;
   enabled: boolean;
   repeat: { kind: string; date?: string; [key: string]: unknown };
-  periods: unknown[];
+  periods: PeriodDraft[];
   [key: string]: unknown;
 }
 
@@ -92,7 +107,8 @@ function renderSchedules() {
   for (const schedule of schedules) {
     const card = document.createElement("article");
     card.className = "schedule-card";
-    card.innerHTML = `<div class="schedule-card-header"><label><span data-i18n="scheduleName"></span><input type="text" maxlength="100" /></label><button type="button" class="switch" role="switch"></button></div><label class="date-label"><span data-i18n="onceDate"></span><input type="date" required /></label><div class="empty-periods"><h2 data-i18n="emptyPeriods"></h2><p data-i18n="emptyPeriodsDescription"></p></div><button type="button" class="secondary-button" data-i18n="removeSchedule"></button>`;
+    card.dataset.scheduleId = schedule.id;
+    card.innerHTML = `<div class="schedule-card-header"><label><span data-i18n="scheduleName"></span><input type="text" maxlength="100" data-field="name" /></label><button type="button" class="switch" role="switch"></button></div><label class="date-label"><span data-i18n="onceDate"></span><input type="date" required data-field="date" /></label><div class="period-list"></div><div class="empty-periods"><h2 data-i18n="emptyPeriods"></h2><p data-i18n="emptyPeriodsDescription"></p></div><div class="schedule-actions"><button type="button" class="secondary-button add-period" data-i18n="addPeriod"></button><button type="button" class="secondary-button remove-schedule" data-i18n="removeSchedule"></button></div>`;
     const name = card.querySelector<HTMLInputElement>("input[type=text]")!;
     name.value = schedule.name;
     name.addEventListener("input", () => { schedule.name = name.value; });
@@ -108,11 +124,39 @@ function renderSchedules() {
     date.addEventListener("input", () => {
       schedule.repeat = { ...schedule.repeat, kind: "once", date: date.value };
     });
-    card.querySelector<HTMLButtonElement>(".secondary-button")!.addEventListener("click", () => {
+    card.querySelector<HTMLButtonElement>(".remove-schedule")!.addEventListener("click", () => {
       schedules = schedules.filter((item) => item.id !== schedule.id);
       renderSchedules();
       applyStatic(activeLang());
     });
+    card.querySelector<HTMLElement>(".empty-periods")!.hidden = schedule.periods.length > 0;
+    const addPeriod = card.querySelector<HTMLButtonElement>(".add-period")!;
+    addPeriod.hidden = schedule.periods.length > 0;
+    addPeriod.addEventListener("click", () => {
+      schedule.periods.push({ id: crypto.randomUUID(), start: "09:00", end: "12:00", work_minutes: Number(workMin.value) || 45, break_minutes: Number(breakMin.value) || 5 });
+      renderSchedules();
+    });
+    const periods = card.querySelector<HTMLElement>(".period-list")!;
+    for (const period of schedule.periods) {
+      const periodCard = document.createElement("section");
+      periodCard.className = "period-card";
+      periodCard.dataset.periodId = period.id;
+      periodCard.innerHTML = `<div class="period-head"><strong data-i18n="executionPeriod"></strong><button type="button" class="text-button" data-i18n="removePeriod"></button></div><div class="period-grid"><label><span data-i18n="periodStart"></span><input type="time" required data-field="start" /></label><label><span data-i18n="periodEnd"></span><input type="text" inputmode="numeric" pattern="([01][0-9]|2[0-3]):[0-5][0-9]|24:00" placeholder="HH:MM" required data-field="end" /></label><label><span data-i18n="defaultWork"></span><div class="period-duration"><input type="number" min="1" max="240" step="1" required data-field="work_minutes" /><span data-i18n="minutesUnit"></span></div></label><label><span data-i18n="defaultBreak"></span><div class="period-duration"><input type="number" min="1" max="60" step="1" required data-field="break_minutes" /><span data-i18n="minutesUnit"></span></div></label></div><p class="period-note" data-i18n="periodEndHint"></p>`;
+      for (const field of ["start", "end", "work_minutes", "break_minutes"] as const) {
+        const input = periodCard.querySelector<HTMLInputElement>(`[data-field="${field}"]`)!;
+        input.value = String(period[field]);
+        input.addEventListener("input", () => {
+          input.removeAttribute("aria-invalid");
+          if (field === "start" || field === "end") period[field] = input.value;
+          else period[field] = Number(input.value);
+        });
+      }
+      periodCard.querySelector<HTMLButtonElement>(".text-button")!.addEventListener("click", () => {
+        schedule.periods = schedule.periods.filter((item) => item.id !== period.id);
+        renderSchedules();
+      });
+      periods.appendChild(periodCard);
+    }
     scheduleList.appendChild(card);
   }
   applyStatic(activeLang());
@@ -188,6 +232,25 @@ document.getElementById("addSchedule")!.addEventListener("click", () => {
   scheduleList.lastElementChild?.querySelector<HTMLInputElement>("input[type=text]")?.focus();
 });
 
+function describeSaveError(error: unknown): string {
+  const failure = error as { kind?: string; errors?: ValidationError[]; message?: string };
+  if (failure.kind !== "validation" || !failure.errors) return `${S.saveFailed} ${failure.message ?? String(error)}`;
+  let first: HTMLInputElement | undefined;
+  const messages = failure.errors.map((issue) => {
+    const schedule = schedules.find((item) => item.id === issue.schedule_id);
+    const period = schedule?.periods.find((item) => item.id === issue.period_id);
+    const card = Array.from(scheduleList.querySelectorAll<HTMLElement>(".schedule-card")).find((item) => item.dataset.scheduleId === issue.schedule_id);
+    const scope = issue.period_id ? Array.from(card?.querySelectorAll<HTMLElement>(".period-card") ?? []).find((item) => item.dataset.periodId === issue.period_id) : card;
+    const input = scope?.querySelector<HTMLInputElement>(`[data-field="${issue.field}"]`);
+    input?.setAttribute("aria-invalid", "true");
+    first ??= input ?? undefined;
+    const location = [schedule?.name, period ? `${period.start}–${period.end}` : ""].filter(Boolean).join(" · ");
+    return `${location ? `${location}: ` : ""}${S[`validation_${issue.code}`] ?? S.fixSchedule}`;
+  });
+  first?.focus();
+  return messages.join("\n");
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   btnSave.disabled = true;
@@ -198,7 +261,7 @@ form.addEventListener("submit", async (event) => {
     saveStatus.textContent = S.saved;
   } catch (error) {
     saveStatus.classList.add("error");
-    saveStatus.textContent = `${S.saveFailed} ${String(error)}`;
+    saveStatus.textContent = describeSaveError(error);
   } finally {
     btnSave.disabled = false;
   }

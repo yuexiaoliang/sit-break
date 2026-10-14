@@ -3,6 +3,10 @@ use std::time::Duration;
 use crate::timer::{Action, Mode, TimerApp, TimerEvent, TimerInfo};
 use crate::Settings;
 
+fn basic(info: TimerInfo) -> (Mode, u64, bool) {
+    (info.mode, info.remaining, info.paused)
+}
+
 fn simple_timer() -> TimerApp {
     TimerApp::new(
         Settings {
@@ -50,14 +54,7 @@ fn empty_schedule_stays_idle_and_mode_switch_keeps_manual_pause() {
     settings.use_schedule = true;
     let saved = app.dispatch(Action::SaveSettings(settings), Duration::ZERO);
     assert!(saved.update_windows);
-    assert_eq!(
-        app.info(),
-        TimerInfo {
-            mode: Mode::Idle,
-            remaining: 0,
-            paused: true
-        }
-    );
+    assert_eq!(basic(app.info()), (Mode::Idle, 0, true));
     app.dispatch(Action::Reset, Duration::ZERO);
     app.dispatch(Action::StartBreak, Duration::ZERO);
     app.dispatch(Action::Postpone, Duration::ZERO);
@@ -77,14 +74,7 @@ fn empty_schedule_stays_idle_and_mode_switch_keeps_manual_pause() {
     let mut settings = app.settings().clone();
     settings.use_schedule = false;
     app.dispatch(Action::SaveSettings(settings), Duration::from_secs(1000));
-    assert_eq!(
-        app.info(),
-        TimerInfo {
-            mode: Mode::Work,
-            remaining: 180,
-            paused: true
-        }
-    );
+    assert_eq!(basic(app.info()), (Mode::Work, 180, true));
 }
 
 #[test]
@@ -127,14 +117,7 @@ fn switching_to_schedule_closes_reminder_but_allows_started_break_to_finish() {
     settings.use_schedule = true;
     settings.break_minutes = 5;
     app.dispatch(Action::SaveSettings(settings), Duration::from_secs(140));
-    assert_eq!(
-        app.info(),
-        TimerInfo {
-            mode: Mode::Break,
-            remaining: 40,
-            paused: true
-        }
-    );
+    assert_eq!(basic(app.info()), (Mode::Break, 40, true));
     app.dispatch(Action::TogglePause, Duration::from_secs(140));
     app.dispatch(
         Action::Tick {
@@ -164,7 +147,7 @@ fn saving_shared_settings_and_shortcuts_retains_both_modes_after_reload() {
     let mut app = simple_timer();
     let mut settings = app.settings().clone();
     settings.use_schedule = true;
-    settings.schedules = vec![schedule.clone()];
+    settings.schedules = serde_json::from_value(serde_json::json!([schedule.clone()])).unwrap();
     app.dispatch(Action::SaveSettings(settings), Duration::ZERO);
     app.dispatch(Action::ApplyInterval(30), Duration::ZERO);
     app.dispatch(Action::ApplyBreak(3), Duration::ZERO);
@@ -175,7 +158,10 @@ fn saving_shared_settings_and_shortcuts_retains_both_modes_after_reload() {
     saved.persist_settings.unwrap().save_to(&path).unwrap();
     let mut reloaded = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
     assert_eq!(reloaded.info().mode, Mode::Idle);
-    assert_eq!(reloaded.settings().schedules, vec![schedule.clone()]);
+    assert_eq!(
+        serde_json::to_value(&reloaded.settings().schedules).unwrap(),
+        serde_json::json!([schedule.clone()])
+    );
     assert_eq!(reloaded.settings().break_minutes, 3);
     assert_eq!(reloaded.settings().language, "en");
     assert!(!reloaded.settings().sound);
@@ -186,7 +172,10 @@ fn saving_shared_settings_and_shortcuts_retains_both_modes_after_reload() {
     let reloaded = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
     assert_eq!(reloaded.info().mode, Mode::Work);
     assert_eq!(reloaded.info().remaining, 1800);
-    assert_eq!(reloaded.settings().schedules, vec![schedule]);
+    assert_eq!(
+        serde_json::to_value(&reloaded.settings().schedules).unwrap(),
+        serde_json::json!([schedule])
+    );
     std::fs::remove_file(path).unwrap();
 }
 
@@ -208,23 +197,9 @@ fn manual_pause_freezes_time_and_reset_preserves_pause() {
         },
         Duration::from_secs(100),
     );
-    assert_eq!(
-        app.info(),
-        TimerInfo {
-            mode: Mode::Work,
-            remaining: 50,
-            paused: true
-        }
-    );
+    assert_eq!(basic(app.info()), (Mode::Work, 50, true));
     let reset = app.dispatch(Action::Reset, Duration::from_secs(100));
-    assert_eq!(
-        reset.state,
-        Some(TimerInfo {
-            mode: Mode::Work,
-            remaining: 60,
-            paused: true
-        })
-    );
+    assert_eq!(reset.state.map(basic), Some((Mode::Work, 60, true)));
     app.dispatch(Action::TogglePause, Duration::from_secs(100));
     app.dispatch(
         Action::Tick {
@@ -242,23 +217,9 @@ fn manual_pause_freezes_time_and_reset_preserves_pause() {
         },
         Duration::from_secs(190),
     );
-    assert_eq!(
-        app.info(),
-        TimerInfo {
-            mode: Mode::Break,
-            remaining: 60,
-            paused: true
-        }
-    );
+    assert_eq!(basic(app.info()), (Mode::Break, 60, true));
     app.dispatch(Action::Reset, Duration::from_secs(190));
-    assert_eq!(
-        app.info(),
-        TimerInfo {
-            mode: Mode::Work,
-            remaining: 60,
-            paused: true
-        }
-    );
+    assert_eq!(basic(app.info()), (Mode::Work, 60, true));
 }
 
 #[test]
@@ -276,14 +237,7 @@ fn postponing_is_bounded_and_ending_a_break_starts_full_work() {
         Duration::from_secs(60),
     );
     let output = app.dispatch(Action::Postpone, Duration::from_secs(60));
-    assert_eq!(
-        output.state,
-        Some(TimerInfo {
-            mode: Mode::Work,
-            remaining: 60,
-            paused: false
-        })
-    );
+    assert_eq!(output.state.map(basic), Some((Mode::Work, 60, false)));
     app.dispatch(
         Action::Tick {
             elapsed_secs: 60,
@@ -300,14 +254,7 @@ fn postponing_is_bounded_and_ending_a_break_starts_full_work() {
         Duration::from_secs(140),
     );
     app.dispatch(Action::EndBreak, Duration::from_secs(140));
-    assert_eq!(
-        app.info(),
-        TimerInfo {
-            mode: Mode::Work,
-            remaining: 60,
-            paused: false
-        }
-    );
+    assert_eq!(basic(app.info()), (Mode::Work, 60, false));
 
     let mut app = TimerApp::new(
         Settings {
@@ -368,14 +315,7 @@ fn idle_resets_work_or_finishes_reminder_with_break_length_grace() {
         },
         Duration::from_secs(152),
     );
-    assert_eq!(
-        app.info(),
-        TimerInfo {
-            mode: Mode::Work,
-            remaining: 120,
-            paused: false
-        }
-    );
+    assert_eq!(basic(app.info()), (Mode::Work, 120, false));
     app.dispatch(
         Action::Tick {
             elapsed_secs: 1,
@@ -451,36 +391,15 @@ fn global_settings_and_shortcuts_preserve_active_break_and_refresh_next_work() {
     let mut settings = app.settings().clone();
     settings.work_minutes = 5;
     app.dispatch(Action::SaveSettings(settings), Duration::from_secs(210));
-    assert_eq!(
-        app.info(),
-        TimerInfo {
-            mode: Mode::Break,
-            remaining: 100,
-            paused: false
-        }
-    );
+    assert_eq!(basic(app.info()), (Mode::Break, 100, false));
     app.dispatch(Action::EndBreak, Duration::from_secs(210));
-    assert_eq!(
-        app.info(),
-        TimerInfo {
-            mode: Mode::Work,
-            remaining: 300,
-            paused: false
-        }
-    );
+    assert_eq!(basic(app.info()), (Mode::Work, 300, false));
 }
 
 #[test]
 fn simple_cycle_waits_for_user_then_returns_to_work_after_full_break() {
     let mut app = simple_timer();
-    assert_eq!(
-        app.info(),
-        TimerInfo {
-            mode: Mode::Work,
-            remaining: 60,
-            paused: false
-        }
-    );
+    assert_eq!(basic(app.info()), (Mode::Work, 60, false));
     let output = app.dispatch(
         Action::Tick {
             elapsed_secs: 60,
@@ -500,14 +419,7 @@ fn simple_cycle_waits_for_user_then_returns_to_work_after_full_break() {
     );
     assert_eq!(app.info().mode, Mode::Remind);
     let output = app.dispatch(Action::StartBreak, Duration::from_secs(660));
-    assert_eq!(
-        output.state,
-        Some(TimerInfo {
-            mode: Mode::Break,
-            remaining: 60,
-            paused: false
-        })
-    );
+    assert_eq!(output.state.map(basic), Some((Mode::Break, 60, false)));
     assert!(output
         .events
         .contains(&TimerEvent::BreakStarted { seconds: 60 }));
@@ -526,12 +438,417 @@ fn simple_cycle_waits_for_user_then_returns_to_work_after_full_break() {
         },
         Duration::from_secs(720),
     );
+    assert_eq!(basic(app.info()), (Mode::Work, 60, false));
+}
+
+#[test]
+fn a_once_schedule_with_stable_period_identity_survives_real_save_and_reload() {
+    let path = std::env::temp_dir().join(format!("sit-break-once-{}.json", fastrand::u64(..)));
+    let mut app = simple_timer();
+    let mut settings = app.settings().clone();
+    settings.use_schedule = true;
+    settings.schedules = serde_json::from_value(serde_json::json!([{
+        "id":"morning", "name":"晨间安排", "enabled":true,
+        "repeat":{"kind":"once","date":"2026-10-14"},
+        "periods":[{"id":"morning-period","start":"09:00","end":"12:00","work_minutes":50,"break_minutes":10}]
+    }])).unwrap();
+    let saved = app.dispatch(Action::SaveSettings(settings), Duration::ZERO);
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let reloaded = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
     assert_eq!(
-        app.info(),
-        TimerInfo {
-            mode: Mode::Work,
-            remaining: 60,
-            paused: false
-        }
+        reloaded.settings().schedules[0].periods[0].id,
+        "morning-period"
     );
+    assert_eq!(reloaded.settings().schedules[0].name, "晨间安排");
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn invalid_schedule_save_reports_its_field_without_changing_settings_or_progress() {
+    let mut app = simple_timer();
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 12,
+            idle_secs: 0,
+        },
+        Duration::from_secs(12),
+    );
+    let before = app.info();
+    let before_settings = serde_json::to_value(app.settings()).unwrap();
+    let mut invalid = app.settings().clone();
+    invalid.autostart = true;
+    invalid.use_schedule = true;
+    invalid.schedules = serde_json::from_value(serde_json::json!([{
+        "id":"morning", "name":"晨间安排", "enabled":true,
+        "repeat":{"kind":"once","date":"2026-10-14"},
+        "periods":[{"id":"morning-period","start":"09:00","end":"08:00","work_minutes":50,"break_minutes":10}]
+    }])).unwrap();
+    let result = app.dispatch(Action::SaveSettings(invalid), Duration::from_secs(12));
+    assert_eq!(
+        result.validation_errors[0].schedule_id.as_deref(),
+        Some("morning")
+    );
+    assert_eq!(
+        result.validation_errors[0].period_id.as_deref(),
+        Some("morning-period")
+    );
+    assert_eq!(result.validation_errors[0].field, "end");
+    assert!(result.persist_settings.is_none());
+    assert!(!result.settings_changed);
+    assert!(!result.update_windows);
+    assert_eq!(app.info(), before);
+    assert_eq!(
+        serde_json::to_value(app.settings()).unwrap(),
+        before_settings
+    );
+}
+
+fn scheduled_settings(end: &str) -> Settings {
+    let mut settings = Settings {
+        use_schedule: true,
+        idle_reset: false,
+        tips: vec!["走动一下".into(), "喝水".into()],
+        ..Settings::default()
+    };
+    settings.schedules = serde_json::from_value(serde_json::json!([{
+        "id":"morning", "name":"晨间安排", "enabled":true,
+        "repeat":{"kind":"once","date":"2026-10-14"},
+        "periods":[{"id":"morning-period","start":"09:00","end":end,"work_minutes":50,"break_minutes":10}]
+    }])).unwrap();
+    settings
+}
+
+fn at(hour: u32, minute: u32) -> crate::timer::TimerTime {
+    crate::timer::TimerTime {
+        monotonic: Duration::from_secs(u64::from(hour * 3600 + minute * 60)),
+        local: Some(crate::timer::LocalTime {
+            date: "2026-10-14".into(),
+            seconds_of_day: hour * 3600 + minute * 60,
+        }),
+    }
+}
+
+#[test]
+fn a_late_started_break_gets_ten_full_minutes_then_starts_round_two() {
+    let mut app = TimerApp::new_at(
+        scheduled_settings("12:00"),
+        fastrand::Rng::with_seed(42),
+        at(9, 0),
+    );
+    assert_eq!(app.info().remaining, 3000);
+    assert_eq!(app.info().work_seconds, 3000);
+    assert_eq!(app.info().break_seconds, 600);
+    assert_eq!(app.info().round.unwrap().number, 1);
+    let reminder = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3000,
+            idle_secs: 0,
+        },
+        at(9, 50),
+    );
+    assert_eq!(app.info().mode, Mode::Remind);
+    assert!(reminder.events.iter().any(|event| matches!(event, TimerEvent::Reminder(payload) if payload.break_seconds == 600 && payload.sat_minutes == 50)));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 300,
+            idle_secs: 0,
+        },
+        at(9, 55),
+    );
+    app.dispatch(Action::StartBreak, at(9, 55));
+    assert_eq!(app.info().remaining, 600);
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 599,
+            idle_secs: 0,
+        },
+        at(10, 4),
+    );
+    assert_eq!(app.info().mode, Mode::Break);
+    assert_eq!(app.info().remaining, 1);
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 1,
+            idle_secs: 0,
+        },
+        at(10, 5),
+    );
+    assert_eq!(app.info().mode, Mode::Work);
+    assert_eq!(app.info().remaining, 3000);
+    assert_eq!(app.info().round.unwrap().number, 2);
+}
+
+#[test]
+fn schedule_work_starts_at_the_first_round_only_inside_its_local_date_and_period() {
+    let before = TimerApp::new_at(
+        scheduled_settings("12:00"),
+        fastrand::Rng::with_seed(42),
+        at(8, 59),
+    );
+    assert_eq!(before.info().mode, Mode::Idle);
+    let mut midway = TimerApp::new_at(
+        scheduled_settings("12:00"),
+        fastrand::Rng::with_seed(42),
+        at(10, 30),
+    );
+    assert_eq!(midway.info().remaining, 3000);
+    assert_eq!(midway.info().round.unwrap().number, 1);
+    midway.dispatch(
+        Action::Tick {
+            elapsed_secs: 3000,
+            idle_secs: 0,
+        },
+        at(12, 0),
+    );
+    assert_eq!(midway.info().mode, Mode::Idle);
+    let mut next_day = at(10, 0);
+    next_day.local.as_mut().unwrap().date = "2026-10-15".into();
+    let expired = TimerApp::new_at(
+        scheduled_settings("12:00"),
+        fastrand::Rng::with_seed(42),
+        next_day,
+    );
+    assert_eq!(expired.info().mode, Mode::Idle);
+}
+
+#[test]
+fn repeated_postpones_preserve_the_round_tip_and_actual_lengths() {
+    let mut app = TimerApp::new_at(
+        scheduled_settings("12:00"),
+        fastrand::Rng::with_seed(42),
+        at(9, 0),
+    );
+    let tip = app.info().tip.unwrap();
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3000,
+            idle_secs: 0,
+        },
+        at(9, 50),
+    );
+    for minute in [50, 55] {
+        app.dispatch(Action::Postpone, at(9, minute));
+        assert_eq!(app.info().remaining, 300);
+        let output = app.dispatch(
+            Action::Tick {
+                elapsed_secs: 300,
+                idle_secs: 0,
+            },
+            if minute == 50 { at(9, 55) } else { at(10, 0) },
+        );
+        assert_eq!(app.info().round.unwrap().number, 1);
+        assert_eq!(app.info().tip.as_deref(), Some(tip.as_str()));
+        assert!(output.events.iter().any(|event| matches!(event, TimerEvent::Reminder(payload) if payload.tip == tip && payload.break_seconds == 600)));
+    }
+    app.dispatch(Action::StartBreak, at(10, 0));
+    assert_eq!(app.info().tip.as_deref(), Some(tip.as_str()));
+    assert_eq!(app.info().remaining, 600);
+    let serialized = serde_json::to_value(app.info()).unwrap();
+    assert_eq!(serialized["round"]["period_id"], "morning-period");
+    assert_eq!(serialized["work_seconds"], 3000);
+    assert_eq!(serialized["break_seconds"], 600);
+}
+
+#[test]
+fn period_end_precedes_zero_work_and_closes_unstarted_reminders() {
+    let mut app = TimerApp::new_at(
+        scheduled_settings("09:50"),
+        fastrand::Rng::with_seed(42),
+        at(9, 0),
+    );
+    let output = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3000,
+            idle_secs: 0,
+        },
+        at(9, 50),
+    );
+    assert_eq!(app.info().mode, Mode::Idle);
+    assert!(output.events.is_empty());
+    assert!(output.update_windows);
+    let mut app = TimerApp::new_at(
+        scheduled_settings("09:55"),
+        fastrand::Rng::with_seed(42),
+        at(9, 0),
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3000,
+            idle_secs: 0,
+        },
+        at(9, 50),
+    );
+    assert_eq!(app.info().mode, Mode::Remind);
+    let output = app.dispatch(Action::StartBreak, at(9, 55));
+    assert_eq!(app.info().mode, Mode::Idle);
+    assert!(output.events.is_empty());
+    assert!(output.update_windows);
+}
+
+#[test]
+fn a_started_break_finishes_in_full_after_the_period_has_ended() {
+    let mut app = TimerApp::new_at(
+        scheduled_settings("10:00"),
+        fastrand::Rng::with_seed(42),
+        at(9, 0),
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3000,
+            idle_secs: 0,
+        },
+        at(9, 50),
+    );
+    app.dispatch(Action::StartBreak, at(9, 55));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 300,
+            idle_secs: 0,
+        },
+        at(10, 0),
+    );
+    assert_eq!(app.info().mode, Mode::Break);
+    assert_eq!(app.info().remaining, 300);
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 300,
+            idle_secs: 0,
+        },
+        at(10, 5),
+    );
+    assert_eq!(app.info().mode, Mode::Idle);
+    assert_eq!(app.info().remaining, 0);
+}
+
+#[test]
+fn invalid_dates_times_and_lengths_preserve_the_last_saved_arrangement() {
+    let path =
+        std::env::temp_dir().join(format!("sit-break-validation-{}.json", fastrand::u64(..)));
+    let valid = scheduled_settings("12:00");
+    valid.save_to(&path).unwrap();
+    let mut app = TimerApp::new_at(valid.clone(), fastrand::Rng::with_seed(42), at(9, 0));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        at(9, 1),
+    );
+    let progress = app.info();
+    for (field, value) in [
+        ("start", serde_json::json!("24:00")),
+        ("end", serde_json::json!("25:00")),
+        ("work_minutes", serde_json::json!(0)),
+        ("work_minutes", serde_json::json!(241)),
+        ("break_minutes", serde_json::json!(0)),
+        ("break_minutes", serde_json::json!(61)),
+    ] {
+        let mut json = serde_json::to_value(&valid).unwrap();
+        json["schedules"][0]["periods"][0][field] = value;
+        let invalid: Settings = serde_json::from_value(json).unwrap();
+        assert!(invalid.save_to(&path).is_err());
+        let result = app.dispatch(Action::SaveSettings(invalid), at(12, 1));
+        assert!(result
+            .validation_errors
+            .iter()
+            .any(|error| error.field == field));
+        assert!(result.persist_settings.is_none());
+        assert_eq!(app.info(), progress);
+        let reloaded = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+        assert_eq!(
+            serde_json::to_value(reloaded.settings()).unwrap(),
+            serde_json::to_value(&valid).unwrap()
+        );
+    }
+    let mut invalid = valid.clone();
+    invalid.schedules[0].repeat = crate::schedule::Repeat::Once {
+        date: "2026-02-30".into(),
+    };
+    assert!(app
+        .dispatch(Action::SaveSettings(invalid), at(9, 1))
+        .validation_errors
+        .iter()
+        .any(|error| error.field == "date"));
+    assert_eq!(app.info(), progress);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn day_end_is_supported_and_simple_shortcuts_do_not_change_schedule_progress() {
+    let mut app = TimerApp::new_at(
+        scheduled_settings("24:00"),
+        fastrand::Rng::with_seed(42),
+        at(23, 0),
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        at(23, 1),
+    );
+    let progress = app.info();
+    app.dispatch(Action::ApplyInterval(15), at(23, 1));
+    app.dispatch(Action::ApplyBreak(3), at(23, 1));
+    assert_eq!(app.info(), progress);
+    assert_eq!(app.settings().work_minutes, 15);
+    assert_eq!(app.settings().break_minutes, 3);
+}
+
+#[test]
+fn entering_the_period_starts_full_work_and_short_work_bounds_every_postpone() {
+    let mut settings = scheduled_settings("12:00");
+    settings.schedules[0].periods[0].work_minutes = 1;
+    let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(8, 59));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        at(9, 0),
+    );
+    assert_eq!(app.info().remaining, 60);
+    assert_eq!(app.info().round.unwrap().number, 1);
+    for minute in 1..=3 {
+        app.dispatch(
+            Action::Tick {
+                elapsed_secs: 60,
+                idle_secs: 0,
+            },
+            at(9, minute),
+        );
+        app.dispatch(Action::Postpone, at(9, minute));
+        assert_eq!(app.info().remaining, 60);
+        assert_eq!(app.info().round.unwrap().number, 1);
+    }
+}
+
+#[test]
+fn simple_timer_keeps_its_existing_tip_rotation_when_postponed() {
+    let mut app = TimerApp::new(
+        Settings {
+            work_minutes: 1,
+            idle_reset: false,
+            tips: vec!["走动".into(), "喝水".into()],
+            ..Settings::default()
+        },
+        fastrand::Rng::with_seed(42),
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        Duration::from_secs(60),
+    );
+    let first_tip = app.info().tip;
+    app.dispatch(Action::Postpone, Duration::from_secs(60));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        Duration::from_secs(120),
+    );
+    assert_ne!(app.info().tip, first_tip);
 }

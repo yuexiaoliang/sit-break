@@ -115,3 +115,16 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   .tips-editor > span { display: block; margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.schedule-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.period-card { border: 1px solid var(--border); border-radius: 10px; margin: 16px 0 12px; padding: 14px; background: var(--soft); }
+.period-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.period-head strong { font-size: 14px; }
+.text-button { border: 0; background: transparent; color: var(--muted); padding: 4px; font-size: 12px; }
+.period-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 13px 16px; }
+.period-grid input { min-width: 0; font-size: 16px; }
+.period-duration { display: flex; align-items: center; gap: 7px; }
+.period-duration span { flex: none; color: var(--muted); font-size: 12px; margin-top: 4px; }
+.period-note { color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 12px; }
+input[aria-invalid=true] { border-color: var(--error); }
+#saveStatus { white-space: pre-line; }
