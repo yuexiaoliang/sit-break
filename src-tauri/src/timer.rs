@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
-use crate::schedule::{minute_of_day, Period, Repeat, Schedule, ValidationError};
+use crate::schedule::{minute_of_day, Period, Schedule, ValidationError};
 use crate::{choose_tip, Settings, POSTPONE_SECS};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,6 +103,7 @@ pub struct TimerApp {
     // 日程已在本次持续离开中结束一轮，下一轮等待重新操作电脑。
     schedule_idle_consumed: bool,
     last_idle_secs: Option<u64>,
+    restart_after_break: bool,
 }
 
 impl TimerApp {
@@ -131,6 +132,7 @@ impl TimerApp {
             previous_tip: None,
             schedule_idle_consumed: false,
             last_idle_secs: None,
+            restart_after_break: false,
         };
         let now = now.into();
         if app.settings.use_schedule {
@@ -267,7 +269,7 @@ impl TimerApp {
                                 && round.period_id == period.id
                                 && round.date == *date
                         });
-                        if same {
+                        if same && !self.restart_after_break {
                             self.info.mode = Mode::Work;
                             self.info.remaining = self.info.work_seconds;
                         } else {
@@ -279,6 +281,7 @@ impl TimerApp {
                 } else {
                     self.start_simple_work();
                 }
+                self.restart_after_break = false;
                 output.update_windows = true;
             }
             Action::Postpone => {
@@ -322,6 +325,24 @@ impl TimerApp {
                 let work_changed = self.settings.work_minutes != settings.work_minutes;
                 let mode_changed = self.settings.use_schedule != settings.use_schedule;
                 self.settings = settings;
+                if self.info.mode == Mode::Break {
+                    let current_invalidated = self.info.round.as_ref().is_some_and(|round| {
+                        !self.current_period(now.local.as_ref()).is_some_and(
+                            |(schedule, period)| {
+                                round.schedule_id == schedule.id
+                                    && round.period_id == period.id
+                                    && now
+                                        .local
+                                        .as_ref()
+                                        .is_some_and(|local| round.date == local.date)
+                            },
+                        )
+                    });
+                    if mode_changed || current_invalidated {
+                        // 随后切回原方式或重新启用，也不恢复已关闭的安排。
+                        self.restart_after_break = true;
+                    }
+                }
                 if mode_changed && self.info.mode != Mode::Break {
                     self.set_idle();
                     if self.settings.use_schedule {
@@ -367,8 +388,7 @@ impl TimerApp {
             .iter()
             .filter(|schedule| schedule.enabled)
             .find_map(|schedule| {
-                let Repeat::Once { date } = &schedule.repeat;
-                if date != &local.date {
+                if !schedule.repeat.applies_on(&local.date) {
                     return None;
                 }
                 schedule
@@ -473,7 +493,12 @@ impl TimerApp {
     }
 
     fn finish_round(&mut self, now: &TimerTime) {
-        let finished = self.info.round.clone();
+        let finished = self
+            .info
+            .round
+            .clone()
+            .filter(|_| !self.restart_after_break);
+        self.restart_after_break = false;
         if self.settings.use_schedule {
             if let Some((schedule, period)) = self.current_period(now.local.as_ref()) {
                 let date = &now.local.as_ref().unwrap().date;

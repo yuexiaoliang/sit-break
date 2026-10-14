@@ -11,7 +11,11 @@ use tauri_plugin_autostart::MacosLauncher;
 #[cfg(not(windows))]
 use tauri_plugin_autostart::ManagerExt;
 
+#[cfg(test)]
+mod editing_tests;
 mod platform;
+#[cfg(test)]
+mod recurrence_tests;
 pub mod schedule;
 pub mod timer;
 #[cfg(test)]
