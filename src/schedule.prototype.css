@@ -159,6 +159,49 @@ body.settings-prototype { display: block; padding: 26px 28px 116px; height: auto
 .variant-dots { display: flex; gap: 4px; }
 .variant-dots button { background: transparent; width: 26px; height: 28px; font-size: 11px; }
 .variant-dots button[aria-pressed=true] { background: #527e64; }
+/* 默认保留完整的简单计时；复杂安排只在开启日程后展开。 */
+.settings-prototype .scard.simple-layout { max-width: 660px; }
+.simple-settings { margin-bottom: 22px; }
+.simple-heading, .common-heading { display: flex; align-items: baseline; gap: 12px; margin-bottom: 15px; }
+.simple-heading h2, .common-heading h2 { font-size: 14px; font-weight: 650; }
+.simple-heading span, .common-heading span { font-size: 11px; color: #7e8d82; }
+.simple-duration { display: flex; align-items: start; justify-content: space-between; gap: 20px; padding: 9px 0; }
+.simple-duration > label { padding-top: 9px; font-size: 13px; }
+.simple-duration > div { width: 180px; }
+.simple-duration input { font-size: 16px; font-weight: 600; padding-top: 6px; padding-bottom: 6px; }
+.duration-presets { display: flex; gap: 5px; margin-top: 6px; }
+.duration-presets button { flex: 1; border: 0; border-radius: 5px; padding: 2px 7px; color: #7a8c80; font-size: 10px; background: #f2f5f2; }
+.duration-presets button.selected { background: #e4f2e8; color: #277349; }
+.simple-summary { color: #718778; font-size: 12px; margin-top: 12px; }
+.simple-summary b { color: #3a6c4d; font-weight: 600; }
+.optional-schedule { background: #fafbf9; border-color: #e3e9e0; padding: 13px 15px; }
+.optional-tag { display: inline-block; margin-left: 8px; border-radius: 4px; color: #849080; background: #eef2ea; font-size: 9px; font-weight: 500; padding: 1px 5px; vertical-align: 1px; }
+.common-settings { border-top: 1px solid #e8eee7; padding-top: 21px; margin-top: 23px; }
+.common-heading { margin-bottom: 5px; }
+.preference-row { display: flex; align-items: center; justify-content: space-between; gap: 22px; min-height: 46px; padding: 7px 0; }
+.preference-row strong, .preference-row > label { font-size: 12px; font-weight: 500; }
+.preference-row p { color: #839084; font-size: 11px; margin-top: 2px; }
+.preference-row select { width: 142px; flex: none; font-size: 12px; padding: 6px 9px; }
+.preference-size { width: 110px; }
+.menubar-hint { color: #879489; font-size: 11px; margin-top: 7px; }
+.tips-editor { margin-top: 20px; }
+.tips-editor > label { font-size: 12px; font-weight: 500; }
+.tips-editor > span { color: #8c998d; font-size: 11px; margin-left: 10px; }
+.tips-editor textarea { display: block; margin-top: 8px; resize: vertical; line-height: 1.7; font-size: 12px; }
+.tips-editor p { color: #7c8e7e; font-size: 11px; margin-top: 7px; }
+.platform-preview { display: inline-flex; align-items: center; gap: 5px; flex: none; font-size: 10px; }
+.platform-preview button { padding: 4px 7px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: #819183; font-size: 10px; }
+.platform-preview button.selected { background: #f9fcf9; border-color: #d8e3d8; color: #3a6e4c; }
+.desktop-preview { border: 1px solid #e3e9e0; border-radius: 10px; background: #f5f7f1; margin-bottom: 17px; overflow: hidden; text-align: center; }
+.desktop-preview > .muted { padding: 12px; font-size: 11px; }
+.menubar-preview { display: flex; align-items: center; justify-content: space-between; background: #e7eee1; border-bottom: 1px solid #dce6d5; padding: 8px 13px; font-size: 11px; color: #5f7359; }
+.menubar-preview b { font-size: 12px; font-weight: 550; }
+.floating-preview { display: grid; place-items: center; margin: 14px auto 0; border-radius: 50%; background: #2daa76; color: #fff; font-weight: 650; box-shadow: 0 4px 13px #305f3620; }
+.simple-flow { display: flex; flex-direction: column; align-items: start; gap: 9px; margin: 23px 0; color: #557660; font-size: 12px; }
+.simple-flow span { padding: 8px 12px; border: 1px solid #e1eade; border-radius: 8px; background: #f5f9f2; }
+.simple-flow i { padding-left: 12px; font-style: normal; color: #8eaa94; font-size: 11px; }
+.desktop-preview > span { display: block; text-align: left; font-size: 10px; color: #8a9884; padding: 6px 12px; }
+.desktop-preview:has(.floating-preview) { padding-bottom: 14px; }
 @media (max-width: 800px) {
   body.settings-prototype { padding: 14px 12px 110px; }
   .proto-body { padding: 22px 20px 0; }
@@ -183,4 +226,11 @@ body.settings-prototype { display: block; padding: 26px 28px 116px; height: auto
   .variant-dots { gap: 1px; }
   .days { gap: 4px; }
   .day { width: 30px; height: 32px; }
+  .prototype-heading { flex-wrap: wrap; }
+  .prototype-heading span:last-child { max-width: none; text-align: left; }
+  .platform-preview { margin-left: auto; }
+  .simple-duration > div { width: 154px; }
+  .simple-heading, .common-heading { gap: 9px; }
+  .simple-heading span, .common-heading span { font-size: 10px; }
+  .preference-row { gap: 15px; }
 }
