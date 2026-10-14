@@ -175,11 +175,13 @@ body.reminder-page { display: flex; }
 .ring-text {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
+  padding: 0 13px;
+  text-align: center;
 }
 .ring-text .time {
   font-size: 30px; font-weight: 700; letter-spacing: 1px; font-variant-numeric: tabular-nums;
 }
-.ring-text .cap { font-size: 11px; color: #8fa098; margin-top: 2px; }
+.ring-text .cap { max-width: 122px; font-size: 11px; line-height: 1.35; letter-spacing: 0; text-align: center; color: #8fa098; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .stretch { font-size: 12.5px; color: #8fa098; text-align: center; margin: 12px 0 4px; }
 .card.dark .btns { margin-top: 14px; }
 .card.dark .btn-ghost { background: rgba(255, 255, 255, .07); color: #aebcb3; }

@@ -14,7 +14,7 @@
       <button type="button" id="btnClose" class="close-button" data-i18n-label="closeSettings" aria-label="关闭设置"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></svg></button>
     </header>
     <form id="settingsForm" class="sbody">
-      <div class="page-heading"><h1 id="pageTitle">简单计时</h1><p id="pageDescription">设定工作与休息时长，到点提醒你。</p></div>
+      <div class="page-heading"><div><h1 id="pageTitle">简单计时</h1><p id="pageDescription">设定工作与休息时长，到点提醒你。</p></div><button type="button" id="previewSchedule" class="secondary-button preview-trigger" aria-haspopup="dialog" aria-controls="schedulePreview" data-i18n="previewSchedule" hidden>预览日程</button></div>
       <section id="simpleSettings" class="simple-settings">
         <div class="durations">
           <div class="simple-duration"><label for="workMin" data-i18n="workLength">工作时长</label><div class="duration-field"><input id="workMin" type="number" min="1" max="240" step="1" required value="45" /><span data-i18n="minutesUnit">分钟</span></div><div class="duration-presets" data-duration="workMin"><button type="button" data-minutes="15">15</button><button type="button" data-minutes="30">30</button><button type="button" data-minutes="45">45</button><button type="button" data-minutes="60">60</button></div></div>
@@ -41,6 +41,11 @@
       <footer class="bottom-actions"><p id="saveStatus" role="status" aria-live="polite"></p><button type="submit" id="btnSave" class="save-button" data-i18n="saveSettings">保存设置</button></footer>
     </form>
   </div>
+  <dialog id="schedulePreview" class="schedule-preview" aria-labelledby="previewTitle" aria-describedby="previewNote">
+    <header class="preview-head" data-tauri-drag-region><div><h2 id="previewTitle" data-i18n="previewTitle">预计日程</h2><p id="previewCaption" data-i18n="previewCaption">查看当前草稿，不会保存或启动计时。</p></div><button type="button" id="closePreview" class="close-button" data-i18n-label="closePreview" aria-label="关闭预览"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
+    <div id="previewBody" class="preview-scroll" tabindex="0" role="region" data-i18n-label="previewContent" aria-label="预计安排"></div>
+    <footer class="preview-footer"><p id="previewNote" data-i18n="previewNote">时间是预计值，会随等待、推迟和实际休息更新。</p></footer>
+  </dialog>
   <script type="module" src="/src/settings.ts"></script>
 </body>
 </html>

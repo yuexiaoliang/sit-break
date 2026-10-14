@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { STR, applyStatic, currentLang, fmt, type Lang } from "./i18n";
+import { initSchedulePreview } from "./schedule-preview";
 
 interface PeriodDraft {
   id: string;
@@ -90,6 +91,7 @@ function renderMode() {
   const scheduled = isOn("use_schedule");
   document.getElementById("simpleSettings")!.hidden = scheduled;
   document.getElementById("scheduleSettings")!.hidden = !scheduled;
+  document.getElementById("previewSchedule")!.hidden = !scheduled;
   // 隐藏的简单时长仍保留草稿，不参与当前可见表单的原生校验。
   workMin.disabled = scheduled;
   breakMin.disabled = scheduled;
@@ -457,17 +459,18 @@ form.addEventListener("invalid", (event) => {
 }, true);
 
 document.getElementById("btnClose")!.addEventListener("click", () => invoke("hide_settings"));
-window.addEventListener("keydown", (event) => { if (event.key === "Escape") invoke("hide_settings"); });
+window.addEventListener("keydown", (event) => { if (event.key === "Escape" && !(document.getElementById("schedulePreview") as HTMLDialogElement).open) invoke("hide_settings"); });
 window.addEventListener("contextmenu", (event) => event.preventDefault());
 const win = getCurrentWindow();
-document.querySelector(".shead")!.addEventListener("mousedown", (event) => {
+document.querySelectorAll(".shead, .preview-head").forEach((header) => header.addEventListener("mousedown", (event) => {
   const mouse = event as MouseEvent;
   if (mouse.button !== 0 || (mouse.target as HTMLElement).closest("button")) return;
   mouse.preventDefault();
   win.startDragging();
-});
+}));
 
 const platform = await invoke<string>("get_platform");
 document.querySelectorAll<HTMLElement>("[data-widget-setting]").forEach((row) => { row.hidden = platform === "macos"; });
 await load();
+initSchedulePreview(current, () => S);
 listen("settings_open", load);

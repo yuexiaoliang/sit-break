@@ -14,6 +14,9 @@ use tauri_plugin_autostart::ManagerExt;
 #[cfg(test)]
 mod editing_tests;
 mod platform;
+pub mod preview;
+#[cfg(test)]
+mod preview_tests;
 #[cfg(test)]
 mod recovery_tests;
 #[cfg(test)]
@@ -572,6 +575,19 @@ fn timer_info(app: AppHandle) -> TimerInfo {
 }
 
 #[tauri::command]
+fn preview_schedule(
+    app: AppHandle,
+    draft: Settings,
+) -> Result<preview::SchedulePreview, serde_json::Value> {
+    let now = timer_time(&app);
+    app.state::<Mutex<TimerApp>>()
+        .lock()
+        .unwrap()
+        .preview(&draft, now)
+        .map_err(|errors| json!({ "kind": "validation", "errors": errors }))
+}
+
+#[tauri::command]
 fn save_settings(app: AppHandle, settings: Settings) -> Result<(), serde_json::Value> {
     let errors = settings.validate();
     if !errors.is_empty() {
@@ -763,6 +779,7 @@ pub fn run() {
             get_platform,
             get_settings,
             timer_info,
+            preview_schedule,
             save_settings,
             apply_interval,
             apply_break,
