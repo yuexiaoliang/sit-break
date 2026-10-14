@@ -44,7 +44,8 @@ function render(t: TimerState) {
   const ss = t.remaining % 60;
   num.textContent = t.mode === "idle" ? S.idle : `${mm}:${String(ss).padStart(2, "0")}`;
   num.style.fontSize = `${Math.round(lastSize * (t.mode === "idle" ? 0.24 : 0.3))}px`;
-  ball.title = [t.round ? fmt(S.roundNumber, { n: t.round.number }) : "", fmt(S.actualDurations, { work: t.work_seconds / 60, rest: t.break_seconds / 60 })].filter(Boolean).join(" · ");
+  const status = { work: S.working, remind: S.reminding, break: S.onBreak, idle: S.idle }[t.mode];
+  ball.title = [t.paused ? S.paused : "", status, t.round ? fmt(S.roundNumber, { n: t.round.number }) : "", t.mode === "idle" ? "" : fmt(S.actualDurations, { work: t.work_seconds / 60, rest: t.break_seconds / 60 })].filter(Boolean).join(" · ");
   ball.setAttribute("aria-label", `${num.textContent} · ${ball.title}`);
   ball.classList.toggle("paused", t.paused);
   ball.classList.toggle("break", t.mode === "break");
