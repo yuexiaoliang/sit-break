@@ -61,7 +61,7 @@ function chime() {
 function renderState(state: TimerState) {
   const round = state.round ? `${fmt(S.roundNumber, { n: state.round.number })} · ` : "";
   if (state.mode === "remind") {
-    document.getElementById("satText")!.textContent = round + fmt(S.satFor, { n: state.work_seconds / 60 });
+    document.getElementById("satText")!.textContent = (state.paused ? `${S.paused} · ` : "") + round + fmt(S.satFor, { n: state.work_seconds / 60 });
     if (tipText.textContent !== (state.tip ?? "")) tipText.textContent = state.tip ?? "";
     btnBreak.textContent = fmt(S.startBreak, { n: state.break_seconds / 60 });
     showRemindCard();

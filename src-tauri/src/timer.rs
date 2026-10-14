@@ -235,11 +235,21 @@ impl TimerApp {
             Action::TogglePause => self.info.paused = !self.info.paused,
             Action::Reset => {
                 if self.settings.use_schedule {
-                    if self.info.round.is_some()
-                        && self.current_period(now.local.as_ref()).is_some()
-                    {
-                        self.info.mode = Mode::Work;
-                        self.info.remaining = self.info.work_seconds;
+                    if let Some((schedule, period)) = self.current_period(now.local.as_ref()) {
+                        let date = &now.local.as_ref().unwrap().date;
+                        let same = self.info.round.as_ref().is_some_and(|round| {
+                            round.schedule_id == schedule.id
+                                && round.period_id == period.id
+                                && round.date == *date
+                        });
+                        if same {
+                            self.info.mode = Mode::Work;
+                            self.info.remaining = self.info.work_seconds;
+                        } else {
+                            self.start_scheduled_round(&schedule, &period, date, 1);
+                        }
+                    } else {
+                        self.set_idle();
                     }
                 } else {
                     self.start_simple_work();
