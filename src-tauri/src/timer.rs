@@ -102,15 +102,40 @@ struct SavedProgress {
     info: TimerInfo,
     previous_tip: Option<String>,
     restart_after_break: bool,
+    #[serde(default)]
+    schedule_idle_consumed: bool,
+    #[serde(default)]
+    last_idle_secs: Option<u64>,
+    #[serde(default)]
+    last_raw_idle_secs: Option<u64>,
+    #[serde(default)]
+    grace_remaining_secs: Option<u64>,
+}
+
+struct ResumedIdle {
+    effective_secs: u64,
+    last_raw_secs: Option<u64>,
+    expected_first_raw_secs: Option<u64>,
+    new_episode: bool,
 }
 
 impl SavedProgress {
     fn is_valid(&self) -> bool {
-        if self.version != 1 || self.saved_local.as_ref().is_some_and(|local| !crate::schedule::valid_date(&local.date) || local.seconds_of_day >= 86_400) {
+        if self.version != 1
+            || self
+                .grace_remaining_secs
+                .is_some_and(|seconds| seconds > 3600)
+            || self.saved_local.as_ref().is_some_and(|local| {
+                !crate::schedule::valid_date(&local.date) || local.seconds_of_day >= 86_400
+            })
+        {
             return false;
         }
         if self.info.mode == Mode::Idle {
-            return self.info.remaining == 0 && self.info.work_seconds == 0 && self.info.break_seconds == 0 && self.info.round.is_none();
+            return self.info.remaining == 0
+                && self.info.work_seconds == 0
+                && self.info.break_seconds == 0
+                && self.info.round.is_none();
         }
         let valid_lengths = (60..=14_400).contains(&self.info.work_seconds)
             && self.info.work_seconds.is_multiple_of(60)
@@ -123,9 +148,16 @@ impl SavedProgress {
             Mode::Idle => unreachable!(),
         };
         let valid_round = self.info.round.as_ref().is_none_or(|round| {
-            !round.schedule_id.is_empty() && !round.period_id.is_empty() && round.number > 0 && crate::schedule::valid_date(&round.date)
+            !round.schedule_id.is_empty()
+                && !round.period_id.is_empty()
+                && round.number > 0
+                && crate::schedule::valid_date(&round.date)
                 && self.saved_local.is_some()
-                && self.info.tip.as_ref().is_some_and(|tip| !tip.trim().is_empty())
+                && self
+                    .info
+                    .tip
+                    .as_ref()
+                    .is_some_and(|tip| !tip.trim().is_empty())
         });
         valid_lengths && valid_remaining && valid_round
     }
@@ -135,25 +167,59 @@ pub struct TimerApp {
     info: TimerInfo,
     settings: Settings,
     break_ended_at: Option<Duration>,
+    restored_grace_until: Option<Duration>,
     tip_rng: fastrand::Rng,
     previous_tip: Option<String>,
     // 日程已在本次持续离开中结束一轮，下一轮等待重新操作电脑。
     schedule_idle_consumed: bool,
     last_idle_secs: Option<u64>,
+    last_raw_idle_secs: Option<u64>,
+    resumed_idle: Option<ResumedIdle>,
     restart_after_break: bool,
 }
 
 impl TimerApp {
-    pub fn save_progress_to(&self, path: &std::path::Path, now: impl Into<TimerTime>) -> Result<(), String> {
+    pub fn save_progress_to(
+        &self,
+        path: &std::path::Path,
+        now: impl Into<TimerTime>,
+    ) -> Result<(), String> {
+        let now = now.into();
+        let grace_remaining_secs = self
+            .restored_grace_until
+            .map(|until| until.saturating_sub(now.monotonic).as_secs())
+            .or_else(|| {
+                self.break_ended_at.map(|ended| {
+                    self.info
+                        .break_seconds
+                        .saturating_sub(now.monotonic.saturating_sub(ended).as_secs())
+                })
+            })
+            .filter(|seconds| *seconds > 0);
         let progress = SavedProgress {
             version: 1,
-            saved_local: now.into().local,
+            saved_local: now.local,
             use_schedule: self.settings.use_schedule,
             info: self.info(),
             previous_tip: self.previous_tip.clone(),
             restart_after_break: self.restart_after_break,
+            schedule_idle_consumed: self.schedule_idle_consumed
+                && !self
+                    .resumed_idle
+                    .as_ref()
+                    .is_some_and(|idle| idle.new_episode),
+            last_idle_secs: self
+                .resumed_idle
+                .as_ref()
+                .map(|idle| idle.effective_secs)
+                .or(self.last_idle_secs),
+            last_raw_idle_secs: self.last_raw_idle_secs,
+            grace_remaining_secs,
         };
-        if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
             std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
         let text = serde_json::to_string_pretty(&progress).map_err(|error| error.to_string())?;
@@ -162,19 +228,83 @@ impl TimerApp {
         std::fs::rename(&temporary, path).map_err(|error| error.to_string())
     }
 
-    pub fn restore_from(settings: Settings, path: &std::path::Path, tip_rng: fastrand::Rng, now: impl Into<TimerTime>) -> Self {
+    pub fn restore_from(
+        settings: Settings,
+        path: &std::path::Path,
+        tip_rng: fastrand::Rng,
+        now: impl Into<TimerTime>,
+    ) -> Self {
         let now = now.into();
         let mut app = Self::new_at(settings, tip_rng, now.clone());
-        let Some(saved) = std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str::<SavedProgress>(&text).ok()) else { return app; };
-        if !saved.is_valid() { return app; }
+        let Some(saved) = std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<SavedProgress>(&text).ok())
+        else {
+            return app;
+        };
+        if !saved.is_valid() {
+            return app;
+        }
         // 过期的轮次会丢弃；手动暂停只由用户明确恢复。
         app.info.paused = saved.info.paused;
-        let same_day = saved.saved_local.as_ref().zip(now.local.as_ref()).is_some_and(|(saved, current)| saved.date == current.date);
-        let same_period = saved.info.round.as_ref().zip(app.info.round.as_ref()).is_some_and(|(saved, current)| saved.schedule_id == current.schedule_id && saved.period_id == current.period_id && saved.date == current.date);
-        if same_day && saved.use_schedule && app.settings.use_schedule && same_period {
+        let same_day = saved
+            .saved_local
+            .as_ref()
+            .zip(now.local.as_ref())
+            .is_some_and(|(saved, current)| saved.date == current.date);
+        let same_period = saved
+            .info
+            .round
+            .as_ref()
+            .zip(now.local.as_ref())
+            .is_some_and(|(round, local)| {
+                round.date == local.date
+                    && app.settings.schedules.iter().any(|schedule| {
+                        schedule.id == round.schedule_id
+                            && schedule.enabled
+                            && schedule.repeat.applies_on(&local.date)
+                            && schedule.periods.iter().any(|period| {
+                                period.id == round.period_id
+                                    && minute_of_day(&period.start, false)
+                                        .zip(minute_of_day(&period.end, true))
+                                        .is_some_and(|(start, end)| {
+                                            start * 60 <= local.seconds_of_day
+                                                && local.seconds_of_day < end * 60
+                                        })
+                            })
+                    })
+            });
+        let same_selection = saved.use_schedule == app.settings.use_schedule;
+        if same_day
+            && same_selection
+            && same_period
+            && (saved.use_schedule || saved.info.mode == Mode::Break)
+        {
+            let closed_secs = saved
+                .saved_local
+                .as_ref()
+                .zip(now.local.as_ref())
+                .map(|(saved, current)| {
+                    u64::from(current.seconds_of_day.saturating_sub(saved.seconds_of_day))
+                })
+                .unwrap_or(0);
             app.info = saved.info;
             app.previous_tip = saved.previous_tip;
             app.restart_after_break = saved.restart_after_break;
+            app.schedule_idle_consumed = saved.schedule_idle_consumed;
+            app.last_idle_secs = saved.last_idle_secs;
+            app.last_raw_idle_secs = saved.last_raw_idle_secs;
+            app.restored_grace_until = saved
+                .grace_remaining_secs
+                .map(|seconds| now.monotonic.saturating_add(Duration::from_secs(seconds)));
+            app.resumed_idle = Some(ResumedIdle {
+                effective_secs: saved.last_idle_secs.unwrap_or(0),
+                last_raw_secs: None,
+                expected_first_raw_secs: saved
+                    .last_raw_idle_secs
+                    .map(|raw| raw.saturating_add(closed_secs)),
+                new_episode: false,
+            });
         }
         app
     }
@@ -200,10 +330,13 @@ impl TimerApp {
             },
             settings,
             break_ended_at: None,
+            restored_grace_until: None,
             tip_rng,
             previous_tip: None,
             schedule_idle_consumed: false,
             last_idle_secs: None,
+            last_raw_idle_secs: None,
+            resumed_idle: None,
             restart_after_break: false,
         };
         let now = now.into();
@@ -224,6 +357,16 @@ impl TimerApp {
 
     pub fn dispatch(&mut self, action: Action, now: impl Into<TimerTime>) -> TimerOutput {
         let now = now.into();
+        let action = match action {
+            Action::Tick {
+                elapsed_secs,
+                idle_secs,
+            } => Action::Tick {
+                elapsed_secs,
+                idle_secs: self.normalize_idle_input(idle_secs, elapsed_secs),
+            },
+            other => other,
+        };
         let mut output = TimerOutput::default();
         // 无效保存优先返回，不让同一调用里的时间输入改变运行进度。
         if let Action::SaveSettings(settings) = &action {
@@ -266,10 +409,13 @@ impl TimerApp {
                     match self.info.mode {
                         Mode::Idle => {}
                         Mode::Work => {
-                            let in_grace = self.break_ended_at.is_some_and(|ended| {
-                                now.monotonic.saturating_sub(ended)
-                                    < Duration::from_secs(idle_limit)
-                            });
+                            let in_grace = self
+                                .restored_grace_until
+                                .is_some_and(|until| now.monotonic < until)
+                                || self.break_ended_at.is_some_and(|ended| {
+                                    now.monotonic.saturating_sub(ended)
+                                        < Duration::from_secs(idle_limit)
+                                });
                             let consumed_away = self.settings.use_schedule
                                 && self.settings.idle_reset
                                 && self.schedule_idle_consumed;
@@ -423,6 +569,7 @@ impl TimerApp {
                         self.start_simple_work();
                     }
                     self.break_ended_at = None;
+                    self.restored_grace_until = None;
                     output.update_windows = true;
                 } else if self.settings.use_schedule {
                     let before = self.info.mode;
@@ -448,6 +595,52 @@ impl TimerApp {
 
     fn postpone_seconds(&self) -> u64 {
         POSTPONE_SECS.min(self.info.work_seconds).max(60)
+    }
+
+    /// 恢复后仅累计应用再次运行期间的离开秒数；关闭区间不进入阈值。
+    fn normalize_idle_input(&mut self, raw_idle_secs: u64, elapsed_secs: u64) -> u64 {
+        self.last_raw_idle_secs = Some(raw_idle_secs);
+        let Some(mut resumed) = self.resumed_idle.take() else {
+            return raw_idle_secs;
+        };
+        if let Some(previous_raw) = resumed.last_raw_secs {
+            if raw_idle_secs == 0 || raw_idle_secs < previous_raw {
+                if !self.info.paused {
+                    self.schedule_idle_consumed = false;
+                    self.last_idle_secs = None;
+                    return raw_idle_secs;
+                }
+                resumed.effective_secs = 0;
+                resumed.new_episode = true;
+            } else if !self.info.paused {
+                resumed.effective_secs = resumed
+                    .effective_secs
+                    .saturating_add(raw_idle_secs - previous_raw);
+            }
+        } else {
+            let input_while_closed = raw_idle_secs == 0
+                || resumed
+                    .expected_first_raw_secs
+                    .is_some_and(|expected| raw_idle_secs < expected.saturating_sub(2));
+            if input_while_closed {
+                resumed.effective_secs = 0;
+                resumed.new_episode = true;
+            }
+            if !self.info.paused {
+                resumed.effective_secs = resumed
+                    .effective_secs
+                    .saturating_add(elapsed_secs.min(raw_idle_secs));
+            }
+        }
+        if resumed.new_episode && !self.info.paused {
+            self.schedule_idle_consumed = false;
+            self.last_idle_secs = None;
+            resumed.new_episode = false;
+        }
+        resumed.last_raw_secs = Some(raw_idle_secs);
+        let effective = resumed.effective_secs;
+        self.resumed_idle = Some(resumed);
+        effective
     }
 
     fn current_period(&self, local: Option<&LocalTime>) -> Option<(Schedule, Period)> {
@@ -589,5 +782,6 @@ impl TimerApp {
             self.start_simple_work();
         }
         self.break_ended_at = Some(now.monotonic);
+        self.restored_grace_until = None;
     }
 }
