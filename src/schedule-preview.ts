@@ -57,7 +57,10 @@ export function initSchedulePreview(getDraft: () => unknown, getStrings: () => R
       const phase = current.state.paused ? S.paused : current.state.mode === "break" ? S.onBreak : current.state.mode === "remind" ? S.reminding : S.working;
       active.append(element("h3", `${S.previewCurrentRound} · ${current.state.round ? fmt(S.roundNumber, { n: current.state.round.number }) : S.simpleTitle} · ${phase}`));
       active.append(element("p", rhythm(current.state.work_seconds, current.state.break_seconds), "muted"));
-      active.append(element("p", current.break_start === null ? S.previewNoBreakBeforeEnd : fmt(S.previewBreakTimes, { start: clock(current.break_start), end: clock(current.break_end) }), "preview-time"));
+      const times = current.state.mode === "break"
+        ? fmt(S.previewBreakEnds, { end: clock(current.break_end) })
+        : current.break_start === null ? S.previewNoBreakBeforeEnd : fmt(S.previewBreakTimes, { start: clock(current.break_start), end: clock(current.break_end) });
+      active.append(element("p", times, "preview-time"));
       if (current.state.mode === "remind") active.append(element("p", S.previewWaiting, "muted"));
       active.append(element("p", current.state.tip ?? S.previewRandomTip, "preview-content-text"));
       content.append(active);

@@ -116,7 +116,8 @@ pub(crate) fn build(
             let break_start = match info.mode {
                 Mode::Work => Some(now + info.remaining as i64),
                 Mode::Remind => Some(now),
-                Mode::Break => Some(now - info.break_seconds.saturating_sub(info.remaining) as i64),
+                // 快照不记录实际开始时刻或暂停历程，只预计剩余休息的结束。
+                Mode::Break => None,
                 Mode::Idle => None,
             }
             .filter(|start| info.mode == Mode::Break || actual_end.is_none_or(|end| *start < end));

@@ -106,6 +106,7 @@ fn preview_keeps_current_snapshot_and_moves_future_draft_times_with_waiting_and_
     assert_eq!(preview.schedules[0].periods[0].rounds[0].work_start, 36300);
     app.dispatch(Action::StartBreak, at(9, 55));
     let preview = app.preview(&draft, at(9, 55)).unwrap();
+    assert_eq!(preview.current.as_ref().unwrap().break_start, None);
     assert_eq!(preview.current.unwrap().state.mode, Mode::Break);
     assert_eq!(preview.schedules[0].periods[0].rounds[0].work_start, 36300);
     app.dispatch(
