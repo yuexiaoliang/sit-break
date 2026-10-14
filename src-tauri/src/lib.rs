@@ -25,6 +25,8 @@ mod recurrence_tests;
 pub mod schedule;
 #[cfg(test)]
 mod sleep_tests;
+#[cfg(test)]
+mod startup_tests;
 pub mod timer;
 #[cfg(test)]
 mod timer_tests;
@@ -161,9 +163,85 @@ fn choose_tip(settings: &Settings, previous: Option<&str>, rng: &mut fastrand::R
 
 struct TimerClock(Instant);
 
+#[derive(Default)]
 struct PanelState {
     toggled_at: Mutex<Option<Instant>>,
     auto_hidden_at: Mutex<Option<Instant>>,
+    opening: Mutex<PanelOpening>,
+}
+
+#[derive(Default)]
+struct PanelOpening {
+    ready: bool,
+    pending: Option<Option<PhysicalPosition<f64>>>,
+}
+
+pub(crate) fn panel_builder<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
+    // 插件在窗口 setup 之前初始化，打开入口所需状态必须先注册。
+    builder.manage(PanelState::default())
+}
+
+fn defer_panel_open<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    cursor: Option<PhysicalPosition<f64>>,
+) -> bool {
+    let state = app.state::<PanelState>();
+    let mut opening = state.opening.lock().unwrap();
+    if opening.ready {
+        false
+    } else {
+        // 启动期间的多次打开合并为一次；None 光标同样表示有效打开请求。
+        opening.pending = Some(cursor);
+        true
+    }
+}
+
+fn show_panel<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    cursor: Option<PhysicalPosition<f64>>,
+) -> tauri::Result<()> {
+    let panel = app
+        .get_webview_window("panel")
+        .ok_or(tauri::Error::WindowNotFound)?;
+    *app.state::<PanelState>().toggled_at.lock().unwrap() = Some(Instant::now());
+    match cursor {
+        Some(c) => position_near_tray(&panel, c),
+        None => position_panel_default(&panel),
+    }
+    panel.show()?;
+    panel.set_focus()
+}
+
+/// 打开请求在初始化期间返回 false，窗口就绪后返回 true。
+pub(crate) fn request_panel_open<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    cursor: Option<PhysicalPosition<f64>>,
+) -> tauri::Result<bool> {
+    if defer_panel_open(app, cursor) {
+        return Ok(false);
+    }
+    // 再次启动表示展示已有实例，多次请求不会把已经显示的面板收起。
+    show_panel(app, cursor)?;
+    Ok(true)
+}
+
+/// 窗口和事件入口准备完成后，交付启动期间收到的打开请求。
+pub(crate) fn finish_panel_setup<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<bool> {
+    if app.get_webview_window("panel").is_none() {
+        return Err(tauri::Error::WindowNotFound);
+    }
+    let pending = {
+        let state = app.state::<PanelState>();
+        let mut opening = state.opening.lock().unwrap();
+        opening.ready = true;
+        opening.pending.take()
+    };
+    if let Some(cursor) = pending {
+        show_panel(app, cursor)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 fn settings_path(app: &AppHandle) -> Option<std::path::PathBuf> {
@@ -294,7 +372,7 @@ fn clamp_axis(candidate: i32, origin: i32, available: u32, window: u32, margin: 
     )
 }
 
-fn position_panel_default(window: &WebviewWindow) {
+fn position_panel_default<R: tauri::Runtime>(window: &WebviewWindow<R>) {
     let Ok(Some(monitor)) = window.current_monitor() else {
         return;
     };
@@ -312,7 +390,10 @@ fn position_panel_default(window: &WebviewWindow) {
     let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 
-fn toggle_panel(app: &AppHandle, cursor: Option<PhysicalPosition<f64>>) {
+fn toggle_panel<R: tauri::Runtime>(app: &AppHandle<R>, cursor: Option<PhysicalPosition<f64>>) {
+    if defer_panel_open(app, cursor) {
+        return;
+    }
     let panel_state = app.state::<PanelState>();
     *panel_state.toggled_at.lock().unwrap() = Some(Instant::now());
     // 面板显示时点击托盘会先触发失焦自动收起，紧接着才是 Click 事件；
@@ -339,7 +420,7 @@ fn toggle_panel(app: &AppHandle, cursor: Option<PhysicalPosition<f64>>) {
     }
 }
 
-fn position_near_tray(window: &WebviewWindow, cursor: PhysicalPosition<f64>) {
+fn position_near_tray<R: tauri::Runtime>(window: &WebviewWindow<R>, cursor: PhysicalPosition<f64>) {
     let ws = window.outer_size().unwrap_or_default();
     let monitor = window
         .app_handle()
@@ -784,10 +865,12 @@ fn owned_window_icon(image: &tauri::image::Image<'_>) -> tauri::image::Image<'st
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let (power_sender, power_receiver) = mpsc::channel();
-    let app = tauri::Builder::default()
+    let app = panel_builder(tauri::Builder::default())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // 已有实例在运行：把它唤醒（弹出面板），本进程立即退出
-            toggle_panel(app, None);
+            if let Err(error) = request_panel_open(app, None) {
+                eprintln!("error opening existing application: {error}");
+            }
         }))
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -936,11 +1019,6 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             platform::configure_menu_bar(&_tray)?;
 
-            handle.manage(PanelState {
-                toggled_at: Mutex::new(None),
-                auto_hidden_at: Mutex::new(None),
-            });
-
             // ---- 窗口事件：关闭一律隐藏 ----
             reminder.on_window_event({
                 let rw = reminder.clone();
@@ -1007,6 +1085,7 @@ pub fn run() {
                 position_bottom_right(&widget);
             }
             update_windows(&handle);
+            finish_panel_setup(&handle)?;
             run_timer(handle.clone(), power_receiver);
             Ok(())
         })
