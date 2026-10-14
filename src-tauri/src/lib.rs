@@ -13,6 +13,8 @@ use tauri_plugin_autostart::ManagerExt;
 
 #[cfg(test)]
 mod editing_tests;
+#[cfg(test)]
+mod recovery_tests;
 mod platform;
 #[cfg(test)]
 mod recurrence_tests;

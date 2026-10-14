@@ -1,12 +1,12 @@
 //! 计时应用入口。调用方提供本地日历、经过时间和用户操作，并执行返回的系统效果。
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::schedule::{minute_of_day, Period, Schedule, ValidationError};
 use crate::{choose_tip, Settings, POSTPONE_SECS};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalTime {
     pub date: String,
     pub seconds_of_day: u32,
@@ -27,7 +27,7 @@ impl From<Duration> for TimerTime {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
     Idle,
@@ -36,7 +36,7 @@ pub enum Mode {
     Break,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RoundInfo {
     pub schedule_id: String,
     pub period_id: String,
@@ -44,7 +44,7 @@ pub struct RoundInfo {
     pub number: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TimerInfo {
     pub mode: Mode,
     pub remaining: u64,
@@ -94,6 +94,43 @@ pub enum Action {
     SaveSettings(Settings),
 }
 
+#[derive(Serialize, Deserialize)]
+struct SavedProgress {
+    version: u32,
+    saved_local: Option<LocalTime>,
+    use_schedule: bool,
+    info: TimerInfo,
+    previous_tip: Option<String>,
+    restart_after_break: bool,
+}
+
+impl SavedProgress {
+    fn is_valid(&self) -> bool {
+        if self.version != 1 || self.saved_local.as_ref().is_some_and(|local| !crate::schedule::valid_date(&local.date) || local.seconds_of_day >= 86_400) {
+            return false;
+        }
+        if self.info.mode == Mode::Idle {
+            return self.info.remaining == 0 && self.info.work_seconds == 0 && self.info.break_seconds == 0 && self.info.round.is_none();
+        }
+        let valid_lengths = (60..=14_400).contains(&self.info.work_seconds)
+            && self.info.work_seconds.is_multiple_of(60)
+            && (60..=3600).contains(&self.info.break_seconds)
+            && self.info.break_seconds.is_multiple_of(60);
+        let valid_remaining = match self.info.mode {
+            Mode::Work => (1..=self.info.work_seconds).contains(&self.info.remaining),
+            Mode::Remind => self.info.remaining == 0,
+            Mode::Break => (1..=self.info.break_seconds).contains(&self.info.remaining),
+            Mode::Idle => unreachable!(),
+        };
+        let valid_round = self.info.round.as_ref().is_none_or(|round| {
+            !round.schedule_id.is_empty() && !round.period_id.is_empty() && round.number > 0 && crate::schedule::valid_date(&round.date)
+                && self.saved_local.is_some()
+                && self.info.tip.as_ref().is_some_and(|tip| !tip.trim().is_empty())
+        });
+        valid_lengths && valid_remaining && valid_round
+    }
+}
+
 pub struct TimerApp {
     info: TimerInfo,
     settings: Settings,
@@ -104,6 +141,41 @@ pub struct TimerApp {
 }
 
 impl TimerApp {
+    pub fn save_progress_to(&self, path: &std::path::Path, now: impl Into<TimerTime>) -> Result<(), String> {
+        let progress = SavedProgress {
+            version: 1,
+            saved_local: now.into().local,
+            use_schedule: self.settings.use_schedule,
+            info: self.info(),
+            previous_tip: self.previous_tip.clone(),
+            restart_after_break: self.restart_after_break,
+        };
+        if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        let text = serde_json::to_string_pretty(&progress).map_err(|error| error.to_string())?;
+        let temporary = path.with_extension("tmp");
+        std::fs::write(&temporary, text).map_err(|error| error.to_string())?;
+        std::fs::rename(&temporary, path).map_err(|error| error.to_string())
+    }
+
+    pub fn restore_from(settings: Settings, path: &std::path::Path, tip_rng: fastrand::Rng, now: impl Into<TimerTime>) -> Self {
+        let now = now.into();
+        let mut app = Self::new_at(settings, tip_rng, now.clone());
+        let Some(saved) = std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str::<SavedProgress>(&text).ok()) else { return app; };
+        if !saved.is_valid() { return app; }
+        // 过期的轮次会丢弃；手动暂停只由用户明确恢复。
+        app.info.paused = saved.info.paused;
+        let same_day = saved.saved_local.as_ref().zip(now.local.as_ref()).is_some_and(|(saved, current)| saved.date == current.date);
+        let same_period = saved.info.round.as_ref().zip(app.info.round.as_ref()).is_some_and(|(saved, current)| saved.schedule_id == current.schedule_id && saved.period_id == current.period_id && saved.date == current.date);
+        if same_day && saved.use_schedule && app.settings.use_schedule && same_period {
+            app.info = saved.info;
+            app.previous_tip = saved.previous_tip;
+            app.restart_after_break = saved.restart_after_break;
+        }
+        app
+    }
+
     pub fn load_from(path: &std::path::Path, tip_rng: fastrand::Rng) -> Self {
         Self::new(Settings::load_from(path), tip_rng)
     }
