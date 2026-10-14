@@ -1,11 +1,22 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { currentLang, applyStatic, initLang } from "./i18n";
+import { STR, applyStatic, currentLang, fmt, type Lang } from "./i18n";
+
+interface ScheduleDraft {
+  id: string;
+  name: string;
+  enabled: boolean;
+  repeat: { kind: string; date?: string; [key: string]: unknown };
+  periods: unknown[];
+  [key: string]: unknown;
+}
 
 interface Settings {
   work_minutes: number;
   break_minutes: number;
+  use_schedule: boolean;
+  schedules: ScheduleDraft[];
   sound: boolean;
   show_widget: boolean;
   autostart: boolean;
@@ -15,140 +26,196 @@ interface Settings {
   tips: string[];
 }
 
+const form = document.getElementById("settingsForm") as HTMLFormElement;
 const workMin = document.getElementById("workMin") as HTMLInputElement;
 const breakMin = document.getElementById("breakMin") as HTMLInputElement;
 const widgetSize = document.getElementById("widgetSize") as HTMLInputElement;
 const tipsList = document.getElementById("tipsList") as HTMLTextAreaElement;
-const langBtn = document.getElementById("langBtn") as HTMLButtonElement;
-const langLabel = document.getElementById("langLabel")!;
-const langMenu = document.getElementById("langMenu") as HTMLElement;
-const langOpts = [...langMenu.querySelectorAll<HTMLButtonElement>(".selopt")];
+const language = document.getElementById("language") as HTMLSelectElement;
 const btnSave = document.getElementById("btnSave") as HTMLButtonElement;
-const toast = document.getElementById("toast")!;
-
+const saveStatus = document.getElementById("saveStatus")!;
+const scheduleList = document.getElementById("scheduleList")!;
 const switches = {
+  use_schedule: document.getElementById("swSchedule")!,
   sound: document.getElementById("swSound")!,
   show_widget: document.getElementById("swWidget")!,
   autostart: document.getElementById("swAuto")!,
   idle_reset: document.getElementById("swIdleReset")!,
-} as Record<string, HTMLElement>;
+};
+let stored: Settings;
+let schedules: ScheduleDraft[] = [];
+let S = STR.zh;
 
-function setSwitch(key: string, on: boolean) {
-  switches[key].classList.toggle("on", on);
+function isOn(key: keyof typeof switches) {
+  return switches[key].getAttribute("aria-checked") === "true";
 }
 
-// ---- 自定义语言下拉框 ----
-let langValue = "system";
-
-function setLang(value: string) {
-  langValue = value;
-  const opt = langOpts.find((o) => o.dataset.value === value);
-  langLabel.textContent = opt?.textContent ?? value;
-  langOpts.forEach((o) => o.classList.toggle("active", o === opt));
+function setSwitch(key: keyof typeof switches, on: boolean) {
+  switches[key].setAttribute("aria-checked", String(on));
 }
 
-function closeLangMenu() {
-  langMenu.hidden = true;
-  langBtn.classList.remove("open");
+function renderMode() {
+  const scheduled = isOn("use_schedule");
+  document.getElementById("simpleSettings")!.hidden = scheduled;
+  document.getElementById("scheduleSettings")!.hidden = !scheduled;
+  // 隐藏的简单时长仍保留草稿，不参与当前可见表单的原生校验。
+  workMin.disabled = scheduled;
+  breakMin.disabled = scheduled;
+  document.querySelectorAll<HTMLInputElement>("#scheduleSettings input").forEach((input) => { input.disabled = !scheduled; });
+  document.getElementById("pageTitle")!.textContent = scheduled ? S.scheduleTitle : S.simpleTitle;
+  document.getElementById("pageDescription")!.textContent = scheduled ? S.scheduleDescription : S.simpleDescription;
+  document.getElementById("modeDescription")!.textContent = scheduled
+    ? fmt(S.scheduleModeDescription, { work: workMin.value, rest: breakMin.value })
+    : S.scheduleOptionalDescription;
 }
 
-langBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  const open = langMenu.hidden === true;
-  langMenu.hidden = !open;
-  langBtn.classList.toggle("open", open);
-});
-langOpts.forEach((o) =>
-  o.addEventListener("click", () => {
-    setLang(o.dataset.value!);
-    closeLangMenu();
-  })
-);
-document.addEventListener("click", closeLangMenu);
+function renderDurations() {
+  document.querySelectorAll<HTMLElement>("[data-duration]").forEach((group) => {
+    const input = document.getElementById(group.dataset.duration!) as HTMLInputElement;
+    group.querySelectorAll<HTMLElement>("[data-minutes]").forEach((button) => {
+      const selected = button.dataset.minutes === input.value;
+      button.classList.toggle("selected", selected);
+      button.setAttribute("aria-pressed", String(selected));
+    });
+  });
+  document.getElementById("simpleSummary")!.textContent = fmt(S.simpleSummary, { work: workMin.value, rest: breakMin.value });
+}
+
+function localDate() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function renderSchedules() {
+  scheduleList.replaceChildren();
+  document.getElementById("emptySchedules")!.hidden = schedules.length > 0;
+  for (const schedule of schedules) {
+    const card = document.createElement("article");
+    card.className = "schedule-card";
+    card.innerHTML = `<div class="schedule-card-header"><label><span data-i18n="scheduleName"></span><input type="text" maxlength="100" /></label><button type="button" class="switch" role="switch"></button></div><label class="date-label"><span data-i18n="onceDate"></span><input type="date" required /></label><div class="empty-periods"><h2 data-i18n="emptyPeriods"></h2><p data-i18n="emptyPeriodsDescription"></p></div><button type="button" class="secondary-button" data-i18n="removeSchedule"></button>`;
+    const name = card.querySelector<HTMLInputElement>("input[type=text]")!;
+    name.value = schedule.name;
+    name.addEventListener("input", () => { schedule.name = name.value; });
+    const enabled = card.querySelector<HTMLButtonElement>(".switch")!;
+    enabled.setAttribute("aria-checked", String(schedule.enabled));
+    enabled.setAttribute("aria-label", S.enableSchedule);
+    enabled.addEventListener("click", () => {
+      schedule.enabled = !schedule.enabled;
+      enabled.setAttribute("aria-checked", String(schedule.enabled));
+    });
+    const date = card.querySelector<HTMLInputElement>("input[type=date]")!;
+    date.value = schedule.repeat?.date ?? "";
+    date.addEventListener("input", () => {
+      schedule.repeat = { ...schedule.repeat, kind: "once", date: date.value };
+    });
+    card.querySelector<HTMLButtonElement>(".secondary-button")!.addEventListener("click", () => {
+      schedules = schedules.filter((item) => item.id !== schedule.id);
+      renderSchedules();
+      applyStatic(activeLang());
+    });
+    scheduleList.appendChild(card);
+  }
+  applyStatic(activeLang());
+  renderMode();
+}
+
+function activeLang(): Lang { return S === STR.en ? "en" : "zh"; }
+
+async function translate() {
+  const lang = await currentLang();
+  S = STR[lang];
+  applyStatic(lang);
+  renderMode();
+  renderDurations();
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  document.querySelectorAll<HTMLElement>("[data-i18n-label]").forEach((el) => {
+    el.setAttribute("aria-label", S[el.dataset.i18nLabel!]);
+  });
+  scheduleList.querySelectorAll<HTMLElement>(".switch").forEach((el) => {
+    el.setAttribute("aria-label", S.enableSchedule);
+  });
+}
 
 async function load() {
-  const s = await invoke<Settings>("get_settings");
-  workMin.value = String(s.work_minutes);
-  breakMin.value = String(s.break_minutes);
-  widgetSize.value = String(Math.min(140, Math.max(40, s.widget_size)));
-  tipsList.value = s.tips.join("\n");
-  setLang(["zh", "en"].includes(s.language) ? s.language : "system");
-  setSwitch("sound", s.sound);
-  setSwitch("show_widget", s.show_widget);
-  setSwitch("autostart", s.autostart);
-  setSwitch("idle_reset", s.idle_reset);
+  stored = await invoke<Settings>("get_settings");
+  schedules = structuredClone(stored.schedules ?? []);
+  workMin.value = String(stored.work_minutes);
+  breakMin.value = String(stored.break_minutes);
+  widgetSize.value = String(stored.widget_size);
+  tipsList.value = stored.tips.join("\n");
+  language.value = ["zh", "en"].includes(stored.language) ? stored.language : "system";
+  for (const key of Object.keys(switches) as (keyof typeof switches)[]) setSwitch(key, Boolean(stored[key]));
+  saveStatus.textContent = "";
+  await translate();
+  renderSchedules();
 }
 
 function current(): Settings {
+  const duration = (input: HTMLInputElement, saved: number, max: number) => {
+    const value = Number(input.value);
+    return Number.isInteger(value) && value >= 1 && value <= max ? value : saved;
+  };
   return {
-    work_minutes: Math.min(240, Math.max(1, Number(workMin.value) || 45)),
-    break_minutes: Math.min(60, Math.max(1, Number(breakMin.value) || 5)),
-    widget_size: Math.min(140, Math.max(40, Number(widgetSize.value) || 64)),
-    sound: switches.sound.classList.contains("on"),
-    show_widget: switches.show_widget.classList.contains("on"),
-    autostart: switches.autostart.classList.contains("on"),
-    idle_reset: switches.idle_reset.classList.contains("on"),
-    language: langValue,
-    tips: tipsList.value
-      .split("\n")
-      .map((t) => t.trim())
-      .filter(Boolean),
+    ...stored,
+    work_minutes: duration(workMin, stored.work_minutes, 240),
+    break_minutes: duration(breakMin, stored.break_minutes, 60),
+    use_schedule: isOn("use_schedule"),
+    schedules,
+    widget_size: Math.min(140, Math.max(40, Math.trunc(Number(widgetSize.value) || 64))),
+    sound: isOn("sound"), show_widget: isOn("show_widget"),
+    autostart: isOn("autostart"), idle_reset: isOn("idle_reset"),
+    language: language.value,
+    tips: tipsList.value.split("\n").map((tip) => tip.trim()).filter(Boolean),
   };
 }
 
-for (const el of Object.values(switches)) {
-  el.addEventListener("click", () => el.classList.toggle("on"));
+for (const key of Object.keys(switches) as (keyof typeof switches)[]) {
+  switches[key].addEventListener("click", () => {
+    setSwitch(key, !isOn(key));
+    if (key === "use_schedule") renderMode();
+  });
 }
+document.querySelectorAll<HTMLElement>("[data-duration]").forEach((group) => {
+  const input = document.getElementById(group.dataset.duration!) as HTMLInputElement;
+  group.querySelectorAll<HTMLElement>("[data-minutes]").forEach((button) => {
+    button.addEventListener("click", () => { input.value = button.dataset.minutes!; renderDurations(); });
+  });
+  input.addEventListener("input", renderDurations);
+});
+document.getElementById("addSchedule")!.addEventListener("click", () => {
+  schedules.push({ id: crypto.randomUUID(), name: S.newSchedule, enabled: true, repeat: { kind: "once", date: localDate() }, periods: [] });
+  renderSchedules();
+  scheduleList.lastElementChild?.querySelector<HTMLInputElement>("input[type=text]")?.focus();
+});
 
-btnSave.addEventListener("click", async () => {
+form.addEventListener("submit", async (event) => {
+  event.preventDefault();
   btnSave.disabled = true;
+  saveStatus.classList.remove("error");
   try {
     await invoke("save_settings", { settings: current() });
-    await load(); // 语言切换后文案与默认小字可能已变，重新加载
-    applyStatic(await currentLang()); // 保存后立即刷新本页文案
-    toast.classList.add("show");
-    setTimeout(() => {
-      toast.classList.remove("show");
-      invoke("hide_settings");
-    }, 600);
+    await load();
+    saveStatus.textContent = S.saved;
+  } catch (error) {
+    saveStatus.classList.add("error");
+    saveStatus.textContent = `${S.saveFailed} ${String(error)}`;
   } finally {
     btnSave.disabled = false;
   }
 });
 
 document.getElementById("btnClose")!.addEventListener("click", () => invoke("hide_settings"));
-window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") {
-    if (!langMenu.hidden) {
-      closeLangMenu();
-      return;
-    }
-    invoke("hide_settings");
-  }
-});
-window.addEventListener("contextmenu", (e) => e.preventDefault());
-
-// 整个窗口都可拖动（输入框、按钮、开关、下拉框除外）
+window.addEventListener("keydown", (event) => { if (event.key === "Escape") invoke("hide_settings"); });
+window.addEventListener("contextmenu", (event) => event.preventDefault());
 const win = getCurrentWindow();
-document.addEventListener("mousedown", (e) => {
-  if (e.button !== 0) return;
-  const t = e.target as HTMLElement;
-  if (t.closest("button, input, textarea, select, .switch, .selwrap")) return;
-  e.preventDefault();
+document.querySelector(".shead")!.addEventListener("mousedown", (event) => {
+  const mouse = event as MouseEvent;
+  if (mouse.button !== 0 || (mouse.target as HTMLElement).closest("button")) return;
+  mouse.preventDefault();
   win.startDragging();
 });
 
 const platform = await invoke<string>("get_platform");
-document.querySelectorAll<HTMLElement>("[data-widget-setting]").forEach((row) => {
-  row.hidden = platform === "macos";
-});
-
+document.querySelectorAll<HTMLElement>("[data-widget-setting]").forEach((row) => { row.hidden = platform === "macos"; });
 await load();
-listen("settings_open", async () => {
-  await load();
-  applyStatic(await currentLang());
-});
-
-// 语言初始化：静态文案 + 语言下拉框
-await initLang();
-setLang(langValue); // 文案语言可能已变，同步选中项的显示文本
+listen("settings_open", load);

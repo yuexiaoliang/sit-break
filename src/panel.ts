@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { STR, initLang, fmt } from "./i18n";
 
 interface Tick {
-  mode: "work" | "remind" | "break";
+  mode: "work" | "remind" | "break" | "idle";
   remaining: number;
   paused: boolean;
 }
@@ -33,17 +33,28 @@ const ivCur = document.getElementById("ivCur")!;
 const bkCur = document.getElementById("bkCur")!;
 
 let S = STR.zh;
+let lastTick: Tick | undefined;
 
 function fmtTime(secs: number): string {
   return `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
 }
 
 function renderTick(t: Tick) {
-  ptime.textContent = fmtTime(t.remaining);
+  lastTick = t;
+  ptime.textContent = t.mode === "idle" ? "—" : fmtTime(t.remaining);
+  pdot.classList.toggle("idle", t.mode === "idle");
+  document.querySelector(".pcard")!.classList.toggle("idle", t.mode === "idle");
+  const idleStatus = document.getElementById("idleStatus")!;
+  idleStatus.hidden = t.mode !== "idle";
+  idleStatus.textContent = S.idleStatus;
+  pPauseText.textContent = t.paused ? S.resume : S.pause;
   if (t.paused) {
     pmode.textContent = S.paused;
     pdot.classList.add("paused");
     pPauseText.textContent = S.resume;
+  } else if (t.mode === "idle") {
+    pmode.textContent = S.idle;
+    pdot.classList.remove("paused");
   } else if (t.mode === "break") {
     pmode.textContent = S.onBreak;
     pdot.classList.remove("paused");
@@ -109,8 +120,10 @@ window.addEventListener("contextmenu", (e) => e.preventDefault());
 (async () => {
   S = STR[await initLang()];
   await refresh();
+  if (lastTick) renderTick(lastTick);
 })();
 listen("settings_changed", async () => {
   S = STR[await initLang()];
   await refresh();
+  if (lastTick) renderTick(lastTick);
 });
