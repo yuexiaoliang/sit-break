@@ -107,7 +107,7 @@ fn scheduled_timer(idle_reset: bool, hour: u32, minute: u32) -> TimerApp {
         idle_reset,
         schedules: serde_json::from_value(serde_json::json!([{
             "id":"day", "name":"一天", "enabled":true,
-            "repeat":{"kind":"weekly","weekdays":[0,1,2,3,4,5,6]},
+            "repeat":{"kind":"weekly","weekdays":[1,2,3,4,5,6,7]},
             "periods":[
                 {"id":"am","start":"09:00","end":"12:00","work_minutes":50,"break_minutes":10,
                  "overrides":[{"round":1,"content":"爬楼"}]},
@@ -117,6 +117,10 @@ fn scheduled_timer(idle_reset: bool, hour: u32, minute: u32) -> TimerApp {
         .unwrap(),
         ..Settings::default()
     };
+    assert!(
+        settings.validate().is_empty(),
+        "正常睡眠样例应能通过设置校验"
+    );
     TimerApp::new_at(
         settings,
         fastrand::Rng::with_seed(42),

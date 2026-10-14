@@ -97,7 +97,7 @@ export function initSchedulePreview(getDraft: () => unknown, getStrings: () => R
         }
         section.append(card);
         for (const gap of schedule.gaps.filter((gap) => clock(gap.start) === period.end)) {
-          section.append(element("p", `${clock(gap.start)}–${clock(gap.end)} · ${S.quietPeriod}`, "preview-gap"));
+          section.append(element("p", fmt(S.quietPeriod, { start: clock(gap.start), end: clock(gap.end) }), "preview-gap"));
         }
       }
       content.append(section);
