@@ -387,13 +387,20 @@ impl TimerApp {
                 elapsed_secs,
                 idle_secs: self.normalize_idle_input(
                     idle_secs,
-                    if self.suspended_idle.is_some() { 0 } else { elapsed_secs },
+                    if self.suspended_idle.is_some() {
+                        0
+                    } else {
+                        elapsed_secs
+                    },
                 ),
             },
             Action::Suspend { idle_secs } => Action::Suspend {
                 idle_secs: self.normalize_idle_input(idle_secs, 0),
             },
-            Action::Resume { elapsed_secs, idle_secs } => Action::Resume {
+            Action::Resume {
+                elapsed_secs,
+                idle_secs,
+            } => Action::Resume {
                 elapsed_secs,
                 idle_secs: if self.suspended_idle.is_some() {
                     self.normalize_idle_input(idle_secs, 0)

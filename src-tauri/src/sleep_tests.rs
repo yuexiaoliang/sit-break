@@ -401,3 +401,95 @@ fn a_sleeping_break_can_continue_into_lunch_and_finishes_at_the_wake_period() {
         }
     }
 }
+
+#[test]
+fn closing_a_break_preserves_remaining_time_while_sleeping_the_live_app_counts_it() {
+    let mut app = scheduled_timer(false, 9, 0);
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3000,
+            idle_secs: 0,
+        },
+        at("2026-10-14", 9, 50),
+    );
+    app.dispatch(Action::StartBreak, at("2026-10-14", 9, 50));
+    let path = std::env::temp_dir().join(format!(
+        "sit-break-close-versus-sleep-{}.json",
+        fastrand::u64(..)
+    ));
+    app.save_progress_to(&path, at("2026-10-14", 9, 50))
+        .unwrap();
+    let mut reopened = TimerApp::restore_from(
+        app.settings().clone(),
+        &path,
+        fastrand::Rng::with_seed(42),
+        at("2026-10-14", 9, 55),
+    );
+    assert_eq!(reopened.info().mode, Mode::Break);
+    assert_eq!(reopened.info().remaining, 600);
+    app.dispatch(Action::Suspend { idle_secs: 0 }, at("2026-10-14", 9, 50));
+    app.dispatch(
+        Action::Resume {
+            elapsed_secs: 300,
+            idle_secs: 0,
+        },
+        at("2026-10-14", 9, 55),
+    );
+    assert_eq!(app.info().remaining, 300);
+    reopened.dispatch(Action::Suspend { idle_secs: 0 }, at("2026-10-14", 9, 55));
+    reopened.dispatch(
+        Action::Resume {
+            elapsed_secs: 300,
+            idle_secs: 0,
+        },
+        at("2026-10-14", 10, 0),
+    );
+    assert_eq!(reopened.info().remaining, 300);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn sleeping_after_reopen_counts_away_time_without_counting_the_closed_gap() {
+    let mut app = scheduled_timer(true, 9, 0);
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 120,
+            idle_secs: 100,
+        },
+        at("2026-10-14", 9, 2),
+    );
+    let path = std::env::temp_dir().join(format!(
+        "sit-break-reopened-sleep-{}.json",
+        fastrand::u64(..)
+    ));
+    app.save_progress_to(&path, at("2026-10-14", 9, 2)).unwrap();
+    let mut app = TimerApp::restore_from(
+        app.settings().clone(),
+        &path,
+        fastrand::Rng::with_seed(42),
+        at("2026-10-14", 9, 32),
+    );
+    // 原始 OS 离开包含关闭的 30 分钟；有效离开仍只有退出前的 100 秒。
+    app.dispatch(Action::Suspend { idle_secs: 1900 }, at("2026-10-14", 9, 32));
+    app.dispatch(
+        Action::Resume {
+            elapsed_secs: 300,
+            idle_secs: 2200,
+        },
+        at("2026-10-14", 9, 37),
+    );
+    assert_eq!(app.info().remaining, 2880);
+    assert_eq!(app.info().round.unwrap().number, 1);
+    // 再睡 200 秒才达到本轮 600 秒休息阈值，重置当前轮而不跳轮。
+    app.dispatch(Action::Suspend { idle_secs: 2200 }, at("2026-10-14", 9, 37));
+    app.dispatch(
+        Action::Resume {
+            elapsed_secs: 200,
+            idle_secs: 2400,
+        },
+        at("2026-10-14", 9, 40),
+    );
+    assert_eq!(app.info().remaining, 3000);
+    assert_eq!(app.info().round.unwrap().number, 1);
+    std::fs::remove_file(path).unwrap();
+}
