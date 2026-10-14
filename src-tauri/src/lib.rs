@@ -12,7 +12,11 @@ use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_autostart::ManagerExt;
 
 mod platform;
+pub mod timer;
+#[cfg(test)]
+mod timer_tests;
 use platform::idle_secs;
+use timer::{Action, Mode, TimerApp, TimerEvent, TimerInfo, TimerOutput};
 
 const POSTPONE_SECS: u64 = 5 * 60;
 
@@ -52,16 +56,16 @@ fn default_tips_en() -> Vec<String> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
-struct Settings {
-    work_minutes: u32,
-    break_minutes: u32,
-    sound: bool,
-    show_widget: bool,
-    autostart: bool,
-    idle_reset: bool,
-    language: String,
-    widget_size: u32,
-    tips: Vec<String>,
+pub struct Settings {
+    pub work_minutes: u32,
+    pub break_minutes: u32,
+    pub sound: bool,
+    pub show_widget: bool,
+    pub autostart: bool,
+    pub idle_reset: bool,
+    pub language: String,
+    pub widget_size: u32,
+    pub tips: Vec<String>,
 }
 
 impl Default for Settings {
@@ -117,20 +121,7 @@ fn choose_tip(settings: &Settings, previous: Option<&str>, rng: &mut fastrand::R
     candidates[rng.usize(..candidates.len())].to_string()
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Mode {
-    Work,
-    Remind,
-    Break,
-}
-
-struct AppState {
-    mode: Mode,
-    remaining: u64,
-    paused: bool,
-    break_ended_at: Option<Instant>,
-    settings: Settings,
-}
+struct TimerClock(Instant);
 
 struct PanelState {
     toggled_at: Mutex<Option<Instant>>,
@@ -325,10 +316,10 @@ fn position_near_tray(window: &WebviewWindow, cursor: PhysicalPosition<f64>) {
 }
 
 fn update_windows(app: &AppHandle) {
-    let state = app.state::<Mutex<AppState>>();
+    let state = app.state::<Mutex<TimerApp>>();
     let st = state.lock().unwrap();
-    let mode = st.mode;
-    let show_widget = st.settings.show_widget;
+    let mode = st.info().mode;
+    let show_widget = st.settings().show_widget;
     drop(st);
 
     let widget = app.get_webview_window("widget");
@@ -358,16 +349,42 @@ fn update_windows(app: &AppHandle) {
     }
 }
 
-fn emit_state(app: &AppHandle) {
-    let state = app.state::<Mutex<AppState>>();
-    let st = state.lock().unwrap();
-    let payload = json!({
-        "mode": match st.mode { Mode::Work => "work", Mode::Remind => "remind", Mode::Break => "break" },
-        "remaining": st.remaining,
-        "paused": st.paused,
-    });
-    drop(st);
-    let _ = app.emit("tick", payload);
+fn dispatch_timer(app: &AppHandle, action: Action) {
+    let now = app.state::<TimerClock>().0.elapsed();
+    let output = app
+        .state::<Mutex<TimerApp>>()
+        .lock()
+        .unwrap()
+        .dispatch(action, now);
+    apply_timer_output(app, output);
+}
+
+fn apply_timer_output(app: &AppHandle, output: TimerOutput) {
+    if let Some(settings) = &output.persist_settings {
+        persist(app, settings);
+    }
+    if output.update_windows {
+        update_windows(app);
+    }
+    for event in output.events {
+        match event {
+            TimerEvent::Reminder(payload) => {
+                let _ = app.emit("reminder", payload);
+            }
+            TimerEvent::BreakStarted { seconds } => {
+                let _ = app.emit("break_started", json!({ "seconds": seconds }));
+            }
+        }
+    }
+    if let Some(info) = output.state {
+        let _ = app.emit("tick", info);
+    }
+    if output.update_tray {
+        update_tray(app);
+    }
+    if output.settings_changed {
+        let _ = app.emit("settings_changed", ());
+    }
 }
 
 fn fmt_mmss(secs: u64) -> String {
@@ -390,34 +407,35 @@ fn menu_bar_title(mode: Mode, remaining: u64, paused: bool, zh: bool) -> String 
 }
 
 fn update_tray(app: &AppHandle) {
-    let st = app.state::<Mutex<AppState>>();
+    let st = app.state::<Mutex<TimerApp>>();
     let st = st.lock().unwrap();
+    let info = st.info();
     #[cfg(target_os = "macos")]
-    let title = menu_bar_title(st.mode, st.remaining, st.paused, is_zh(&st.settings));
-    let tooltip = match st.mode {
-        _ if st.paused => {
-            if is_zh(&st.settings) {
-                format!("Sit Break · 已暂停（{}）", fmt_mmss(st.remaining))
+    let title = menu_bar_title(info.mode, info.remaining, info.paused, is_zh(st.settings()));
+    let tooltip = match info.mode {
+        _ if info.paused => {
+            if is_zh(st.settings()) {
+                format!("Sit Break · 已暂停（{}）", fmt_mmss(info.remaining))
             } else {
-                format!("Sit Break · Paused ({})", fmt_mmss(st.remaining))
+                format!("Sit Break · Paused ({})", fmt_mmss(info.remaining))
             }
         }
         Mode::Work => {
-            if is_zh(&st.settings) {
-                format!("Sit Break · 距离提醒还有 {}", fmt_mmss(st.remaining))
+            if is_zh(st.settings()) {
+                format!("Sit Break · 距离提醒还有 {}", fmt_mmss(info.remaining))
             } else {
-                format!("Sit Break · Next break in {}", fmt_mmss(st.remaining))
+                format!("Sit Break · Next break in {}", fmt_mmss(info.remaining))
             }
         }
         Mode::Break => {
-            if is_zh(&st.settings) {
-                format!("Sit Break · 休息中，剩余 {}", fmt_mmss(st.remaining))
+            if is_zh(st.settings()) {
+                format!("Sit Break · 休息中，剩余 {}", fmt_mmss(info.remaining))
             } else {
-                format!("Sit Break · On a break, {} left", fmt_mmss(st.remaining))
+                format!("Sit Break · On a break, {} left", fmt_mmss(info.remaining))
             }
         }
         Mode::Remind => {
-            if is_zh(&st.settings) {
+            if is_zh(st.settings()) {
                 "Sit Break · 该起来活动了！".to_string()
             } else {
                 "Sit Break · Time to move!".to_string()
@@ -432,47 +450,14 @@ fn update_tray(app: &AppHandle) {
     }
 }
 
-fn back_to_work(app: &AppHandle) {
-    let state = app.state::<Mutex<AppState>>();
-    let mut st = state.lock().unwrap();
-    st.mode = Mode::Work;
-    st.remaining = st.settings.work_minutes as u64 * 60;
-    st.break_ended_at = Some(Instant::now());
-    drop(st);
-    update_windows(app);
-    emit_state(app);
-    update_tray(app);
-}
-
 #[tauri::command]
 fn apply_interval(app: AppHandle, minutes: u32) {
-    let state = app.state::<Mutex<AppState>>();
-    let mut st = state.lock().unwrap();
-    st.settings.work_minutes = minutes;
-    if st.mode == Mode::Work {
-        st.remaining = minutes as u64 * 60;
-    }
-    drop(st);
-    persist(
-        &app,
-        &app.state::<Mutex<AppState>>().lock().unwrap().settings,
-    );
-    emit_state(&app);
-    update_tray(&app);
-    let _ = app.emit("settings_changed", ());
+    dispatch_timer(&app, Action::ApplyInterval(minutes));
 }
 
 #[tauri::command]
 fn apply_break(app: AppHandle, minutes: u32) {
-    let state = app.state::<Mutex<AppState>>();
-    let mut st = state.lock().unwrap();
-    st.settings.break_minutes = minutes;
-    drop(st);
-    persist(
-        &app,
-        &app.state::<Mutex<AppState>>().lock().unwrap().settings,
-    );
-    let _ = app.emit("settings_changed", ());
+    dispatch_timer(&app, Action::ApplyBreak(minutes));
 }
 
 // ---------------- Tauri commands ----------------
@@ -484,22 +469,16 @@ fn get_platform() -> &'static str {
 
 #[tauri::command]
 fn get_settings(app: AppHandle) -> Settings {
-    app.state::<Mutex<AppState>>()
+    app.state::<Mutex<TimerApp>>()
         .lock()
         .unwrap()
-        .settings
+        .settings()
         .clone()
 }
 
 #[tauri::command]
-fn timer_info(app: AppHandle) -> serde_json::Value {
-    let st = app.state::<Mutex<AppState>>();
-    let st = st.lock().unwrap();
-    json!({
-        "mode": match st.mode { Mode::Work => "work", Mode::Remind => "remind", Mode::Break => "break" },
-        "remaining": st.remaining,
-        "paused": st.paused,
-    })
+fn timer_info(app: AppHandle) -> TimerInfo {
+    app.state::<Mutex<TimerApp>>().lock().unwrap().info()
 }
 
 #[tauri::command]
@@ -528,106 +507,33 @@ fn save_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
         };
     }
 
-    let was_showing_widget;
-    let interval_applied;
-    {
-        let state = app.state::<Mutex<AppState>>();
-        let mut st = state.lock().unwrap();
-        was_showing_widget = st.settings.show_widget;
-        interval_applied = settings.work_minutes != st.settings.work_minutes;
-        st.settings = settings.clone();
-        st.settings.widget_size = widget_size;
-        if st.mode == Mode::Work {
-            let interval = settings.work_minutes as u64 * 60;
-            if interval_applied || st.remaining > interval {
-                st.remaining = interval;
-            }
-        }
-    }
-    persist(&app, &settings);
-
-    if was_showing_widget != settings.show_widget {
-        update_windows(&app);
-    }
-    emit_state(&app);
-    update_tray(&app);
-    let _ = app.emit("settings_changed", ());
+    dispatch_timer(&app, Action::SaveSettings(settings));
     Ok(())
 }
 
 #[tauri::command]
 fn start_break(app: AppHandle) {
-    let state = app.state::<Mutex<AppState>>();
-    {
-        let mut st = state.lock().unwrap();
-        if st.mode != Mode::Remind {
-            return;
-        }
-        st.mode = Mode::Break;
-        st.remaining = st.settings.break_minutes as u64 * 60;
-    }
-    let _ = app.emit(
-        "break_started",
-        json!({ "seconds": app.state::<Mutex<AppState>>().lock().unwrap().remaining }),
-    );
-    update_tray(&app);
+    dispatch_timer(&app, Action::StartBreak);
 }
 
 #[tauri::command]
 fn postpone(app: AppHandle) {
-    let state = app.state::<Mutex<AppState>>();
-    {
-        let mut st = state.lock().unwrap();
-        if st.mode != Mode::Remind {
-            return;
-        }
-        st.mode = Mode::Work;
-        st.remaining = POSTPONE_SECS
-            .min(st.settings.work_minutes as u64 * 60)
-            .max(60);
-    }
-    update_windows(&app);
-    emit_state(&app);
-    update_tray(&app);
+    dispatch_timer(&app, Action::Postpone);
 }
 
 #[tauri::command]
 fn end_break(app: AppHandle) {
-    let state = app.state::<Mutex<AppState>>();
-    {
-        let st = state.lock().unwrap();
-        if st.mode != Mode::Break {
-            return;
-        }
-    }
-    back_to_work(&app);
+    dispatch_timer(&app, Action::EndBreak);
 }
 
 #[tauri::command]
 fn reset_timer(app: AppHandle) {
-    let state = app.state::<Mutex<AppState>>();
-    let mut st = state.lock().unwrap();
-    if st.mode != Mode::Work {
-        st.mode = Mode::Work;
-    }
-    st.remaining = st.settings.work_minutes as u64 * 60;
-    drop(st);
-    update_windows(&app);
-    emit_state(&app);
-    update_tray(&app);
+    dispatch_timer(&app, Action::Reset);
 }
 
 #[tauri::command]
 fn toggle_pause(app: AppHandle) {
-    let state = app.state::<Mutex<AppState>>();
-    let paused = {
-        let mut st = state.lock().unwrap();
-        st.paused = !st.paused;
-        st.paused
-    };
-    let _ = paused;
-    emit_state(&app);
-    update_tray(&app);
+    dispatch_timer(&app, Action::TogglePause);
 }
 
 #[tauri::command]
@@ -656,8 +562,6 @@ fn quit_app(app: AppHandle) {
 fn run_timer(app: AppHandle) {
     std::thread::spawn(move || {
         let mut last_minute = u64::MAX;
-        let mut tip_rng = fastrand::Rng::new();
-        let mut previous_tip: Option<String> = None;
         #[cfg(windows)]
         let mut tray_light_theme = None;
         loop {
@@ -676,80 +580,24 @@ fn run_timer(app: AppHandle) {
                     }
                 }
             }
-            let state = app.state::<Mutex<AppState>>();
-            let mut st = state.lock().unwrap();
-            if st.paused {
-                drop(st);
-                continue;
-            }
-            match st.mode {
-                Mode::Work => {
-                    // 休息刚结束的宽限期内直接走表（起身活动没有键鼠输入是正常的）
-                    let idle_limit = idle_reset_limit_secs(&st.settings);
-                    let in_grace = st
-                        .break_ended_at
-                        .map(|t| t.elapsed() < Duration::from_secs(idle_limit))
-                        .unwrap_or(false);
-                    if !in_grace && idle_secs() >= idle_limit {
-                        st.remaining = st.settings.work_minutes as u64 * 60;
-                    } else {
-                        st.remaining = st.remaining.saturating_sub(1);
-                        if st.remaining == 0 {
-                            st.mode = Mode::Remind;
-                            let break_secs = st.settings.break_minutes as u64 * 60;
-                            let postpone_secs = POSTPONE_SECS
-                                .min(st.settings.work_minutes as u64 * 60)
-                                .max(60);
-                            let sound = st.settings.sound;
-                            let sat = st.settings.work_minutes;
-                            let tip =
-                                choose_tip(&st.settings, previous_tip.as_deref(), &mut tip_rng);
-                            previous_tip = Some(tip.clone());
-                            drop(st);
-                            update_windows(&app);
-                            let _ = app.emit(
-                                "reminder",
-                                json!({ "breakSeconds": break_secs, "postponeSeconds": postpone_secs, "sound": sound, "tip": tip, "satMinutes": sat }),
-                            );
-                            update_tray(&app);
-                            last_minute = u64::MAX;
-                            continue;
-                        }
-                    }
-                }
-                Mode::Break => {
-                    st.remaining = st.remaining.saturating_sub(1);
-                    if st.remaining == 0 {
-                        drop(st);
-                        back_to_work(&app);
-                        last_minute = u64::MAX;
-                        continue;
-                    }
-                }
-                Mode::Remind => {
-                    // 用户没理会提醒且已离开电脑 → 视为已经活动过，重置
-                    if idle_secs() >= idle_reset_limit_secs(&st.settings) {
-                        drop(st);
-                        back_to_work(&app);
-                        last_minute = u64::MAX;
-                        continue;
-                    }
-                }
-            }
-            drop(st);
-
-            // macOS 菜单栏每秒显示倒计时；Windows 工作状态仍按分钟更新 tooltip。
-            let state = app.state::<Mutex<AppState>>();
-            let minute = state.lock().unwrap().remaining / 60;
-            let mode_changed = {
-                let st = state.lock().unwrap();
-                st.mode != Mode::Work
-            };
-            emit_state(&app);
-            if cfg!(target_os = "macos") || mode_changed || minute != last_minute {
+            let now = app.state::<TimerClock>().0.elapsed();
+            let mut output = app.state::<Mutex<TimerApp>>().lock().unwrap().dispatch(
+                Action::Tick {
+                    elapsed_secs: 1,
+                    idle_secs: idle_secs(),
+                },
+                now,
+            );
+            // 菜单栏每秒更新；Windows 工作中的 tooltip 仍按分钟更新。
+            if let Some(info) = output.state {
+                let minute = info.remaining / 60;
+                output.update_tray = cfg!(target_os = "macos")
+                    || info.mode != Mode::Work
+                    || output.update_windows
+                    || minute != last_minute;
                 last_minute = minute;
-                update_tray(&app);
             }
+            apply_timer_output(&app, output);
         }
     });
 }
@@ -838,13 +686,11 @@ pub fn run() {
             let mut settings = load_settings_from_disk(&handle);
             let autostart_enabled = autostart_is_enabled(&handle);
             settings.autostart = autostart_enabled;
-            handle.manage(Mutex::new(AppState {
-                mode: Mode::Work,
-                remaining: settings.work_minutes as u64 * 60,
-                paused: false,
-                break_ended_at: None,
-                settings: settings.clone(),
-            }));
+            handle.manage(TimerClock(Instant::now()));
+            handle.manage(Mutex::new(TimerApp::new(
+                settings.clone(),
+                fastrand::Rng::new(),
+            )));
 
             // ---- 窗口（在 manage 之后创建，页面加载时状态已就绪）----
             #[cfg(not(target_os = "macos"))]
