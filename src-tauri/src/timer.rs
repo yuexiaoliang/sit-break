@@ -154,6 +154,24 @@ impl TimerApp {
         &self.settings
     }
 
+    pub fn preview(
+        &self,
+        draft: &Settings,
+        now: impl Into<TimerTime>,
+    ) -> Result<crate::preview::SchedulePreview, Vec<ValidationError>> {
+        let errors = draft.validate();
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        Ok(crate::preview::build(
+            draft,
+            &self.settings,
+            &self.info,
+            now.into().local.as_ref(),
+            self.restart_after_break,
+        ))
+    }
+
     pub fn dispatch(&mut self, action: Action, now: impl Into<TimerTime>) -> TimerOutput {
         let now = now.into();
         let mut output = TimerOutput::default();
@@ -475,29 +493,17 @@ impl TimerApp {
         number: u32,
     ) {
         self.info.mode = Mode::Work;
-        let adjustment = period.overrides.iter().find(|item| item.round == number);
-        self.info.work_seconds = u64::from(
-            adjustment
-                .and_then(|item| item.work_minutes)
-                .unwrap_or(period.work_minutes),
-        ) * 60;
-        self.info.break_seconds = u64::from(
-            adjustment
-                .and_then(|item| item.break_minutes)
-                .unwrap_or(period.break_minutes),
-        ) * 60;
+        let definition = period.round_definition(number);
+        self.info.work_seconds = definition.work_seconds;
+        self.info.break_seconds = definition.break_seconds;
         self.info.remaining = self.info.work_seconds;
-        let tip = adjustment
-            .and_then(|item| item.content.as_deref())
-            .filter(|content| !content.trim().is_empty())
-            .map(str::to_owned)
-            .unwrap_or_else(|| {
-                choose_tip(
-                    &self.settings,
-                    self.previous_tip.as_deref(),
-                    &mut self.tip_rng,
-                )
-            });
+        let tip = definition.content.unwrap_or_else(|| {
+            choose_tip(
+                &self.settings,
+                self.previous_tip.as_deref(),
+                &mut self.tip_rng,
+            )
+        });
         self.previous_tip = Some(tip.clone());
         self.info.tip = Some(tip);
         self.info.round = Some(RoundInfo {

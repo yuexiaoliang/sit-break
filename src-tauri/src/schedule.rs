@@ -51,6 +51,34 @@ pub struct RoundOverride {
     pub content: Option<String>,
 }
 
+pub(crate) struct RoundDefinition {
+    pub work_seconds: u64,
+    pub break_seconds: u64,
+    pub content: Option<String>,
+}
+
+impl Period {
+    pub(crate) fn round_definition(&self, number: u32) -> RoundDefinition {
+        let adjustment = self.overrides.iter().find(|item| item.round == number);
+        RoundDefinition {
+            work_seconds: u64::from(
+                adjustment
+                    .and_then(|item| item.work_minutes)
+                    .unwrap_or(self.work_minutes),
+            ) * 60,
+            break_seconds: u64::from(
+                adjustment
+                    .and_then(|item| item.break_minutes)
+                    .unwrap_or(self.break_minutes),
+            ) * 60,
+            content: adjustment
+                .and_then(|item| item.content.as_deref())
+                .filter(|content| !content.trim().is_empty())
+                .map(str::to_owned),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PeriodConflict {
     pub schedule_id: String,
