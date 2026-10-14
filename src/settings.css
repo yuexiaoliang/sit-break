@@ -130,6 +130,19 @@ input[aria-invalid=true] { border-color: var(--error); }
 #saveStatus { white-space: pre-line; }
 
 .quiet-periods { border: 1px dashed var(--border); border-radius: 8px; background: var(--soft); padding: 9px 12px; margin-top: 14px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.repeat-label { margin-bottom: 12px; }
+.repeat-label > span { font-size: 13px; font-weight: 600; }
+.repeat-options { display: flex; gap: 4px; background: var(--subtle); border-radius: 8px; padding: 4px; margin-top: 4px; }
+.repeat-options button { flex: 1; border: 0; border-radius: 5px; padding: 7px 8px; color: var(--muted); background: transparent; font-size: 12px; }
+.repeat-options button[aria-pressed=true] { color: var(--green-ink); background: var(--selected); font-weight: 650; }
+.weekly-settings { min-width: 0; border: 0; margin: 12px 0; padding: 0; }
+.weekly-settings legend { margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.weekday-buttons { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.weekday-button { min-width: 0; min-height: 34px; border: 1px solid var(--border); border-radius: 6px; background: var(--field); color: var(--muted); font-size: 11px; padding: 5px 0; }
+.weekday-button[aria-pressed=true] { background: var(--selected); border-color: var(--green); color: var(--green-ink); font-weight: 650; }
+.weekday-shortcuts { display: flex; gap: 14px; margin-top: 5px; }
+.weekday-shortcuts .text-button { color: var(--green-ink); }
+.weekly-settings[aria-invalid=true] { outline: 1px solid var(--error); outline-offset: 5px; border-radius: 5px; }
 .round-adjustments { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; }
 .round-adjustments summary { cursor: pointer; color: var(--green-ink); font-size: 13px; font-weight: 600; }
 .round-adjustments summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }

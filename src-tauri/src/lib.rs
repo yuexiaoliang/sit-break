@@ -12,12 +12,12 @@ use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_autostart::ManagerExt;
 
 mod platform;
+#[cfg(test)]
+mod recurrence_tests;
 pub mod schedule;
 pub mod timer;
 #[cfg(test)]
 mod timer_tests;
-#[cfg(test)]
-mod recurrence_tests;
 use platform::idle_secs;
 use timer::{Action, Mode, TimerApp, TimerEvent, TimerInfo, TimerOutput, TimerTime};
 

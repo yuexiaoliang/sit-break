@@ -1,6 +1,6 @@
 //! 保存的日程定义；日期和时间均表示电脑本地日历。
-use serde::{Deserialize, Serialize};
 use chrono::Datelike;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Schedule {
@@ -95,9 +95,14 @@ pub fn valid_date(value: &str) -> bool {
 fn shared_occurrence(left: &Repeat, right: &Repeat) -> Option<Repeat> {
     match (left, right) {
         (Repeat::Once { date: left }, Repeat::Once { date: right })
-            if left == right && valid_date(left) => Some(Repeat::Once { date: left.clone() }),
+            if left == right && valid_date(left) =>
+        {
+            Some(Repeat::Once { date: left.clone() })
+        }
         (Repeat::Weekly { weekdays: left }, Repeat::Weekly { weekdays: right }) => {
-            let weekdays = (1..=7).filter(|day| left.contains(day) && right.contains(day)).collect::<Vec<_>>();
+            let weekdays = (1..=7)
+                .filter(|day| left.contains(day) && right.contains(day))
+                .collect::<Vec<_>>();
             (!weekdays.is_empty()).then_some(Repeat::Weekly { weekdays })
         }
         (once @ Repeat::Once { date }, weekly @ Repeat::Weekly { .. })
@@ -147,7 +152,12 @@ impl crate::Settings {
                 Repeat::Weekly { weekdays }
                     if weekdays.is_empty()
                         || weekdays.iter().any(|day| !(1..=7).contains(day))
-                        || weekdays.iter().collect::<std::collections::HashSet<_>>().len() != weekdays.len() => {
+                        || weekdays
+                            .iter()
+                            .collect::<std::collections::HashSet<_>>()
+                            .len()
+                            != weekdays.len() =>
+                {
                     report(sid, None, "weekdays", "invalid_weekdays")
                 }
                 _ => {}
@@ -251,13 +261,24 @@ impl crate::Settings {
                 }
             }
         }
-        for (index, schedule) in self.schedules.iter().enumerate().filter(|(_, item)| item.enabled) {
+        for (index, schedule) in self
+            .schedules
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| item.enabled)
+        {
             for other in self.schedules[..index].iter().filter(|item| item.enabled) {
-                let Some(occurrence) = shared_occurrence(&schedule.repeat, &other.repeat) else { continue; };
+                let Some(occurrence) = shared_occurrence(&schedule.repeat, &other.repeat) else {
+                    continue;
+                };
                 for period in &schedule.periods {
-                    let Some((start, end)) = period_range(period) else { continue; };
+                    let Some((start, end)) = period_range(period) else {
+                        continue;
+                    };
                     for other_period in &other.periods {
-                        let Some((other_start, other_end)) = period_range(other_period) else { continue; };
+                        let Some((other_start, other_end)) = period_range(other_period) else {
+                            continue;
+                        };
                         if start < other_end && other_start < end {
                             errors.push(ValidationError {
                                 schedule_id: Some(schedule.id.clone()),
