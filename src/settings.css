@@ -128,3 +128,5 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .period-note { color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 12px; }
 input[aria-invalid=true] { border-color: var(--error); }
 #saveStatus { white-space: pre-line; }
+
+.quiet-periods { border: 1px dashed var(--border); border-radius: 8px; background: var(--soft); padding: 9px 12px; margin-top: 14px; color: var(--muted); font-size: 12px; line-height: 1.6; }
