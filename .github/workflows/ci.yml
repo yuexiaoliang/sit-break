@@ -48,5 +48,34 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Cargo tests
+        id: cargo-tests
         working-directory: src-tauri
         run: cargo test --locked --lib
+
+      - name: Diagnose Windows test loading
+        if: failure() && runner.os == 'Windows' && steps.cargo-tests.outcome == 'failure'
+        working-directory: src-tauri
+        shell: pwsh
+        run: |
+          $testBinary = Get-ChildItem target/debug/deps/sit_break_lib-*.exe |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $testBinary) { throw '找不到已经编译的库测试程序' }
+          Write-Host "[DEBUG-loader-13419] binary=$($testBinary.FullName)"
+          & $testBinary.FullName --list
+          Write-Host "[DEBUG-loader-13419] list-exit=$LASTEXITCODE"
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $dumpbin = & $vswhere -latest -products '*' -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe' |
+            Select-Object -First 1
+          if (-not $dumpbin) { throw '找不到 dumpbin.exe' }
+          & $dumpbin /imports:comctl32.dll $testBinary.FullName
+
+          $mt = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\mt.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $mt) { throw '找不到 mt.exe' }
+          $manifest = Join-Path $env:RUNNER_TEMP 'sit-break-test-manifest.xml'
+          & $mt.FullName -nologo "-inputresource:$($testBinary.FullName);#1" "-out:$manifest"
+          $manifestExit = $LASTEXITCODE
+          Write-Host "[DEBUG-loader-13419] manifest-exit=$manifestExit"
+          if ($manifestExit -eq 0) { Get-Content $manifest }
+          exit 0
