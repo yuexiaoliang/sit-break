@@ -19,6 +19,8 @@ pub mod preview;
 #[cfg(test)]
 mod preview_tests;
 #[cfg(test)]
+mod recovery_tests;
+#[cfg(test)]
 mod recurrence_tests;
 pub mod schedule;
 #[cfg(test)]
@@ -180,6 +182,25 @@ fn load_settings_from_disk(app: &AppHandle) -> Settings {
 fn persist(app: &AppHandle, settings: &Settings) {
     if let Some(path) = settings_path(app) {
         let _ = settings.save_to(&path);
+    }
+}
+
+fn progress_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+    settings_path(app).map(|path| path.with_file_name("progress.json"))
+}
+
+fn persist_progress(app: &AppHandle) {
+    let Some(timer) = app.try_state::<Mutex<TimerApp>>() else {
+        return;
+    };
+    if let Some(path) = progress_path(app) {
+        if let Err(error) = timer
+            .lock()
+            .unwrap()
+            .save_progress_to(&path, timer_time(app))
+        {
+            eprintln!("无法保存运行进度：{error}");
+        }
     }
 }
 
@@ -395,6 +416,9 @@ fn dispatch_timer(app: &AppHandle, action: Action) {
 fn apply_timer_output(app: &AppHandle, output: TimerOutput) {
     if let Some(settings) = &output.persist_settings {
         persist(app, settings);
+    }
+    if output.state.is_some() {
+        persist_progress(app);
     }
     if output.update_windows {
         update_windows(app);
@@ -644,6 +668,7 @@ fn hide_settings(app: AppHandle) {
 
 #[tauri::command]
 fn quit_app(app: AppHandle) {
+    persist_progress(&app);
     app.exit(0);
 }
 
@@ -793,11 +818,13 @@ pub fn run() {
             let autostart_enabled = autostart_is_enabled(&handle);
             settings.autostart = autostart_enabled;
             handle.manage(TimerClock(Instant::now()));
-            handle.manage(Mutex::new(TimerApp::new_at(
-                settings.clone(),
-                fastrand::Rng::new(),
-                timer_time(&handle),
-            )));
+            let now = timer_time(&handle);
+            let timer = if let Some(path) = progress_path(&handle) {
+                TimerApp::restore_from(settings.clone(), &path, fastrand::Rng::new(), now)
+            } else {
+                TimerApp::new_at(settings.clone(), fastrand::Rng::new(), now)
+            };
+            handle.manage(Mutex::new(timer));
 
             // ---- 窗口（在 manage 之后创建，页面加载时状态已就绪）----
             #[cfg(not(target_os = "macos"))]
@@ -977,9 +1004,9 @@ pub fn run() {
             update_tray(&handle);
             #[cfg(not(target_os = "macos"))]
             if settings.show_widget {
-                let _ = widget.show();
                 position_bottom_right(&widget);
             }
+            update_windows(&handle);
             run_timer(handle.clone(), power_receiver);
             Ok(())
         })
@@ -988,7 +1015,13 @@ pub fn run() {
     let mut power_monitor = Some(
         power::PowerMonitor::new(power_sender).expect("error registering system sleep monitor"),
     );
-    app.run(move |_handle, event| {
+    app.run(move |handle, event| {
+        if matches!(
+            event,
+            tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+        ) {
+            persist_progress(handle);
+        }
         if matches!(event, tauri::RunEvent::Exit) {
             power_monitor.take();
         }
