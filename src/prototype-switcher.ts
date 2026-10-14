@@ -1,3 +1,4 @@
+import { icon } from "./prototype-icons";
 // 临时原型控件，保留在原型分支。
 export const variants = [
   { key: "A", name: "时段卡片", description: "先设默认值，再展开特殊轮次" },
@@ -15,10 +16,10 @@ export function mountPrototypeSwitcher(onSwitch: (key: string) => void) {
     const url = new URL(location.href);
     url.searchParams.set("variant", item.key);
     history.replaceState(null, "", url);
-    bar.innerHTML = `<button data-cycle="-1" aria-label="上一个方案">←</button>
+    bar.innerHTML = `<button data-cycle="-1" aria-label="上一个方案">${icon("left")}</button>
       <div><small>原型方案 · 左右方向键切换</small><strong>${item.key} · ${item.name}</strong></div>
       <div class="variant-dots">${variants.map((v) => `<button data-variant="${v.key}" aria-label="方案 ${v.key}：${v.name}" aria-pressed="${v.key === item.key}">${v.key}</button>`).join("")}</div>
-      <button data-cycle="1" aria-label="下一个方案">→</button>`;
+      <button data-cycle="1" aria-label="下一个方案">${icon("right")}</button>`;
     if (notify) onSwitch(item.key);
   };
   const cycle = (direction: number) => {
@@ -31,6 +32,7 @@ export function mountPrototypeSwitcher(onSwitch: (key: string) => void) {
     else if (button?.dataset.cycle) cycle(Number(button.dataset.cycle));
   });
   document.addEventListener("keydown", (event) => {
+    if (!document.querySelector(".prototype-tools[open]")) return;
     if ((event.target as HTMLElement).closest("input, textarea, select, [contenteditable]")) return;
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
       event.preventDefault();

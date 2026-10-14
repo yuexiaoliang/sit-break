@@ -2,6 +2,8 @@
 // 默认保留完整简单计时，开启日程后比较三种编辑结构。
 // 状态只存内存；这里只演示编辑、推迟休息和时段衔接，不是生产计时引擎。
 import "./schedule.prototype.css";
+import "./rhythm.prototype.css";
+import { icon } from "./prototype-icons";
 import { mountPrototypeSwitcher, variants } from "./prototype-switcher";
 
 type Adjustment = { round: number; work?: number; rest?: number; content?: string };
@@ -18,10 +20,11 @@ const sample: Schedule = {
 const state = {
   useSchedule: new URLSearchParams(location.search).get("mode") === "schedule", schedules: [structuredClone(sample)], selected: "weekday",
   variant: new URLSearchParams(location.search).get("variant") ?? "A", view: "edit", step: 1,
+  closed: false, error: "", saved: false,
   period: "morning", openPeriods: new Set<string>(), sound: true, idleReset: true,
   simple: { work: 45, rest: 5 }, autostart: false, language: "system", showWidget: true, widgetSize: 64,
   platform: navigator.platform.toLowerCase().includes("mac") ? "macos" : "windows",
-  tips: "站起来，踮脚 20 次，激活小腿血液循环\n抬头挺胸，双手向上伸展，深呼吸 5 次\n走动一下，顺便接杯水喝\n转转脖子：缓慢左右各看 5 秒\n靠墙站立 30 秒，收紧腹部和臀部\n伸展手臂到背后，扩胸 10 秒\n原地高抬腿 20 下，唤醒身体\n闭上眼睛休息 20 秒，缓解眼部疲劳\n扭扭腰，顺时针逆时针各转 5 圈\n下蹲 10 次，活动髋关节和膝盖",
+  tips: "走动一下，顺便接杯水喝\n站起来，伸展一下肩颈",
 };
 let applied: Schedule[] = structuredClone(state.schedules);
 let appliedSimple = structuredClone(state.simple);
@@ -49,19 +52,19 @@ const switchButton = (label: string, checked: boolean, action: string) => `<butt
 const field = (label: string, type: string, value: unknown, attributes: string, unit = "") => `<label class="pfield">${label}<span class="unit-field"><input type="${type}" value="${escape(value)}" ${attributes}>${unit ? `<em>${unit}</em>` : ""}</span></label>`;
 
 function SimpleSettings() {
-  return `<section class="simple-settings"><div class="simple-heading"><h2>简单计时</h2><span>设好间隔，循环提醒</span></div>
-    <div class="simple-duration"><label for="simpleWork">工作时长</label><div>${field("", "number", state.simple.work, 'id="simpleWork" min="1" max="240" data-simple="work"', "分钟")}<div class="duration-presets">${[15, 30, 45, 60].map((n) => `<button class="${state.simple.work === n ? "selected" : ""}" data-action="preset" data-field="work" data-value="${n}">${n}</button>`).join("")}</div></div></div>
-    <div class="simple-duration"><label for="simpleRest">休息时长</label><div>${field("", "number", state.simple.rest, 'id="simpleRest" min="1" max="60" data-simple="rest"', "分钟")}<div class="duration-presets">${[3, 5, 10].map((n) => `<button class="${state.simple.rest === n ? "selected" : ""}" data-action="preset" data-field="rest" data-value="${n}">${n}</button>`).join("")}</div></div></div>
-    <p class="simple-summary">每工作 <b>${state.simple.work}</b> 分钟，提醒休息 <b>${state.simple.rest}</b> 分钟。</p></section>`;
+  const duration = (key: "work" | "rest", label: string, presets: number[], max: number) => `<div class="simple-duration"><label for="simple-${key}">${label}</label>
+    <div class="duration-field"><input id="simple-${key}" type="number" min="1" max="${max}" data-simple="${key}" value="${state.simple[key]}" aria-describedby="simple-summary"><div class="number-stepper">${button(icon("up"), "duration-step", `data-field="${key}" data-delta="1" aria-label="增加${label}"`, "stepper-button")}${button(icon("down"), "duration-step", `data-field="${key}" data-delta="-1" aria-label="减少${label}"`, "stepper-button")}</div><span>分钟</span></div>
+    <div class="duration-presets">${presets.map(n => `<button type="button" class="${state.simple[key] === n ? "selected" : ""}" aria-label="${key === "work" ? "工作" : "休息"} ${n} 分钟" aria-pressed="${state.simple[key] === n}" data-action="preset" data-field="${key}" data-value="${n}">${n}</button>`).join("")}</div></div>`;
+  return `<section class="simple-settings" aria-label="工作与休息时长"><div class="durations">${duration("work", "工作时长", [15,30,45,60], 240)}${duration("rest", "休息时长", [3,5,10], 60)}</div><p id="simple-summary" class="simple-summary">每工作 <b>${state.simple.work}</b> 分钟，提醒休息 <b>${state.simple.rest}</b> 分钟。</p></section>`;
 }
 
 function CommonSettings() {
   const toggle = (label: string, key: "sound" | "autostart" | "idleReset" | "showWidget", hint = "") => `<div class="preference-row"><div><strong>${label}</strong>${hint ? `<p>${hint}</p>` : ""}</div><button type="button" class="pswitch" role="switch" aria-label="${label}" aria-checked="${state[key]}" data-action="preference" data-key="${key}"></button></div>`;
-  return `<section class="common-settings"><div class="common-heading"><h2>通用设置</h2><span>两种计时方式共用</span></div>
-    <div class="preference-row"><label for="preferenceLanguage">语言</label><select id="preferenceLanguage" data-general="language"><option value="system" ${state.language === "system" ? "selected" : ""}>跟随系统</option><option value="zh" ${state.language === "zh" ? "selected" : ""}>简体中文</option><option value="en" ${state.language === "en" ? "selected" : ""}>English</option></select></div>
+  return `<section class="common-settings"><div class="common-heading"><h2>通用设置</h2>${state.useSchedule ? '<span>简单计时与日程共用</span>' : ""}</div>
+    <div class="preference-row"><label for="preferenceLanguage">语言</label><div class="select-field"><select id="preferenceLanguage" data-general="language"><option value="system" ${state.language === "system" ? "selected" : ""}>跟随系统</option><option value="zh" ${state.language === "zh" ? "selected" : ""}>简体中文</option><option value="en" ${state.language === "en" ? "selected" : ""}>English</option></select>${icon("down")}</div></div>
     ${toggle("提示音", "sound")}${toggle("开机自启", "autostart")}${toggle("离开自动重置", "idleReset")}
-    ${state.platform === "windows" ? `${toggle("显示悬浮计时条", "showWidget")}${state.showWidget ? `<div class="preference-row"><label for="preferenceWidgetSize">悬浮球大小</label><div class="preference-size">${field("", "number", state.widgetSize, 'id="preferenceWidgetSize" min="40" max="140" data-general="widgetSize"', "px")}</div></div>` : ""}` : '<p class="menubar-hint">计时显示在 macOS 菜单栏中。</p>'}
-    <div class="tips-editor"><label for="preferenceTips">提醒小字</label><span>每行一条，随机展示</span><textarea id="preferenceTips" data-general="tips" rows="3" spellcheck="false">${escape(state.tips)}</textarea>${state.useSchedule ? '<p>为某一轮填写休息内容后，该轮优先显示你填写的内容。</p>' : ""}</div>
+    ${state.platform === "windows" ? `${toggle("显示悬浮计时条", "showWidget")}${state.showWidget ? `<div class="preference-row"><label for="preferenceWidgetSize">悬浮球大小</label><div class="preference-size">${field("", "number", state.widgetSize, 'id="preferenceWidgetSize" min="40" max="140" data-general="widgetSize"', "px")}</div></div>` : ""}` : ""}
+    <div class="tips-editor"><label for="preferenceTips">提醒小字</label><span>每行一条，随机展示</span><textarea id="preferenceTips" data-general="tips" rows="2" spellcheck="false">${escape(state.tips)}</textarea>${state.useSchedule ? '<p>为某一轮填写休息内容后，该轮优先显示你填写的内容。</p>' : ""}</div>
   </section>`;
 }
 
@@ -113,14 +116,14 @@ function adjustments(p: Period) {
     <div class="field-grid">${field("工作", "number", a.work ?? p.work, `min="1" max="240" data-period="${p.id}" data-adjust="${i}" data-field="work"`, "分钟")}${field("休息", "number", a.rest ?? p.rest, `min="1" max="60" data-period="${p.id}" data-adjust="${i}" data-field="rest"`, "分钟")}</div>
     <label class="pfield"><textarea rows="2" aria-label="第 ${a.round} 轮休息内容" placeholder="休息时做什么？可以写一项或多项活动" data-period="${p.id}" data-adjust="${i}" data-field="content">${escape(a.content ?? "")}</textarea></label>
   </div>`).join("") : '<p class="muted" style="margin-bottom:12px">每轮都使用默认时长。需要时再单独调整。</p>'}
-    ${button("＋ 调整另一轮", "add-adjust", `data-period="${p.id}"`, "ghost small")}
+    ${button(`${icon("plus")} 调整另一轮`, "add-adjust", `data-period="${p.id}"`, "ghost small")}
     <p class="muted" style="margin-top:8px;font-size:10px">休息内容自由填写，整次休息共用一个倒计时。</p></div>`;
 }
 
 function periodCard(p: Period, index: number, showAdjustments = true) {
   const opened = state.openPeriods.has(p.id);
-  return `<section class="period-card"><div class="period-head"><span class="period-icon ${index ? "pm" : ""}">${index ? "◒" : "☼"}</span><strong>${escape(p.name)}</strong>${button("移除", "remove-period", `data-period="${p.id}"`, "ghost small")}</div>
-    ${periodFields(p)}${showAdjustments ? `<button class="round-toggle" data-action="toggle-adjust" data-period="${p.id}"><span>${p.adjustments.length ? `${p.adjustments.length} 轮有单独安排` : "需要调整某一轮？"}<b>${p.adjustments.map((a) => `第 ${a.round} 轮${a.content ? ` · ${escape(a.content).slice(0, 12)}` : ""}`).join(" / ")}</b></span><span>${opened ? "收起 −" : "展开 ＋"}</span></button>${opened ? adjustments(p) : ""}` : ""}</section>`;
+  return `<section class="period-card"><div class="period-head"><span class="period-icon ${index ? "pm" : ""}">${icon(index ? "afternoon" : "sun")}</span><strong>${escape(p.name)}</strong>${button("移除", "remove-period", `data-period="${p.id}"`, "ghost small")}</div>
+    ${periodFields(p)}${showAdjustments ? `<button class="round-toggle" aria-expanded="${opened}" data-action="toggle-adjust" data-period="${p.id}"><span>${p.adjustments.length ? `${p.adjustments.length} 轮有单独安排` : "需要调整某一轮？"}<b>${p.adjustments.map((a) => `第 ${a.round} 轮${a.content ? ` · ${escape(a.content).slice(0, 12)}` : ""}`).join(" / ")}</b></span><span>${opened ? "收起" : "展开"}${icon(opened ? "up" : "down")}</span></button>${opened ? adjustments(p) : ""}` : ""}</section>`;
 }
 
 function agenda() {
@@ -131,33 +134,36 @@ function agenda() {
     const firstEnd = minutes(p.start) + first.work;
     const gap = i > 0 && minutes(p.start) > minutes(items[i - 1].end);
     return `${gap ? `<div class="agenda-item"><time>${items[i - 1].end} — ${p.start}</time><p>留给自己，不提醒</p></div>` : ""}<div class="agenda-item"><time>${p.start} — ${p.end}</time><p>${escape(p.name)} · 工作 ${p.work} / 休息 ${p.rest}</p><span class="mini-tag">${firstEnd < minutes(p.end) ? `${time(firstEnd)} 首次休息` : "时段结束后待机"}</span><p class="muted">第一轮 ${first.work}/${first.rest}${p.adjustments[0]?.content ? ` · ${escape(first.content)}` : ""}<br>第二轮 ${second.work}/${second.rest}${p.adjustments.find((a) => a.round === 2)?.content ? ` · ${escape(second.content)}` : ""}</p></div>`;
-  }).join("")}<p class="agenda-note" style="margin-bottom:12px">晚开始休息，后面的轮次跟着顺延。</p>${button("▷ 看看实际怎么运行", "run", "", "primary")}</aside>`;
+  }).join("")}<p class="agenda-note" style="margin-bottom:12px">${items.length ? "晚开始休息，后面的轮次跟着顺延。" : "添加时段后，这里会显示当天概览。"}</p>${button(`${icon("play")} 看看实际怎么运行`, "run", "", "primary")}</aside>`;
 }
 
 export function VariantA() {
-  return `<div class="a-layout"><div>${nameEditor()}${repeatEditor()}${plan().periods.map((p, i) => `${i && minutes(p.start) > minutes(plan().periods[i - 1].end) ? `<div class="gap-label">${plan().periods[i - 1].end}–${p.start} 不提醒</div>` : ""}${periodCard(p, i)}`).join("")}${button("＋ 添加执行时段", "add-period", "", "add-period")}</div>${agenda()}</div>`;
+  return `<div class="a-layout"><div>${nameEditor()}${repeatEditor()}${!plan().periods.length ? '<div class="empty-periods"><h3>还没有执行时段</h3><p>添加一个时段，设定它的工作与休息节奏。</p></div>' : ""}${plan().periods.map((p, i) => `${i && minutes(p.start) > minutes(plan().periods[i - 1].end) ? `<div class="gap-label">${plan().periods[i - 1].end}–${p.start} 不提醒</div>` : ""}${periodCard(p, i)}`).join("")}${button(`${icon("plus")} 添加执行时段`, "add-period", "", "add-period")}</div>${agenda()}</div>`;
 }
 
 export function VariantB() {
   const p = selectedPeriod();
-  return `${nameEditor()}${repeatEditor()}<div class="timeline-layout"><div><div class="timeline-toolbar"><strong class="section-label">点击一个时段，调整它</strong>${button("＋ 时段", "add-period", "", "ghost small")}</div>${plan().periods.map((item, i) => `<div class="timeline-row"><time class="timeline-time">${item.start}</time><button class="timeline-block ${p?.id === item.id ? "selected" : ""}" data-action="select-period" data-period="${item.id}"><strong>${escape(item.name)}</strong><p>工作 ${item.work} 分钟 / 休息 ${item.rest} 分钟</p>${item.adjustments.length ? item.adjustments.map((a) => `<div class="timeline-round">第 ${a.round} 轮 · ${a.work ?? item.work}/${a.rest ?? item.rest}${a.content ? ` · ${escape(a.content)}` : ""}</div>`).join("") : '<div class="timeline-round">每轮使用默认安排</div>'}<p class="muted">到 ${item.end} 结束</p></button></div>${plan().periods[i + 1] && minutes(plan().periods[i + 1].start) > minutes(item.end) ? `<div class="timeline-gap">${item.end}–${plan().periods[i + 1].start}<br>不提醒，留给自己</div>` : ""}`).join("")}</div><aside class="inspector">${p ? `<span class="eyebrow">编辑执行时段</span><h3>${escape(p.name)} · ${p.start}–${p.end}</h3><p class="muted">设好默认节奏，再调整特殊轮次。</p>${periodFields(p)}<div class="repeat-top" style="margin-top:20px"><strong>单轮安排</strong>${button("移除此时段", "remove-period", `data-period="${p.id}"`, "ghost small")}</div>${adjustments(p)}` : '<p class="muted">添加一个时段开始安排。</p>'}</aside></div>`;
+  return `${nameEditor()}${repeatEditor()}<div class="timeline-layout"><div><div class="timeline-toolbar"><strong class="section-label">点击一个时段，调整它</strong>${button(`${icon("plus")} 时段`, "add-period", "", "ghost small")}</div>${plan().periods.map((item, i) => `<div class="timeline-row"><time class="timeline-time">${item.start}</time><button class="timeline-block ${p?.id === item.id ? "selected" : ""}" data-action="select-period" data-period="${item.id}"><strong>${escape(item.name)}</strong><p>工作 ${item.work} 分钟 / 休息 ${item.rest} 分钟</p>${item.adjustments.length ? item.adjustments.map((a) => `<div class="timeline-round">第 ${a.round} 轮 · ${a.work ?? item.work}/${a.rest ?? item.rest}${a.content ? ` · ${escape(a.content)}` : ""}</div>`).join("") : '<div class="timeline-round">每轮使用默认安排</div>'}<p class="muted">到 ${item.end} 结束</p></button></div>${plan().periods[i + 1] && minutes(plan().periods[i + 1].start) > minutes(item.end) ? `<div class="timeline-gap">${item.end}–${plan().periods[i + 1].start}<br>不提醒，留给自己</div>` : ""}`).join("")}</div><aside class="inspector">${p ? `<span class="eyebrow">编辑执行时段</span><h3>${escape(p.name)} · ${p.start}–${p.end}</h3><p class="muted">设好默认节奏，再调整特殊轮次。</p>${periodFields(p)}<div class="repeat-top" style="margin-top:20px"><strong>单轮安排</strong>${button("移除此时段", "remove-period", `data-period="${p.id}"`, "ghost small")}</div>${adjustments(p)}` : '<p class="muted">添加一个时段开始安排。</p>'}</aside></div>`;
 }
 
 export function VariantC() {
   const labels = ["重复日期", "执行时段", "单轮安排", "看一遍"];
   const contents = [
     `<h2 class="step-title">哪些日子，照这个节奏？</h2><p class="step-description">像设置手机闹钟一样，选好重复的日子。</p>${nameEditor()}${repeatEditor()}`,
-    `<h2 class="step-title">给一天留出几个时段</h2><p class="step-description">时段之间不提醒；每段只需要一组默认时长。</p>${plan().periods.map((p, i) => periodCard(p, i, false)).join("")}${button("＋ 添加执行时段", "add-period", "", "add-period")}`,
+    `<h2 class="step-title">给一天留出几个时段</h2><p class="step-description">时段之间不提醒；每段只需要一组默认时长。</p>${plan().periods.map((p, i) => periodCard(p, i, false)).join("")}${button(`${icon("plus")} 添加执行时段`, "add-period", "", "add-period")}`,
     `<h2 class="step-title">有哪一轮，需要不一样？</h2><p class="step-description">这一步可以跳过，其余轮次继续使用默认值。</p><div class="wizard-optional">例如第一轮爬楼 10 分钟，第二轮深蹲 5 分钟。</div>${plan().periods.map((p) => `<section class="period-card"><div class="period-head"><strong>${escape(p.name)}</strong><span class="muted">默认 ${p.work}/${p.rest}</span></div>${adjustments(p)}</section>`).join("")}`,
     `<h2 class="step-title">安排好了，按自己的节奏来</h2><p class="step-description">到点先提醒；忙的时候，可以“再等等”。</p>${agenda()}`,
   ];
-  return `<div class="wizard"><div class="steps">${labels.map((label, i) => `<button data-action="step" data-step="${i + 1}" class="${state.step === i + 1 ? "active" : state.step > i + 1 ? "complete" : ""}"><span>0${i + 1}</span><strong>${label}</strong></button>`).join("")}</div>${contents[state.step - 1]}<div class="wizard-controls">${button("← 上一步", "step", `data-step="${Math.max(1, state.step - 1)}" ${state.step === 1 ? "disabled" : ""}`, "ghost")}${state.step === 4 ? button("保存并试运行 →", "run", "", "primary") : button(state.step === 3 ? "看看一天的安排 →" : "下一步 →", "step", `data-step="${state.step + 1}"`, "primary")}</div></div>`;
+  return `<div class="wizard"><div class="steps">${labels.map((label, i) => `<button data-action="step" data-step="${i + 1}" class="${state.step === i + 1 ? "active" : state.step > i + 1 ? "complete" : ""}"><span>0${i + 1}</span><strong>${label}</strong></button>`).join("")}</div>${contents[state.step - 1]}<div class="wizard-controls">${button(`${icon("left")} 上一步`, "step", `data-step="${Math.max(1, state.step - 1)}" ${state.step === 1 ? "disabled" : ""}`, "ghost")}${state.step === 4 ? button(`保存并试运行 ${icon("right")}`, "run", "", "primary") : button(state.step === 3 ? `看看一天的安排 ${icon("right")}` : `下一步 ${icon("right")}`, "step", `data-step="${state.step + 1}"`, "primary")}</div></div>`;
+}
+
+function runsOnDemoDay(s: Schedule) {
+  return s.enabled && (s.repeat === "weekly" ? s.days.includes(3) : s.date === "2026-10-14");
 }
 
 function activePeriod() {
   const s = runtimePlan();
-  if (!state.useSchedule || !s?.enabled) return undefined;
-  if (s.repeat === "weekly" ? !s.days.includes(3) : s.date !== "2026-10-14") return undefined;
+  if (!state.useSchedule || !s || !runsOnDemoDay(s)) return undefined;
   return s.periods.find((p) => sim.minute >= minutes(p.start) && sim.minute < minutes(p.end));
 }
 
@@ -216,7 +222,7 @@ function upcoming() {
   if (sim.paused) return "已暂停，恢复后更新预计时间。";
   if (sim.phase === "idle") {
     const next = runtimePlan()?.periods.filter((item) => minutes(item.start) > sim.minute).sort((a, b) => minutes(a.start) - minutes(b.start))[0];
-    return next && state.useSchedule && runtimePlan().enabled ? `下一时段 <b>${next.start} · ${escape(next.name)}</b>，从第一轮开始。` : "当前没有有效安排，保持待机。";
+    return next && state.useSchedule && runsOnDemoDay(runtimePlan()) ? `下一时段 <b>${next.start} · ${escape(next.name)}</b>，从第一轮开始。` : "当前没有有效安排，保持待机。";
   }
   const end = sim.minute + (sim.phase === "remind" ? sim.active.rest : sim.remaining + (sim.phase === "work" ? sim.active.rest : 0));
   if (!sim.useSchedule) return `预计 <b>${time(end)}</b> 开始下一轮工作，继续使用 ${appliedSimple.work}/${appliedSimple.rest} 的节奏。${sim.phase === "remind" ? "<br>按现在开始休息估算。" : ""}`;
@@ -226,14 +232,14 @@ function upcoming() {
 
 function Simulation() {
   const p = runtimePlan()?.periods.find((item) => item.id === sim.period);
-  const title = sim.phase === "remind" ? "该起来活动一下了" : sim.phase === "break" ? "这段时间，留给自己" : sim.phase === "idle" ? "现在不提醒" : sim.postponed ? "再忙一会儿，也没关系" : "安心工作，待会儿提醒你";
-  const caption = sim.phase === "remind" ? `准备休息 ${sim.active.rest} 分钟，点击后才开始计时。` : sim.phase === "break" ? (sim.useSchedule ? "从实际开始时计满，不因预排钟点缩短。" : "休息结束后，继续下一轮工作。") : sim.phase === "idle" ? "执行时段之外，安静待机。" : `本轮工作 ${sim.active.work} 分钟，再休息 ${sim.active.rest} 分钟。`;
-  const status = `${sim.paused ? "⏸ " : ""}${sim.phase === "remind" ? "该休息了" : `${sim.phase === "break" ? "休息 " : ""}${String(sim.remaining).padStart(2, "0")}:00`}`;
-  const desktopPreview = `<div class="desktop-preview"><span>${state.platform === "macos" ? "菜单栏" : "桌面计时"}</span>${state.platform === "macos" ? `<div class="menubar-preview"><span>◷</span><b>${status}</b><span>◉　☷</span></div>` : state.showWidget ? `<div class="floating-preview" style="width:${state.widgetSize}px;height:${state.widgetSize}px;font-size:${Math.max(12, state.widgetSize * .25)}px">${String(sim.remaining).padStart(2, "0")}:00</div>` : '<p class="muted">悬浮计时条已关闭，可从系统托盘查看进度。</p>'}</div>`;
-  const sidebar = state.useSchedule ? `<h3>试试这些时刻</h3><p class="muted">点一下，直接进入对应情景。</p><button class="scenario" data-action="scenario" data-scenario="delay"><strong>01 · 晚 5 分钟才开始休息</strong><span>保留本轮内容，休息仍计满。</span></button><button class="scenario" data-action="scenario" data-scenario="boundary"><strong>02 · 休息还没结束，就到午休</strong><span>先完成这次休息，再保持安静。</span></button><button class="scenario" data-action="scenario" data-scenario="afternoon"><strong>03 · 午休之后，重新开始</strong><span>下一时段从第一轮开始，不补上午。</span></button>` : `<h3>熟悉的提醒方式</h3><p class="muted">一组时长，一直循环使用。</p><div class="simple-flow"><span>工作 ${appliedSimple.work} 分钟</span><i>↓</i><span>提醒：开始休息 / 再等等</span><i>↓</i><span>休息 ${appliedSimple.rest} 分钟</span><i>↺ 下一轮</i></div><p class="muted">暂停、重置、稍后休息与提前结束，沿用现有操作。</p>`;
-  return `<div class="simulation"><div><div class="clock-strip"><div><span class="eyebrow">模拟时间${sim.useSchedule ? " · 10 月 14 日 · 周三" : " · 简单计时"}</span><time>${time(sim.minute)}</time></div>${button("从头演示", "restart", "", "ghost small")}</div><section class="live-card ${sim.phase}"><span class="status-chip">${sim.paused ? "已暂停" : sim.phase === "idle" ? "待机" : sim.useSchedule ? `${escape(p?.name ?? "当前时段")} · 第 ${sim.round} 轮${sim.phase === "break" ? " · 休息中" : ""}` : `简单计时 · ${sim.phase === "break" ? "休息中" : sim.phase === "remind" ? "休息提醒" : "工作中"}`}</span><h2>${title}</h2>
+  const title = sim.paused ? "先暂停，准备好再继续" : sim.phase === "remind" ? "该起来活动一下了" : sim.phase === "break" ? "这段时间，留给自己" : sim.phase === "idle" ? "现在不提醒" : sim.postponed ? "再忙一会儿，也没关系" : "安心工作，待会儿提醒你";
+  const caption = sim.paused ? "当前进度已保留，恢复后继续计时。" : sim.phase === "remind" ? `准备休息 ${sim.active.rest} 分钟，点击后才开始计时。` : sim.phase === "break" ? (sim.useSchedule ? "从实际开始时计满，不因预排钟点缩短。" : "休息结束后，继续下一轮工作。") : sim.phase === "idle" ? "执行时段之外，安静待机。" : `本轮工作 ${sim.active.work} 分钟，再休息 ${sim.active.rest} 分钟。`;
+  const status = `${sim.paused ? "已暂停 · " : ""}${sim.phase === "idle" ? "待机" : sim.phase === "remind" ? "该休息了" : `${sim.phase === "break" ? "休息 " : ""}${String(sim.remaining).padStart(2, "0")}:00`}`;
+  const desktopPreview = `<div class="desktop-preview"><span>${state.platform === "macos" ? "菜单栏" : "桌面计时"}</span>${state.platform === "macos" ? `<div class="menubar-preview"><span>${icon("clock")}</span><b>${status}</b><span>${time(sim.minute)}</span></div>` : state.showWidget ? `<div class="floating-preview" style="width:${state.widgetSize}px;height:${state.widgetSize}px;font-size:${Math.max(12, state.widgetSize * .25)}px">${sim.phase === "idle" ? "待机" : sim.phase === "remind" ? "休息" : `${String(sim.remaining).padStart(2, "0")}:00`}</div>` : '<p class="muted">悬浮计时条已关闭，可从系统托盘查看进度。</p>'}</div>`;
+  const sidebar = state.useSchedule ? `<h3>试试这些时刻</h3><p class="muted">点一下，直接进入对应情景。</p><button class="scenario" data-action="scenario" data-scenario="delay"><strong>01 · 晚 5 分钟才开始休息</strong><span>保留本轮内容，休息仍计满。</span></button><button class="scenario" data-action="scenario" data-scenario="boundary"><strong>02 · 休息还没结束，就到午休</strong><span>先完成这次休息，再保持安静。</span></button><button class="scenario" data-action="scenario" data-scenario="afternoon"><strong>03 · 午休之后，重新开始</strong><span>下一时段从第一轮开始，不补上午。</span></button>` : `<h3>熟悉的提醒方式</h3><p class="muted">一组时长，一直循环使用。</p><div class="simple-flow"><span>工作 ${appliedSimple.work} 分钟</span><i>${icon("below")}</i><span>提醒：开始休息 / 再等等</span><i>${icon("below")}</i><span>休息 ${appliedSimple.rest} 分钟</span><i>${icon("refresh")} 下一轮</i></div><p class="muted">暂停、重置、稍后休息与提前结束，沿用现有操作。</p>`;
+  return `<div class="simulation"><div><div class="clock-strip"><div><span class="eyebrow">模拟时间${sim.useSchedule ? " · 10 月 14 日 · 周三" : " · 简单计时"}</span><time>${time(sim.minute)}</time></div>${button("从头演示", "restart", "", "ghost small")}</div><section class="live-card ${sim.phase} ${sim.paused ? "paused" : ""}"><span class="status-chip">${sim.paused ? "已暂停" : sim.phase === "idle" ? "待机" : sim.useSchedule ? `${escape(p?.name ?? "当前时段")} · 第 ${sim.round} 轮${sim.phase === "break" ? " · 休息中" : ""}` : `简单计时 · ${sim.phase === "break" ? "休息中" : sim.phase === "remind" ? "休息提醒" : "工作中"}`}</span><h2>${title}</h2>
     ${sim.phase === "work" || sim.phase === "break" ? `<div class="live-time">${String(sim.remaining).padStart(2, "0")}:00</div>` : ""}<p class="muted">${caption}</p>${sim.phase === "remind" || sim.phase === "break" ? `<div class="live-content">${escape(sim.active.content)}</div>` : ""}
-    <div class="live-actions">${sim.phase === "remind" ? `${button(`再等等 · ${Math.min(5, sim.active.work)} 分钟`, "postpone")}${button(`开始休息 ${sim.active.rest} 分钟`, "start-break", sim.paused ? "disabled" : "", "primary")}` : sim.phase === "break" ? `${button("提前结束休息", "end-break")}${button("推进到休息结束", "advance", `data-minutes="${sim.remaining}" ${sim.paused ? "disabled" : ""}`, "primary")}` : sim.phase === "work" ? button("推进到提醒 →", "advance", `data-minutes="${sim.remaining}" ${sim.paused ? "disabled" : ""}`, "primary") : button("推进到下个时段 →", "next-boundary", "", "primary")}</div></section>
+    <div class="live-actions">${sim.phase === "remind" ? `${button(`再等等 · ${Math.min(5, sim.active.work)} 分钟`, "postpone")}${button(`开始休息 ${sim.active.rest} 分钟`, "start-break", sim.paused ? "disabled" : "", "primary")}` : sim.phase === "break" ? `${button("提前结束休息", "end-break")}${button("推进到休息结束", "advance", `data-minutes="${sim.remaining}" ${sim.paused ? "disabled" : ""}`, "primary")}` : sim.phase === "work" ? button(`推进到提醒 ${icon("right")}`, "advance", `data-minutes="${sim.remaining}" ${sim.paused ? "disabled" : ""}`, "primary") : button(`推进到下个时段 ${icon("right")}`, "next-boundary", "", "primary")}</div></section>
     <div class="next-up">${upcoming()}</div><div class="sim-controls">${button("＋1 分钟", "advance", 'data-minutes="1"', "small")}${button("＋5 分钟", "advance", 'data-minutes="5"', "small")}${button(sim.paused ? "恢复" : "暂停", "pause", "", "ghost small")}${button("重置本轮", "reset", "", "ghost small")}</div></div>
     <aside class="scenarios">${sidebar}${desktopPreview}<div class="sim-caption">“＋分钟”只推进演示时钟。<br>设置里的修改需要保存后才用于试运行。${state.useSchedule ? "<br>下午 18:00 是示例结束时间，可自行调整。" : ""}</div></aside></div>`;
 }
@@ -278,56 +284,81 @@ function validate() {
 
 function save() {
   const error = validate();
-  if (error) { toast(error); return false; }
+  state.error = error;
+  if (error) { state.saved = false; toast("还差一步，请检查设置提示。"); return false; }
   if (state.useSchedule) applied = structuredClone(state.schedules);
   const simpleChanged = appliedSimple.work !== state.simple.work;
   appliedSimple = structuredClone(state.simple); appliedTips = state.tips;
   if (!state.useSchedule && !sim.useSchedule && sim.phase === "work" && simpleChanged) startSimple(sim.round);
   reconcile();
-  toast("已保存到本次演示，刷新页面会恢复示例。"); return true;
+  state.saved = true; toast("设置已保存到本次演示。"); return true;
 }
 
 function render() {
   const selected = variants.find((v) => v.key === state.variant) ?? variants[0];
   const root = document.querySelector<HTMLElement>(".scard")!;
   root.classList.toggle("simple-layout", state.view === "edit" && !state.useSchedule);
-  const modeControl = `<div class="mode-row ${state.useSchedule ? "" : "optional-schedule"}"><div><strong>使用日程${state.useSchedule ? "" : '<span class="optional-tag">可选</span>'}</strong><p class="muted">${state.useSchedule ? `按时段执行，空档不提醒。关闭后回到简单计时 ${state.simple.work}/${state.simple.rest}。` : "需要按星期、时段安排不同节奏时，再开启。"}</p></div>${switchButton("使用日程", state.useSchedule, "use-schedule")}</div>`;
-  const scheduleEditor = `<div class="schedule-tabs">${state.schedules.map((s) => `<button class="schedule-tab ${s.id === state.selected ? "selected" : ""}" data-action="select-schedule" data-id="${s.id}">${s.enabled ? '<span class="dot"></span>' : ""}${escape(s.name)}</button>`).join("")}${button("＋ 新建日程", "add-schedule", "", "ghost small")}</div>${state.variant === "B" ? VariantB() : state.variant === "C" ? VariantC() : VariantA()}`;
-  const editor = `${state.useSchedule ? `${modeControl}${scheduleEditor}` : `${SimpleSettings()}${modeControl}`}${CommonSettings()}<div class="bottom-actions"><p class="muted">${state.useSchedule ? "按电脑本地时间执行，休息可以推迟。" : "到点先提醒，由你决定什么时候开始休息。"}</p>${button("保存设置", "save", "", "primary")}</div>`;
-  root.innerHTML = `<div class="shead"><span class="app-icon">◷</span><h3>Sit Break</h3><span class="header-slash">/</span><span class="muted">设置</span><div class="window-dots"><i></i><i></i><i></i></div></div><main class="proto-body"><div class="page-heading"><div><h1>${state.view === "run" ? "试着过一遍" : state.useSchedule ? "日程安排" : "休息提醒"}</h1><p>${state.view === "run" ? "不用等真实时间，看看每个操作之后会怎样。" : state.useSchedule ? "设好平常的节奏，只调整不一样的那几轮。" : "设好工作与休息时长，到点提醒你。"}</p></div>${button(state.view === "run" ? "← 返回设置" : "▷ 试运行", state.view === "run" ? "edit" : "run", "", "ghost")}</div>${state.view === "run" ? Simulation() : editor}</main>`;
-  document.querySelector(".prototype-heading")!.innerHTML = `<span><b>交互原型 · ${selected.key}</b>${state.useSchedule ? selected.description : "简单计时为默认 · 日程按需开启"}</span><span class="platform-preview">预览系统<button data-preview-platform="macos" class="${state.platform === "macos" ? "selected" : ""}">macOS</button><button data-preview-platform="windows" class="${state.platform === "windows" ? "selected" : ""}">Windows</button></span>`;
-  document.querySelector(".prototype-state pre")!.textContent = JSON.stringify({ variant: state.variant, view: state.view, wizardStep: state.step, useSchedule: state.useSchedule, simpleSettings: state.simple, appliedSimple, commonSettings: {sound:state.sound,autostart:state.autostart,idleReset:state.idleReset,language:state.language,showWidget:state.showWidget,widgetSize:state.widgetSize,tips:state.tips}, previewPlatform:state.platform, draftSchedules: state.schedules, appliedSchedules: applied, simulation: sim }, null, 2);
-  console.info("日程原型状态", { variant: state.variant, view: state.view, simulation: structuredClone(sim) });
+  root.classList.toggle("closed", state.closed);
+  const modeControl = `<div class="mode-row ${state.useSchedule ? "" : "optional-schedule"}"><div><strong>使用日程</strong><p class="muted">${state.useSchedule ? `按时段执行，空档不提醒。关闭后回到简单计时 ${state.simple.work}/${state.simple.rest}。` : "按星期和时段安排不同节奏。"}</p></div>${switchButton("使用日程", state.useSchedule, "use-schedule")}</div>`;
+  const scheduleEditor = `<div class="schedule-tabs" aria-label="日程列表">${state.schedules.map((s) => `<button class="schedule-tab ${s.id === state.selected ? "selected" : ""}" aria-pressed="${s.id === state.selected}" data-action="select-schedule" data-id="${s.id}">${escape(s.name)}${!s.enabled ? '<small>已关闭</small>' : ""}</button>`).join("")}${button(`${icon("plus")} 新建日程`, "add-schedule", "", "ghost small")}</div>${state.variant === "B" ? VariantB() : state.variant === "C" ? VariantC() : VariantA()}`;
+  const error = state.error ? `<div class="form-error" role="alert">${icon("alert")}<div><strong>请检查设置</strong><p>${escape(state.error)}</p></div></div>` : "";
+  const editor = `${error}${state.useSchedule ? `${modeControl}${scheduleEditor}` : `${SimpleSettings()}${modeControl}`}${CommonSettings()}<div class="bottom-actions"><p class="muted">${state.useSchedule ? "按电脑本地时间执行，休息可以推迟。" : "到点先提醒，由你决定何时休息。"}</p>${button(state.saved ? `${icon("check")} 已保存` : "保存设置", "save", "", "primary save-button")}</div>`;
+  root.innerHTML = state.closed ? `<div class="closed-state">${icon("clock")}<h1>设置已收起</h1><p>随时回来调整自己的节奏。</p>${button("重新打开设置", "reopen", "", "primary")}</div>` : `<header class="shead"><span class="app-icon">${icon("clock")}</span><h3>Sit Break</h3><span class="header-slash">/</span><span class="header-label">${state.view === "run" ? "试运行" : "设置"}</span>${button(icon("close"), "close", 'aria-label="收起设置"', "close-button")}</header><main class="proto-body"><div class="page-heading"><div><h1>${state.view === "run" ? "按自己的节奏来" : state.useSchedule ? "日程安排" : "简单计时"}</h1><p>${state.view === "run" ? "到点先提醒，准备好了再休息。" : state.useSchedule ? "设好平常的节奏，只调整不一样的那几轮。" : "设定工作与休息时长，到点提醒你。"}</p></div>${state.view === "run" ? button(`${icon("left")} 返回设置`, "edit", "", "ghost") : ""}</div>${state.view === "run" ? Simulation() : editor}</main>`;
+  document.querySelector(".prototype-heading")!.innerHTML = `<span>交互原型 · 节奏优先${state.useSchedule ? ` · ${selected.key} ${selected.name}` : ""}</span><div class="preview-actions"><div class="platform-preview" aria-label="预览系统"><button data-preview-platform="macos" aria-pressed="${state.platform === "macos"}" class="${state.platform === "macos" ? "selected" : ""}">macOS</button><button data-preview-platform="windows" aria-pressed="${state.platform === "windows"}" class="${state.platform === "windows" ? "selected" : ""}">Windows</button></div>${button(`${icon(state.view === "run" ? "left" : "play")} ${state.view === "run" ? "返回设置" : "试运行"}`, state.view === "run" ? "edit" : "run", "", "small")}</div>`;
+  updateDebug();
+}
+
+function updateDebug() {
+  document.querySelector(".prototype-state pre")!.textContent = JSON.stringify({ variant: state.variant, view: state.view, useSchedule: state.useSchedule, simpleSettings: state.simple, appliedSimple, commonSettings: {sound:state.sound,autostart:state.autostart,idleReset:state.idleReset,language:state.language,showWidget:state.showWidget,widgetSize:state.widgetSize,tips:state.tips}, previewPlatform:state.platform, draftSchedules: state.schedules, appliedSchedules: applied, simulation: sim }, null, 2);
 }
 
 document.body.classList.add("settings-prototype");
+document.title = "Sit Break · UI 设计";
 document.querySelector(".toast")?.remove();
-document.body.insertAdjacentHTML("afterbegin", '<div class="prototype-heading"></div>');
-document.body.insertAdjacentHTML("beforeend", '<details class="prototype-state"><summary>查看原型数据 · 当前方案、安排与模拟进度</summary><pre></pre></details>');
+document.querySelector(".scard")!.insertAdjacentHTML("afterend", '<div class="prototype-heading"></div><details class="prototype-tools"><summary>更多演示选项</summary><p>当前为内存中的交互原型；刷新恢复示例。可切换早期布局，或查看模拟数据。</p><div class="prototype-variants"></div><details class="prototype-state"><summary>查看安排与模拟进度</summary><pre></pre></details></details>');
 mountPrototypeSwitcher((key) => { state.variant = key; render(); });
+document.querySelector(".prototype-variants")!.append(document.querySelector(".prototype-switcher")!);
 document.querySelector(".prototype-heading")!.addEventListener("click", (event) => {
-  const el = (event.target as HTMLElement).closest<HTMLElement>("[data-preview-platform]");
-  if (el) { state.platform = el.dataset.previewPlatform!; render(); }
+  const el = (event.target as HTMLElement).closest<HTMLElement>("[data-preview-platform], [data-action]");
+  if (!el) return;
+  if (el.dataset.previewPlatform) { state.platform = el.dataset.previewPlatform; render(); }
+  else if (el.dataset.action === "run") { if (save()) { state.closed = false; state.view = "run"; resetSimulation(); } render(); window.scrollTo({ top: 0 }); }
+  else if (el.dataset.action === "edit") { state.view = "edit"; render(); window.scrollTo({ top: 0 }); }
 });
 
-document.querySelector(".scard")!.addEventListener("change", (event) => {
+// 在输入时同步草稿，但不重建正在编辑的控件，保留焦点并避免吞掉下一次点击。
+document.querySelector(".scard")!.addEventListener("input", (event) => {
   const target = event.target as HTMLInputElement;
   if (target.dataset.plan) (plan() as unknown as Record<string, unknown>)[target.dataset.plan] = target.value;
-  if (target.dataset.simple) state.simple[target.dataset.simple as "work" | "rest"] = Math.max(1, Math.min(target.dataset.simple === "work" ? 240 : 60, Math.floor(Number(target.value)) || 1));
-  if (target.dataset.general) (state as unknown as Record<string, unknown>)[target.dataset.general] = target.type === "checkbox" ? target.checked : target.type === "number" ? Math.min(140, Math.max(40, Math.floor(Number(target.value)) || 64)) : target.value;
+  if (target.dataset.simple) state.simple[target.dataset.simple as "work" | "rest"] = Math.floor(Number(target.value));
+  if (target.dataset.general) (state as unknown as Record<string, unknown>)[target.dataset.general] = target.type === "number" ? Math.min(140, Math.max(40, Math.floor(Number(target.value)) || 64)) : target.value;
   if (target.dataset.period && target.dataset.field) {
     const p = plan().periods.find((item) => item.id === target.dataset.period)!;
     const object = target.dataset.adjust === undefined ? p : p.adjustments[Number(target.dataset.adjust)];
     (object as unknown as Record<string, unknown>)[target.dataset.field] = target.type === "number" ? Math.floor(Number(target.value)) : target.value;
   }
-  render();
+  state.saved = false;
+  const summary = document.querySelector(".simple-summary");
+  if (summary) summary.innerHTML = `每工作 <b>${state.simple.work}</b> 分钟，提醒休息 <b>${state.simple.rest}</b> 分钟。`;
+  document.querySelectorAll<HTMLButtonElement>('.duration-presets button').forEach(button => {
+    const selected = state.simple[button.dataset.field as "work" | "rest"] === Number(button.dataset.value);
+    button.classList.toggle("selected", selected); button.setAttribute("aria-pressed", String(selected));
+  });
+  const saveButton = document.querySelector(".save-button"); if (saveButton) saveButton.textContent = "保存设置";
+  if (state.useSchedule) { const preview = document.querySelector(".agenda"); if (preview) preview.outerHTML = agenda(); }
+  if (target.dataset.plan === "name") { const tab = document.querySelector(`[data-id="${state.selected}"]`); if (tab) tab.textContent = target.value; }
+  updateDebug();
 });
 
 document.querySelector(".scard")!.addEventListener("click", (event) => {
   const el = (event.target as HTMLElement).closest<HTMLElement>("[data-action]");
   if (!el) return;
   const p = plan().periods.find((item) => item.id === el.dataset.period);
+  if (el.dataset.action !== "save") { state.error = ""; state.saved = false; }
   switch (el.dataset.action) {
+    case "close": state.closed = true; break;
+    case "reopen": state.closed = false; break;
+    case "duration-step": { const key = el.dataset.field as "work" | "rest"; state.simple[key] = Math.max(1, Math.min(key === "work" ? 240 : 60, state.simple[key] + Number(el.dataset.delta))); break; }
     case "use-schedule": { state.useSchedule = !state.useSchedule; const url = new URL(location.href); if (state.useSchedule) url.searchParams.set("mode", "schedule"); else url.searchParams.delete("mode"); history.replaceState(null, "", url); reconcile(); break; }
     case "preference": { const key = el.dataset.key as "sound" | "autostart" | "idleReset" | "showWidget"; state[key] = !state[key]; break; }
     case "preset": state.simple[el.dataset.field as "work" | "rest"] = Number(el.dataset.value); break;
@@ -365,7 +396,12 @@ document.querySelector(".scard")!.addEventListener("click", (event) => {
       break;
     }
   }
+  const focusAction = el.dataset.action;
+  const focusKeys = Object.entries(el.dataset).map(([key, value]) => `[data-${key.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}="${CSS.escape(value ?? "")}"]`).join("");
   render();
+  document.querySelector<HTMLElement>(focusKeys)?.focus({ preventScroll: true });
+  if (focusAction === "run" || focusAction === "edit" || focusAction === "reopen") window.scrollTo({ top: 0 });
+  if (focusAction === "save" && state.error) document.querySelector(".form-error")?.scrollIntoView({ block: "center", behavior: "smooth" });
 });
 
 render();
