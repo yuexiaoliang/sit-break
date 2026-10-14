@@ -100,6 +100,7 @@ pub struct TimerApp {
     break_ended_at: Option<Duration>,
     tip_rng: fastrand::Rng,
     previous_tip: Option<String>,
+    restart_after_break: bool,
 }
 
 impl TimerApp {
@@ -126,6 +127,7 @@ impl TimerApp {
             break_ended_at: None,
             tip_rng,
             previous_tip: None,
+            restart_after_break: false,
         };
         let now = now.into();
         if app.settings.use_schedule {
@@ -242,7 +244,7 @@ impl TimerApp {
                                 && round.period_id == period.id
                                 && round.date == *date
                         });
-                        if same {
+                        if same && !self.restart_after_break {
                             self.info.mode = Mode::Work;
                             self.info.remaining = self.info.work_seconds;
                         } else {
@@ -254,6 +256,7 @@ impl TimerApp {
                 } else {
                     self.start_simple_work();
                 }
+                self.restart_after_break = false;
                 output.update_windows = true;
             }
             Action::Postpone => {
@@ -297,6 +300,24 @@ impl TimerApp {
                 let work_changed = self.settings.work_minutes != settings.work_minutes;
                 let mode_changed = self.settings.use_schedule != settings.use_schedule;
                 self.settings = settings;
+                if self.info.mode == Mode::Break {
+                    let current_invalidated = self.info.round.as_ref().is_some_and(|round| {
+                        !self.current_period(now.local.as_ref()).is_some_and(
+                            |(schedule, period)| {
+                                round.schedule_id == schedule.id
+                                    && round.period_id == period.id
+                                    && now
+                                        .local
+                                        .as_ref()
+                                        .is_some_and(|local| round.date == local.date)
+                            },
+                        )
+                    });
+                    if mode_changed || current_invalidated {
+                        // 随后切回原方式或重新启用，也不恢复已关闭的安排。
+                        self.restart_after_break = true;
+                    }
+                }
                 if mode_changed && self.info.mode != Mode::Break {
                     self.set_idle();
                     if self.settings.use_schedule {
@@ -447,7 +468,12 @@ impl TimerApp {
     }
 
     fn finish_round(&mut self, now: &TimerTime) {
-        let finished = self.info.round.clone();
+        let finished = self
+            .info
+            .round
+            .clone()
+            .filter(|_| !self.restart_after_break);
+        self.restart_after_break = false;
         if self.settings.use_schedule {
             if let Some((schedule, period)) = self.current_period(now.local.as_ref()) {
                 let date = &now.local.as_ref().unwrap().date;
