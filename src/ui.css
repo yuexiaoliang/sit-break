@@ -470,3 +470,16 @@ body.settings-page { display: flex; padding: 6px; }
   .sbody::-webkit-scrollbar-thumb,
   .ftips textarea::-webkit-scrollbar-thumb { background: rgba(79, 224, 168, .3); }
 }
+
+/* 休息内容按纯文本保留换行；长内容独立滚动，按钮始终保留空间。 */
+.reminder-page .card { min-width: 0; min-height: 0; overflow: hidden; }
+.reminder-page .card > .badge, .reminder-page .card > h2, .reminder-page .card > .sub,
+.reminder-page .btns, .reminder-page .ring-wrap { flex-shrink: 0; }
+.reminder-page .tip { min-height: 0; overflow-y: auto; align-items: flex-start; margin-top: 12px; margin-bottom: 14px; }
+.reminder-page .tip .ic { align-self: flex-start; margin-top: 2px; }
+#tipText, #stretchText { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+#tipText { min-width: 0; }
+#stretchText { flex: 1; min-height: 0; width: 100%; overflow-y: auto; margin: 10px 0; padding: 0 4px; }
+.reminder-page .card.dark .btns { margin-top: 0; }
+.reminder-page .tip::-webkit-scrollbar, #stretchText::-webkit-scrollbar { width: 6px; }
+.reminder-page .tip::-webkit-scrollbar-thumb, #stretchText::-webkit-scrollbar-thumb { background: rgba(127, 150, 138, .4); border-radius: 99px; }

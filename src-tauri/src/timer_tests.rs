@@ -852,3 +852,347 @@ fn simple_timer_keeps_its_existing_tip_rotation_when_postponed() {
     );
     assert_ne!(app.info().tip, first_tip);
 }
+
+fn settings_with_overrides(overrides: serde_json::Value) -> Settings {
+    let mut json = serde_json::to_value(scheduled_settings("15:00")).unwrap();
+    let period = &mut json["schedules"][0]["periods"][0];
+    period["work_minutes"] = serde_json::json!(55);
+    period["break_minutes"] = serde_json::json!(5);
+    period["overrides"] = overrides;
+    serde_json::from_value(json).unwrap()
+}
+
+#[test]
+fn a_first_round_length_override_leaves_later_rounds_at_the_default_rhythm() {
+    let mut app = TimerApp::new_at(
+        settings_with_overrides(serde_json::json!([
+            {"round":1,"work_minutes":50,"break_minutes":10},
+            {"round":2,"content":"深蹲"}
+        ])),
+        fastrand::Rng::with_seed(42),
+        at(9, 0),
+    );
+    assert_eq!(
+        (app.info().work_seconds, app.info().break_seconds),
+        (3000, 600)
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3000,
+            idle_secs: 0,
+        },
+        at(9, 50),
+    );
+    app.dispatch(Action::StartBreak, at(9, 55));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 600,
+            idle_secs: 0,
+        },
+        at(10, 5),
+    );
+    assert_eq!(app.info().round.unwrap().number, 2);
+    assert_eq!(
+        (app.info().work_seconds, app.info().break_seconds),
+        (3300, 300)
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3300,
+            idle_secs: 0,
+        },
+        at(11, 0),
+    );
+    app.dispatch(Action::StartBreak, at(11, 0));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 300,
+            idle_secs: 0,
+        },
+        at(11, 5),
+    );
+    assert_eq!(app.info().round.unwrap().number, 3);
+    assert_eq!(
+        (app.info().work_seconds, app.info().break_seconds),
+        (3300, 300)
+    );
+}
+
+#[test]
+fn custom_round_content_survives_save_language_change_postpones_and_one_full_break() {
+    let content = "  爬楼 <script>alert('x')</script> & 深蹲\n补水 ✅\n  ";
+    let path = std::env::temp_dir().join(format!("sit-break-overrides-{}.json", fastrand::u64(..)));
+    let settings = settings_with_overrides(serde_json::json!([
+        {"round":1,"work_minutes":50,"break_minutes":10,"content":content},
+        {"round":2,"content":"深蹲"}
+    ]));
+    let mut saving = simple_timer();
+    let saved = saving.dispatch(Action::SaveSettings(settings), at(8, 59));
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let mut app = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 0,
+            idle_secs: 0,
+        },
+        at(9, 0),
+    );
+    assert_eq!(app.info().tip.as_deref(), Some(content));
+    let reminder = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3000,
+            idle_secs: 0,
+        },
+        at(9, 50),
+    );
+    assert!(reminder.events.iter().any(|event| matches!(event, TimerEvent::Reminder(payload) if payload.tip == content && payload.break_seconds == 600)));
+    let mut settings = app.settings().clone();
+    settings.language = "en".into();
+    app.dispatch(Action::SaveSettings(settings), at(9, 50));
+    for (from, to) in [(at(9, 50), at(9, 55)), (at(9, 55), at(10, 0))] {
+        app.dispatch(Action::Postpone, from);
+        let reminder = app.dispatch(
+            Action::Tick {
+                elapsed_secs: 300,
+                idle_secs: 0,
+            },
+            to,
+        );
+        assert_eq!(app.info().round.unwrap().number, 1);
+        assert_eq!(app.info().tip.as_deref(), Some(content));
+        assert!(reminder
+            .events
+            .iter()
+            .any(|event| matches!(event, TimerEvent::Reminder(payload) if payload.tip == content)));
+    }
+    app.dispatch(Action::StartBreak, at(10, 0));
+    assert_eq!(app.info().remaining, 600);
+    assert_eq!(app.info().tip.as_deref(), Some(content));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 599,
+            idle_secs: 0,
+        },
+        at(10, 9),
+    );
+    assert_eq!((app.info().mode, app.info().remaining), (Mode::Break, 1));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 1,
+            idle_secs: 0,
+        },
+        at(10, 10),
+    );
+    assert_eq!(app.info().round.unwrap().number, 2);
+    assert_eq!(app.info().tip.as_deref(), Some("深蹲"));
+    assert_eq!(
+        (app.info().work_seconds, app.info().break_seconds),
+        (3300, 300)
+    );
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn invalid_round_adjustments_report_their_field_and_preserve_saved_progress() {
+    let path = std::env::temp_dir().join(format!(
+        "sit-break-override-validation-{}.json",
+        fastrand::u64(..)
+    ));
+    let valid = settings_with_overrides(
+        serde_json::json!([{"round":1,"work_minutes":50,"break_minutes":10,"content":"爬楼"}]),
+    );
+    valid.save_to(&path).unwrap();
+    let mut app = TimerApp::new_at(valid.clone(), fastrand::Rng::with_seed(42), at(9, 0));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        at(9, 1),
+    );
+    let progress = app.info();
+    for (overrides, field, code) in [
+        (
+            serde_json::json!([{"round":0}]),
+            "overrides.0.round",
+            "round_number",
+        ),
+        (
+            serde_json::json!([{"round":1},{"round":1}]),
+            "overrides.1.round",
+            "duplicate_round",
+        ),
+        (
+            serde_json::json!([{"round":1,"work_minutes":0}]),
+            "overrides.0.work_minutes",
+            "work_range",
+        ),
+        (
+            serde_json::json!([{"round":1,"work_minutes":241}]),
+            "overrides.0.work_minutes",
+            "work_range",
+        ),
+        (
+            serde_json::json!([{"round":1,"break_minutes":0}]),
+            "overrides.0.break_minutes",
+            "break_range",
+        ),
+        (
+            serde_json::json!([{"round":1,"break_minutes":61}]),
+            "overrides.0.break_minutes",
+            "break_range",
+        ),
+    ] {
+        let invalid = settings_with_overrides(overrides);
+        let output = app.dispatch(Action::SaveSettings(invalid.clone()), at(15, 1));
+        assert!(output
+            .validation_errors
+            .iter()
+            .any(|error| error.period_id.as_deref() == Some("morning-period")
+                && error.field == field
+                && error.code == code));
+        assert!(output.persist_settings.is_none());
+        assert_eq!(app.info(), progress);
+        assert!(invalid.save_to(&path).is_err());
+        let loaded = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+        assert_eq!(
+            serde_json::to_value(loaded.settings()).unwrap(),
+            serde_json::to_value(&valid).unwrap()
+        );
+    }
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn removing_an_adjustment_restores_inherited_lengths_and_a_stable_default_tip() {
+    let path = std::env::temp_dir().join(format!(
+        "sit-break-removed-override-{}.json",
+        fastrand::u64(..)
+    ));
+    let settings = settings_with_overrides(serde_json::json!([
+        {"round":1,"work_minutes":50,"break_minutes":10,"content":"爬楼"}
+    ]));
+    let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(9, 0));
+    let mut settings = app.settings().clone();
+    settings.schedules[0].periods[0].overrides.clear();
+    let saved = app.dispatch(Action::SaveSettings(settings), at(9, 10));
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let mut reloaded = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    reloaded.dispatch(
+        Action::Tick {
+            elapsed_secs: 0,
+            idle_secs: 0,
+        },
+        at(9, 0),
+    );
+    assert_eq!(
+        (reloaded.info().work_seconds, reloaded.info().break_seconds),
+        (3300, 300)
+    );
+    let tip = reloaded.info().tip.unwrap();
+    assert!(matches!(tip.as_str(), "走动一下" | "喝水"));
+    reloaded.dispatch(
+        Action::Tick {
+            elapsed_secs: 3300,
+            idle_secs: 0,
+        },
+        at(9, 55),
+    );
+    reloaded.dispatch(Action::Postpone, at(9, 55));
+    reloaded.dispatch(
+        Action::Tick {
+            elapsed_secs: 300,
+            idle_secs: 0,
+        },
+        at(10, 0),
+    );
+    reloaded.dispatch(Action::StartBreak, at(10, 0));
+    assert_eq!(reloaded.info().tip.as_deref(), Some(tip.as_str()));
+    assert_eq!(reloaded.info().remaining, 300);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn individual_duration_overrides_inherit_the_other_length_and_blank_content_uses_tips() {
+    for (adjustment, work, rest) in [
+        (serde_json::json!({"round":1,"work_minutes":50}), 3000, 300),
+        (
+            serde_json::json!({"round":1,"break_minutes":10,"content":" \n "}),
+            3300,
+            600,
+        ),
+    ] {
+        let mut app = TimerApp::new_at(
+            settings_with_overrides(serde_json::json!([adjustment])),
+            fastrand::Rng::with_seed(42),
+            at(9, 0),
+        );
+        assert_eq!(
+            (app.info().work_seconds, app.info().break_seconds),
+            (work, rest)
+        );
+        let tip = app.info().tip.unwrap();
+        assert!(matches!(tip.as_str(), "走动一下" | "喝水"));
+        app.dispatch(
+            Action::Tick {
+                elapsed_secs: work,
+                idle_secs: 0,
+            },
+            at(9, 55),
+        );
+        app.dispatch(Action::Postpone, at(9, 55));
+        app.dispatch(
+            Action::Tick {
+                elapsed_secs: 300,
+                idle_secs: 0,
+            },
+            at(10, 0),
+        );
+        assert_eq!(app.info().tip.as_deref(), Some(tip.as_str()));
+        app.dispatch(Action::StartBreak, at(10, 0));
+        assert_eq!(app.info().remaining, rest);
+    }
+}
+
+#[test]
+fn each_period_uses_its_own_first_round_adjustment() {
+    let mut json = serde_json::to_value(settings_with_overrides(serde_json::json!([
+        {"round":1,"work_minutes":50,"break_minutes":10,"content":"爬楼"}
+    ])))
+    .unwrap();
+    json["schedules"][0]["periods"][0]["end"] = serde_json::json!("10:00");
+    json["schedules"][0]["periods"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "id":"next-period","start":"10:00","end":"12:00","work_minutes":55,"break_minutes":5,
+            "overrides":[{"round":1,"work_minutes":40,"break_minutes":3,"content":"伸展"}]
+        }));
+    let mut app = TimerApp::new_at(
+        serde_json::from_value(json).unwrap(),
+        fastrand::Rng::with_seed(42),
+        at(9, 0),
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 3000,
+            idle_secs: 0,
+        },
+        at(9, 50),
+    );
+    app.dispatch(Action::StartBreak, at(9, 50));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 600,
+            idle_secs: 0,
+        },
+        at(10, 0),
+    );
+    let round = app.info().round.unwrap();
+    assert_eq!((round.period_id.as_str(), round.number), ("next-period", 1));
+    assert_eq!(
+        (app.info().work_seconds, app.info().break_seconds),
+        (2400, 180)
+    );
+    assert_eq!(app.info().tip.as_deref(), Some("伸展"));
+}

@@ -386,14 +386,29 @@ impl TimerApp {
         number: u32,
     ) {
         self.info.mode = Mode::Work;
-        self.info.work_seconds = u64::from(period.work_minutes) * 60;
-        self.info.break_seconds = u64::from(period.break_minutes) * 60;
+        let adjustment = period.overrides.iter().find(|item| item.round == number);
+        self.info.work_seconds = u64::from(
+            adjustment
+                .and_then(|item| item.work_minutes)
+                .unwrap_or(period.work_minutes),
+        ) * 60;
+        self.info.break_seconds = u64::from(
+            adjustment
+                .and_then(|item| item.break_minutes)
+                .unwrap_or(period.break_minutes),
+        ) * 60;
         self.info.remaining = self.info.work_seconds;
-        let tip = choose_tip(
-            &self.settings,
-            self.previous_tip.as_deref(),
-            &mut self.tip_rng,
-        );
+        let tip = adjustment
+            .and_then(|item| item.content.as_deref())
+            .filter(|content| !content.trim().is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| {
+                choose_tip(
+                    &self.settings,
+                    self.previous_tip.as_deref(),
+                    &mut self.tip_rng,
+                )
+            });
         self.previous_tip = Some(tip.clone());
         self.info.tip = Some(tip);
         self.info.round = Some(RoundInfo {

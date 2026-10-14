@@ -24,6 +24,19 @@ pub struct Period {
     pub end: String,
     pub work_minutes: u32,
     pub break_minutes: u32,
+    #[serde(default)]
+    pub overrides: Vec<RoundOverride>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoundOverride {
+    pub round: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_minutes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub break_minutes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -109,6 +122,46 @@ impl crate::Settings {
                 }
                 if !(1..=60).contains(&period.break_minutes) {
                     report(sid, pid, "break_minutes", "break_range");
+                }
+                let mut adjusted_rounds = std::collections::HashSet::new();
+                for (index, adjustment) in period.overrides.iter().enumerate() {
+                    if adjustment.round == 0 {
+                        report(
+                            sid,
+                            pid,
+                            &format!("overrides.{index}.round"),
+                            "round_number",
+                        );
+                    } else if !adjusted_rounds.insert(adjustment.round) {
+                        report(
+                            sid,
+                            pid,
+                            &format!("overrides.{index}.round"),
+                            "duplicate_round",
+                        );
+                    }
+                    if adjustment
+                        .work_minutes
+                        .is_some_and(|minutes| !(1..=240).contains(&minutes))
+                    {
+                        report(
+                            sid,
+                            pid,
+                            &format!("overrides.{index}.work_minutes"),
+                            "work_range",
+                        );
+                    }
+                    if adjustment
+                        .break_minutes
+                        .is_some_and(|minutes| !(1..=60).contains(&minutes))
+                    {
+                        report(
+                            sid,
+                            pid,
+                            &format!("overrides.{index}.break_minutes"),
+                            "break_range",
+                        );
+                    }
                 }
             }
         }
