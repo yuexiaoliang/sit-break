@@ -1,5 +1,6 @@
 //! 保存的日程定义；日期和时间均表示电脑本地日历。
 use serde::{Deserialize, Serialize};
+use chrono::Datelike;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Schedule {
@@ -15,6 +16,17 @@ pub struct Schedule {
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Repeat {
     Once { date: String },
+    Weekly { weekdays: Vec<u32> },
+}
+
+impl Repeat {
+    pub fn applies_on(&self, local_date: &str) -> bool {
+        match self {
+            Self::Once { date } => date == local_date,
+            Self::Weekly { weekdays } => chrono::NaiveDate::parse_from_str(local_date, "%Y-%m-%d")
+                .is_ok_and(|date| weekdays.contains(&date.weekday().number_from_monday())),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,6 +44,7 @@ pub struct PeriodConflict {
     pub period_id: String,
     pub start: String,
     pub end: String,
+    pub occurrence: Repeat,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -66,6 +79,28 @@ pub fn valid_date(value: &str) -> bool {
             .is_ok_and(|date| date.format("%Y-%m-%d").to_string() == value)
 }
 
+fn shared_occurrence(left: &Repeat, right: &Repeat) -> Option<Repeat> {
+    match (left, right) {
+        (Repeat::Once { date: left }, Repeat::Once { date: right })
+            if left == right && valid_date(left) => Some(Repeat::Once { date: left.clone() }),
+        (Repeat::Weekly { weekdays: left }, Repeat::Weekly { weekdays: right }) => {
+            let weekdays = (1..=7).filter(|day| left.contains(day) && right.contains(day)).collect::<Vec<_>>();
+            (!weekdays.is_empty()).then_some(Repeat::Weekly { weekdays })
+        }
+        (once @ Repeat::Once { date }, weekly @ Repeat::Weekly { .. })
+        | (weekly @ Repeat::Weekly { .. }, once @ Repeat::Once { date }) => {
+            (valid_date(date) && weekly.applies_on(date)).then_some(once.clone())
+        }
+        _ => None,
+    }
+}
+
+fn period_range(period: &Period) -> Option<(u32, u32)> {
+    minute_of_day(&period.start, false)
+        .zip(minute_of_day(&period.end, true))
+        .filter(|(start, end)| start < end)
+}
+
 impl crate::Settings {
     /// 所有设置写入及运行进度变更前共用的校验。
     pub fn validate(&self) -> Vec<ValidationError> {
@@ -96,6 +131,12 @@ impl crate::Settings {
                 Repeat::Once { date } if !valid_date(date) => {
                     report(sid, None, "date", "invalid_date")
                 }
+                Repeat::Weekly { weekdays }
+                    if weekdays.is_empty()
+                        || weekdays.iter().any(|day| !(1..=7).contains(day))
+                        || weekdays.iter().collect::<std::collections::HashSet<_>>().len() != weekdays.len() => {
+                    report(sid, None, "weekdays", "invalid_weekdays")
+                }
                 _ => {}
             }
             let mut period_ids = std::collections::HashSet::new();
@@ -123,7 +164,7 @@ impl crate::Settings {
                 }
             }
         }
-        // 仅校验同一日程的日内时段；多份日程的日期/星期冲突由后续任务扩展。
+        // 每份日程内部始终要求合法；跨日程只比较同时启用的共同执行日期。
         for schedule in &self.schedules {
             for (index, period) in schedule.periods.iter().enumerate() {
                 let Some((start, end)) = minute_of_day(&period.start, false)
@@ -150,8 +191,35 @@ impl crate::Settings {
                                 period_id: other.id.clone(),
                                 start: other.start.clone(),
                                 end: other.end.clone(),
+                                occurrence: schedule.repeat.clone(),
                             }),
                         });
+                    }
+                }
+            }
+        }
+        for (index, schedule) in self.schedules.iter().enumerate().filter(|(_, item)| item.enabled) {
+            for other in self.schedules[..index].iter().filter(|item| item.enabled) {
+                let Some(occurrence) = shared_occurrence(&schedule.repeat, &other.repeat) else { continue; };
+                for period in &schedule.periods {
+                    let Some((start, end)) = period_range(period) else { continue; };
+                    for other_period in &other.periods {
+                        let Some((other_start, other_end)) = period_range(other_period) else { continue; };
+                        if start < other_end && other_start < end {
+                            errors.push(ValidationError {
+                                schedule_id: Some(schedule.id.clone()),
+                                period_id: Some(period.id.clone()),
+                                field: "start".into(),
+                                code: "overlap".into(),
+                                conflict: Some(PeriodConflict {
+                                    schedule_id: other.id.clone(),
+                                    period_id: other_period.id.clone(),
+                                    start: other_period.start.clone(),
+                                    end: other_period.end.clone(),
+                                    occurrence: occurrence.clone(),
+                                }),
+                            });
+                        }
                     }
                 }
             }

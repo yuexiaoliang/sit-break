@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
-use crate::schedule::{minute_of_day, Period, Repeat, Schedule, ValidationError};
+use crate::schedule::{minute_of_day, Period, Schedule, ValidationError};
 use crate::{choose_tip, Settings, POSTPONE_SECS};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -332,8 +332,7 @@ impl TimerApp {
             .iter()
             .filter(|schedule| schedule.enabled)
             .find_map(|schedule| {
-                let Repeat::Once { date } = &schedule.repeat;
-                if date != &local.date {
+                if !schedule.repeat.applies_on(&local.date) {
                     return None;
                 }
                 schedule
