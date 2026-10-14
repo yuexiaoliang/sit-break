@@ -1,14 +1,16 @@
-// 临时原型：在现有 /settings.html 上通过 ?prototype=schedule&variant=A/B/C
-// 默认保留完整简单计时，开启日程后比较三种编辑结构。
+// 临时原型：在现有 /settings.html 上通过 ?prototype=schedule 进入。
+// 默认保留完整简单计时，开启日程后使用已确认的时段卡片。
 // 状态只存内存；这里只演示编辑、推迟休息和时段衔接，不是生产计时引擎。
 import "./schedule.prototype.css";
-import "./rhythm.prototype.css";
 import { icon } from "./prototype-icons";
-import { mountPrototypeSwitcher, variants } from "./prototype-switcher";
 
 type Adjustment = { round: number; work?: number; rest?: number; content?: string };
 type Period = { id: string; name: string; start: string; end: string; work: number; rest: number; adjustments: Adjustment[] };
 type Schedule = { id: string; name: string; enabled: boolean; repeat: string; days: number[]; date: string; periods: Period[] };
+type Theme = "system" | "light" | "dark";
+const requestedTheme = new URLSearchParams(location.search).get("theme");
+const systemTheme = matchMedia("(prefers-color-scheme: dark)");
+
 type Phase = "work" | "remind" | "break" | "idle";
 const sample: Schedule = {
   id: "weekday", name: "工作日", enabled: true, repeat: "weekly", days: [1, 2, 3, 4, 5], date: "2026-10-14",
@@ -19,9 +21,9 @@ const sample: Schedule = {
 };
 const state = {
   useSchedule: new URLSearchParams(location.search).get("mode") === "schedule", schedules: [structuredClone(sample)], selected: "weekday",
-  variant: new URLSearchParams(location.search).get("variant") ?? "A", view: "edit", step: 1,
+  theme: (requestedTheme === "light" || requestedTheme === "dark" ? requestedTheme : "system") as Theme, view: "edit",
   closed: false, error: "", saved: false,
-  period: "morning", openPeriods: new Set<string>(), sound: true, idleReset: true,
+  openPeriods: new Set<string>(), sound: true, idleReset: true,
   simple: { work: 45, rest: 5 }, autostart: false, language: "system", showWidget: true, widgetSize: 64,
   platform: navigator.platform.toLowerCase().includes("mac") ? "macos" : "windows",
   tips: "走动一下，顺便接杯水喝\n站起来，伸展一下肩颈",
@@ -42,7 +44,6 @@ const minutes = (time: string) => time.split(":").reduce((h, m) => h * 60 + Numb
 const time = (value: number) => `${String(Math.floor(value / 60) % 24).padStart(2, "0")}:${String(Math.floor(value % 60)).padStart(2, "0")}`;
 const plan = () => state.schedules.find((s) => s.id === state.selected)!;
 const runtimePlan = () => applied.find((s) => s.id === sim.schedule)!;
-const selectedPeriod = () => plan().periods.find((p) => p.id === state.period) ?? plan().periods[0];
 const resolveRound = (p: Period, round: number) => {
   const adjustment = p.adjustments.find((a) => a.round === round);
   return { work: adjustment?.work ?? p.work, rest: adjustment?.rest ?? p.rest, content: adjustment?.content || chooseDemoTip() };
@@ -120,10 +121,10 @@ function adjustments(p: Period) {
     <p class="muted" style="margin-top:8px;font-size:10px">休息内容自由填写，整次休息共用一个倒计时。</p></div>`;
 }
 
-function periodCard(p: Period, index: number, showAdjustments = true) {
+function periodCard(p: Period, index: number) {
   const opened = state.openPeriods.has(p.id);
   return `<section class="period-card"><div class="period-head"><span class="period-icon ${index ? "pm" : ""}">${icon(index ? "afternoon" : "sun")}</span><strong>${escape(p.name)}</strong>${button("移除", "remove-period", `data-period="${p.id}"`, "ghost small")}</div>
-    ${periodFields(p)}${showAdjustments ? `<button class="round-toggle" aria-expanded="${opened}" data-action="toggle-adjust" data-period="${p.id}"><span>${p.adjustments.length ? `${p.adjustments.length} 轮有单独安排` : "需要调整某一轮？"}<b>${p.adjustments.map((a) => `第 ${a.round} 轮${a.content ? ` · ${escape(a.content).slice(0, 12)}` : ""}`).join(" / ")}</b></span><span>${opened ? "收起" : "展开"}${icon(opened ? "up" : "down")}</span></button>${opened ? adjustments(p) : ""}` : ""}</section>`;
+    ${periodFields(p)}<button class="round-toggle" aria-expanded="${opened}" data-action="toggle-adjust" data-period="${p.id}"><span>${p.adjustments.length ? `${p.adjustments.length} 轮有单独安排` : "需要调整某一轮？"}<b>${p.adjustments.map((a) => `第 ${a.round} 轮${a.content ? ` · ${escape(a.content).slice(0, 12)}` : ""}`).join(" / ")}</b></span><span>${opened ? "收起" : "展开"}${icon(opened ? "up" : "down")}</span></button>${opened ? adjustments(p) : ""}</section>`;
 }
 
 function agenda() {
@@ -137,24 +138,8 @@ function agenda() {
   }).join("")}<p class="agenda-note" style="margin-bottom:12px">${items.length ? "晚开始休息，后面的轮次跟着顺延。" : "添加时段后，这里会显示当天概览。"}</p>${button(`${icon("play")} 看看实际怎么运行`, "run", "", "primary")}</aside>`;
 }
 
-export function VariantA() {
-  return `<div class="a-layout"><div>${nameEditor()}${repeatEditor()}${!plan().periods.length ? '<div class="empty-periods"><h3>还没有执行时段</h3><p>添加一个时段，设定它的工作与休息节奏。</p></div>' : ""}${plan().periods.map((p, i) => `${i && minutes(p.start) > minutes(plan().periods[i - 1].end) ? `<div class="gap-label">${plan().periods[i - 1].end}–${p.start} 不提醒</div>` : ""}${periodCard(p, i)}`).join("")}${button(`${icon("plus")} 添加执行时段`, "add-period", "", "add-period")}</div>${agenda()}</div>`;
-}
-
-export function VariantB() {
-  const p = selectedPeriod();
-  return `${nameEditor()}${repeatEditor()}<div class="timeline-layout"><div><div class="timeline-toolbar"><strong class="section-label">点击一个时段，调整它</strong>${button(`${icon("plus")} 时段`, "add-period", "", "ghost small")}</div>${plan().periods.map((item, i) => `<div class="timeline-row"><time class="timeline-time">${item.start}</time><button class="timeline-block ${p?.id === item.id ? "selected" : ""}" data-action="select-period" data-period="${item.id}"><strong>${escape(item.name)}</strong><p>工作 ${item.work} 分钟 / 休息 ${item.rest} 分钟</p>${item.adjustments.length ? item.adjustments.map((a) => `<div class="timeline-round">第 ${a.round} 轮 · ${a.work ?? item.work}/${a.rest ?? item.rest}${a.content ? ` · ${escape(a.content)}` : ""}</div>`).join("") : '<div class="timeline-round">每轮使用默认安排</div>'}<p class="muted">到 ${item.end} 结束</p></button></div>${plan().periods[i + 1] && minutes(plan().periods[i + 1].start) > minutes(item.end) ? `<div class="timeline-gap">${item.end}–${plan().periods[i + 1].start}<br>不提醒，留给自己</div>` : ""}`).join("")}</div><aside class="inspector">${p ? `<span class="eyebrow">编辑执行时段</span><h3>${escape(p.name)} · ${p.start}–${p.end}</h3><p class="muted">设好默认节奏，再调整特殊轮次。</p>${periodFields(p)}<div class="repeat-top" style="margin-top:20px"><strong>单轮安排</strong>${button("移除此时段", "remove-period", `data-period="${p.id}"`, "ghost small")}</div>${adjustments(p)}` : '<p class="muted">添加一个时段开始安排。</p>'}</aside></div>`;
-}
-
-export function VariantC() {
-  const labels = ["重复日期", "执行时段", "单轮安排", "看一遍"];
-  const contents = [
-    `<h2 class="step-title">哪些日子，照这个节奏？</h2><p class="step-description">像设置手机闹钟一样，选好重复的日子。</p>${nameEditor()}${repeatEditor()}`,
-    `<h2 class="step-title">给一天留出几个时段</h2><p class="step-description">时段之间不提醒；每段只需要一组默认时长。</p>${plan().periods.map((p, i) => periodCard(p, i, false)).join("")}${button(`${icon("plus")} 添加执行时段`, "add-period", "", "add-period")}`,
-    `<h2 class="step-title">有哪一轮，需要不一样？</h2><p class="step-description">这一步可以跳过，其余轮次继续使用默认值。</p><div class="wizard-optional">例如第一轮爬楼 10 分钟，第二轮深蹲 5 分钟。</div>${plan().periods.map((p) => `<section class="period-card"><div class="period-head"><strong>${escape(p.name)}</strong><span class="muted">默认 ${p.work}/${p.rest}</span></div>${adjustments(p)}</section>`).join("")}`,
-    `<h2 class="step-title">安排好了，按自己的节奏来</h2><p class="step-description">到点先提醒；忙的时候，可以“再等等”。</p>${agenda()}`,
-  ];
-  return `<div class="wizard"><div class="steps">${labels.map((label, i) => `<button data-action="step" data-step="${i + 1}" class="${state.step === i + 1 ? "active" : state.step > i + 1 ? "complete" : ""}"><span>0${i + 1}</span><strong>${label}</strong></button>`).join("")}</div>${contents[state.step - 1]}<div class="wizard-controls">${button(`${icon("left")} 上一步`, "step", `data-step="${Math.max(1, state.step - 1)}" ${state.step === 1 ? "disabled" : ""}`, "ghost")}${state.step === 4 ? button(`保存并试运行 ${icon("right")}`, "run", "", "primary") : button(state.step === 3 ? `看看一天的安排 ${icon("right")}` : `下一步 ${icon("right")}`, "step", `data-step="${state.step + 1}"`, "primary")}</div></div>`;
+function ScheduleEditor() {
+  return `<div class="schedule-layout"><div>${nameEditor()}${repeatEditor()}${!plan().periods.length ? '<div class="empty-periods"><h3>还没有执行时段</h3><p>添加一个时段，设定它的工作与休息节奏。</p></div>' : ""}${plan().periods.map((p, i) => `${i && minutes(p.start) > minutes(plan().periods[i - 1].end) ? `<div class="gap-label">${plan().periods[i - 1].end}–${p.start} 不提醒</div>` : ""}${periodCard(p, i)}`).join("")}${button(`${icon("plus")} 添加执行时段`, "add-period", "", "add-period")}</div>${agenda()}</div>`;
 }
 
 function runsOnDemoDay(s: Schedule) {
@@ -295,29 +280,41 @@ function save() {
 }
 
 function render() {
-  const selected = variants.find((v) => v.key === state.variant) ?? variants[0];
   const root = document.querySelector<HTMLElement>(".scard")!;
   root.classList.toggle("simple-layout", state.view === "edit" && !state.useSchedule);
   root.classList.toggle("closed", state.closed);
   const modeControl = `<div class="mode-row ${state.useSchedule ? "" : "optional-schedule"}"><div><strong>使用日程</strong><p class="muted">${state.useSchedule ? `按时段执行，空档不提醒。关闭后回到简单计时 ${state.simple.work}/${state.simple.rest}。` : "按星期和时段安排不同节奏。"}</p></div>${switchButton("使用日程", state.useSchedule, "use-schedule")}</div>`;
-  const scheduleEditor = `<div class="schedule-tabs" aria-label="日程列表">${state.schedules.map((s) => `<button class="schedule-tab ${s.id === state.selected ? "selected" : ""}" aria-pressed="${s.id === state.selected}" data-action="select-schedule" data-id="${s.id}">${escape(s.name)}${!s.enabled ? '<small>已关闭</small>' : ""}</button>`).join("")}${button(`${icon("plus")} 新建日程`, "add-schedule", "", "ghost small")}</div>${state.variant === "B" ? VariantB() : state.variant === "C" ? VariantC() : VariantA()}`;
+  const scheduleEditor = `<div class="schedule-tabs" aria-label="日程列表">${state.schedules.map((s) => `<button class="schedule-tab ${s.id === state.selected ? "selected" : ""}" aria-pressed="${s.id === state.selected}" data-action="select-schedule" data-id="${s.id}">${escape(s.name)}${!s.enabled ? '<small>已关闭</small>' : ""}</button>`).join("")}${button(`${icon("plus")} 新建日程`, "add-schedule", "", "ghost small")}</div>${ScheduleEditor()}`;
   const error = state.error ? `<div class="form-error" role="alert">${icon("alert")}<div><strong>请检查设置</strong><p>${escape(state.error)}</p></div></div>` : "";
   const editor = `${error}${state.useSchedule ? `${modeControl}${scheduleEditor}` : `${SimpleSettings()}${modeControl}`}${CommonSettings()}<div class="bottom-actions"><p class="muted">${state.useSchedule ? "按电脑本地时间执行，休息可以推迟。" : "到点先提醒，由你决定何时休息。"}</p>${button(state.saved ? `${icon("check")} 已保存` : "保存设置", "save", "", "primary save-button")}</div>`;
   root.innerHTML = state.closed ? `<div class="closed-state">${icon("clock")}<h1>设置已收起</h1><p>随时回来调整自己的节奏。</p>${button("重新打开设置", "reopen", "", "primary")}</div>` : `<header class="shead"><span class="app-icon">${icon("clock")}</span><h3>Sit Break</h3><span class="header-slash">/</span><span class="header-label">${state.view === "run" ? "试运行" : "设置"}</span>${button(icon("close"), "close", 'aria-label="收起设置"', "close-button")}</header><main class="proto-body"><div class="page-heading"><div><h1>${state.view === "run" ? "按自己的节奏来" : state.useSchedule ? "日程安排" : "简单计时"}</h1><p>${state.view === "run" ? "到点先提醒，准备好了再休息。" : state.useSchedule ? "设好平常的节奏，只调整不一样的那几轮。" : "设定工作与休息时长，到点提醒你。"}</p></div>${state.view === "run" ? button(`${icon("left")} 返回设置`, "edit", "", "ghost") : ""}</div>${state.view === "run" ? Simulation() : editor}</main>`;
-  document.querySelector(".prototype-heading")!.innerHTML = `<span>交互原型 · 节奏优先${state.useSchedule ? ` · ${selected.key} ${selected.name}` : ""}</span><div class="preview-actions"><div class="platform-preview" aria-label="预览系统"><button data-preview-platform="macos" aria-pressed="${state.platform === "macos"}" class="${state.platform === "macos" ? "selected" : ""}">macOS</button><button data-preview-platform="windows" aria-pressed="${state.platform === "windows"}" class="${state.platform === "windows" ? "selected" : ""}">Windows</button></div>${button(`${icon(state.view === "run" ? "left" : "play")} ${state.view === "run" ? "返回设置" : "试运行"}`, state.view === "run" ? "edit" : "run", "", "small")}</div>`;
-  updateDebug();
+  document.querySelector(".prototype-heading")!.innerHTML = `<span>交互原型 · 节奏优先</span><div class="preview-actions"><label class="theme-preview">外观<select aria-label="预览外观" data-preview-theme><option value="system" ${state.theme === "system" ? "selected" : ""}>跟随系统</option><option value="light" ${state.theme === "light" ? "selected" : ""}>浅色</option><option value="dark" ${state.theme === "dark" ? "selected" : ""}>深色</option></select></label><div class="platform-preview" aria-label="预览系统"><button data-preview-platform="macos" aria-pressed="${state.platform === "macos"}" class="${state.platform === "macos" ? "selected" : ""}">macOS</button><button data-preview-platform="windows" aria-pressed="${state.platform === "windows"}" class="${state.platform === "windows" ? "selected" : ""}">Windows</button></div>${button(`${icon(state.view === "run" ? "left" : "play")} ${state.view === "run" ? "返回设置" : "试运行"}`, state.view === "run" ? "edit" : "run", "", "small")}</div>`;
 }
 
-function updateDebug() {
-  document.querySelector(".prototype-state pre")!.textContent = JSON.stringify({ variant: state.variant, view: state.view, useSchedule: state.useSchedule, simpleSettings: state.simple, appliedSimple, commonSettings: {sound:state.sound,autostart:state.autostart,idleReset:state.idleReset,language:state.language,showWidget:state.showWidget,widgetSize:state.widgetSize,tips:state.tips}, previewPlatform:state.platform, draftSchedules: state.schedules, appliedSchedules: applied, simulation: sim }, null, 2);
+function applyTheme() {
+  document.body.dataset.theme = state.theme === "system" ? (systemTheme.matches ? "dark" : "light") : state.theme;
 }
 
+// 跟随系统实时更新，只改视觉变量，不重建草稿或运行进度。
+systemTheme.addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
 document.body.classList.add("settings-prototype");
+applyTheme();
 document.title = "Sit Break · UI 设计";
 document.querySelector(".toast")?.remove();
-document.querySelector(".scard")!.insertAdjacentHTML("afterend", '<div class="prototype-heading"></div><details class="prototype-tools"><summary>更多演示选项</summary><p>当前为内存中的交互原型；刷新恢复示例。可切换早期布局，或查看模拟数据。</p><div class="prototype-variants"></div><details class="prototype-state"><summary>查看安排与模拟进度</summary><pre></pre></details></details>');
-mountPrototypeSwitcher((key) => { state.variant = key; render(); });
-document.querySelector(".prototype-variants")!.append(document.querySelector(".prototype-switcher")!);
+// 兼容旧原型链接；移除废弃的布局参数。
+const previewUrl = new URL(location.href);
+previewUrl.searchParams.delete("variant");
+history.replaceState(null, "", previewUrl);
+document.querySelector(".scard")!.insertAdjacentHTML("afterend", '<div class="prototype-heading"></div>');
+document.querySelector(".prototype-heading")!.addEventListener("change", (event) => {
+  const target = event.target as HTMLSelectElement;
+  if (!target.matches("[data-preview-theme]")) return;
+  state.theme = target.value as Theme;
+  applyTheme();
+  const url = new URL(location.href);
+  if (state.theme === "system") url.searchParams.delete("theme"); else url.searchParams.set("theme", state.theme);
+  history.replaceState(null, "", url);
+});
 document.querySelector(".prototype-heading")!.addEventListener("click", (event) => {
   const el = (event.target as HTMLElement).closest<HTMLElement>("[data-preview-platform], [data-action]");
   if (!el) return;
@@ -347,7 +344,6 @@ document.querySelector(".scard")!.addEventListener("input", (event) => {
   const saveButton = document.querySelector(".save-button"); if (saveButton) saveButton.textContent = "保存设置";
   if (state.useSchedule) { const preview = document.querySelector(".agenda"); if (preview) preview.outerHTML = agenda(); }
   if (target.dataset.plan === "name") { const tab = document.querySelector(`[data-id="${state.selected}"]`); if (tab) tab.textContent = target.value; }
-  updateDebug();
 });
 
 document.querySelector(".scard")!.addEventListener("click", (event) => {
@@ -367,15 +363,13 @@ document.querySelector(".scard")!.addEventListener("click", (event) => {
     case "day": { const day = Number(el.dataset.day); plan().days = plan().days.includes(day) ? plan().days.filter((d) => d !== day) : [...plan().days, day].sort(); break; }
     case "weekdays": plan().days = [1, 2, 3, 4, 5]; break;
     case "everyday": plan().days = [1, 2, 3, 4, 5, 6, 7]; break;
-    case "select-schedule": state.selected = el.dataset.id!; state.period = plan().periods[0]?.id ?? ""; break;
-    case "add-schedule": { const s = structuredClone(sample); s.id = `schedule-${Date.now()}`; s.name = "新日程"; s.enabled = false; s.days = [6, 7]; s.periods = s.periods.map((item) => ({ ...item, id: `${s.id}-${item.id}`, adjustments: [] })); state.schedules.push(s); state.selected = s.id; state.period = s.periods[0].id; state.step = 1; break; }
-    case "add-period": { const id = `period-${Date.now()}`; const lastEnd = plan().periods[plan().periods.length - 1]?.end ?? "09:00"; plan().periods.push({ id, name: `时段 ${plan().periods.length + 1}`, start: lastEnd, end: time(Math.min(23 * 60 + 59, minutes(lastEnd) + 120)), work: 55, rest: 5, adjustments: [] }); state.period = id; break; }
-    case "remove-period": plan().periods = plan().periods.filter((item) => item.id !== el.dataset.period); state.period = plan().periods[0]?.id ?? ""; break;
-    case "select-period": state.period = el.dataset.period!; break;
+    case "select-schedule": state.selected = el.dataset.id!; break;
+    case "add-schedule": { const s = structuredClone(sample); s.id = `schedule-${Date.now()}`; s.name = "新日程"; s.enabled = false; s.days = [6, 7]; s.periods = s.periods.map((item) => ({ ...item, id: `${s.id}-${item.id}`, adjustments: [] })); state.schedules.push(s); state.selected = s.id; break; }
+    case "add-period": { const id = `period-${Date.now()}`; const lastEnd = plan().periods[plan().periods.length - 1]?.end ?? "09:00"; plan().periods.push({ id, name: `时段 ${plan().periods.length + 1}`, start: lastEnd, end: time(Math.min(23 * 60 + 59, minutes(lastEnd) + 120)), work: 55, rest: 5, adjustments: [] }); break; }
+    case "remove-period": plan().periods = plan().periods.filter((item) => item.id !== el.dataset.period); break;
     case "toggle-adjust": if (state.openPeriods.has(p!.id)) state.openPeriods.delete(p!.id); else state.openPeriods.add(p!.id); break;
     case "add-adjust": { let round = 1; while (p!.adjustments.some((a) => a.round === round)) round++; p!.adjustments.push({ round, content: "" }); break; }
     case "remove-adjust": p!.adjustments.splice(Number(el.dataset.index), 1); break;
-    case "step": state.step = Number(el.dataset.step); break;
     case "save": save(); break;
     case "run": if (save()) { state.view = "run"; resetSimulation(); } break;
     case "edit": state.view = "edit"; break;

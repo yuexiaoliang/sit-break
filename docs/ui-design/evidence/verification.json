@@ -1,0 +1,183 @@
+{
+  "system": [
+    {
+      "appearance": "light",
+      "tips": "起身走走\n接一杯水",
+      "url": "?prototype=schedule",
+      "work": "50"
+    },
+    {
+      "appearance": "dark",
+      "tips": "起身走走\n接一杯水",
+      "url": "?prototype=schedule",
+      "work": "50"
+    }
+  ],
+  "widths": [
+    {
+      "viewport": 1280,
+      "theme": "light",
+      "on": {
+        "overflow": false,
+        "width": 562,
+        "x": 359
+      },
+      "off": {
+        "overflow": false,
+        "width": 562,
+        "work": "50",
+        "x": 359
+      },
+      "restored": {
+        "activity": "爬楼 8 分钟\n拉伸 2 分钟",
+        "expanded": "true"
+      }
+    },
+    {
+      "viewport": 1280,
+      "theme": "dark",
+      "on": {
+        "overflow": false,
+        "width": 562,
+        "x": 359
+      },
+      "off": {
+        "overflow": false,
+        "width": 562,
+        "work": "50",
+        "x": 359
+      },
+      "restored": {
+        "activity": "爬楼 8 分钟\n拉伸 2 分钟",
+        "expanded": "true"
+      }
+    },
+    {
+      "viewport": 600,
+      "theme": "light",
+      "on": {
+        "overflow": false,
+        "width": 562,
+        "x": 19
+      },
+      "off": {
+        "overflow": false,
+        "width": 562,
+        "work": "50",
+        "x": 19
+      },
+      "restored": {
+        "activity": "爬楼 8 分钟\n拉伸 2 分钟",
+        "expanded": "true"
+      }
+    },
+    {
+      "viewport": 600,
+      "theme": "dark",
+      "on": {
+        "overflow": false,
+        "width": 562,
+        "x": 19
+      },
+      "off": {
+        "overflow": false,
+        "width": 562,
+        "work": "50",
+        "x": 19
+      },
+      "restored": {
+        "activity": "爬楼 8 分钟\n拉伸 2 分钟",
+        "expanded": "true"
+      }
+    },
+    {
+      "viewport": 375,
+      "theme": "light",
+      "on": {
+        "overflow": false,
+        "width": 359,
+        "x": 8
+      },
+      "off": {
+        "overflow": false,
+        "width": 359,
+        "work": "50",
+        "x": 8
+      },
+      "restored": {
+        "activity": "爬楼 8 分钟\n拉伸 2 分钟",
+        "expanded": "true"
+      }
+    },
+    {
+      "viewport": 375,
+      "theme": "dark",
+      "on": {
+        "overflow": false,
+        "width": 359,
+        "x": 8
+      },
+      "off": {
+        "overflow": false,
+        "width": 359,
+        "work": "50",
+        "x": 8
+      },
+      "restored": {
+        "activity": "爬楼 8 分钟\n拉伸 2 分钟",
+        "expanded": "true"
+      }
+    },
+    {
+      "viewport": 320,
+      "theme": "light",
+      "on": {
+        "overflow": false,
+        "width": 304,
+        "x": 8
+      },
+      "off": {
+        "overflow": false,
+        "width": 304,
+        "work": "50",
+        "x": 8
+      },
+      "restored": {
+        "activity": "爬楼 8 分钟\n拉伸 2 分钟",
+        "expanded": "true"
+      }
+    },
+    {
+      "viewport": 320,
+      "theme": "dark",
+      "on": {
+        "overflow": false,
+        "width": 304,
+        "x": 8
+      },
+      "off": {
+        "overflow": false,
+        "width": 304,
+        "work": "50",
+        "x": 8
+      },
+      "restored": {
+        "activity": "爬楼 8 分钟\n拉伸 2 分钟",
+        "expanded": "true"
+      }
+    }
+  ],
+  "paused": {
+    "before": {
+      "content": "爬楼 8 分钟\n拉伸 2 分钟",
+      "phase": "live-card break paused",
+      "remaining": "10:00"
+    },
+    "after": {
+      "content": "爬楼 8 分钟\n拉伸 2 分钟",
+      "phase": "live-card break paused",
+      "remaining": "10:00"
+    }
+  },
+  "console": []
+}
