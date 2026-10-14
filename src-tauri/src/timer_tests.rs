@@ -2007,3 +2007,353 @@ fn a_paused_break_keeps_its_remaining_time_across_midnight_and_finishes_when_res
     assert!(!app.info().paused);
     assert!(finished.events.is_empty());
 }
+
+#[test]
+fn one_continuous_away_period_cannot_skip_new_short_work_rounds() {
+    let mut settings = settings_with_overrides(serde_json::json!([
+        {"round":1,"content":"爬楼"}, {"round":2,"content":"深蹲"}
+    ]));
+    settings.idle_reset = true;
+    settings.schedules[0].periods[0].work_minutes = 1;
+    settings.schedules[0].periods[0].break_minutes = 10;
+    let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(9, 0));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        at(9, 1),
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 600,
+            idle_secs: 600,
+        },
+        at(9, 11),
+    );
+    assert_eq!(app.info().round.unwrap().number, 2);
+    assert_eq!(app.info().remaining, 60);
+    for minute in 12..=40 {
+        let still_away = app.dispatch(
+            Action::Tick {
+                elapsed_secs: 60,
+                idle_secs: (minute - 1) as u64 * 60,
+            },
+            at(9, minute),
+        );
+        assert!(still_away.events.is_empty());
+        assert_eq!(app.info().mode, Mode::Work);
+        assert_eq!(app.info().remaining, 60);
+        assert_eq!(app.info().round.unwrap().number, 2);
+        assert_eq!(app.info().tip.as_deref(), Some("深蹲"));
+    }
+}
+
+#[test]
+fn continuing_away_after_a_full_break_does_not_count_the_next_short_work_round() {
+    let mut settings = settings_with_overrides(serde_json::json!([
+        {"round":1,"content":"爬楼"}, {"round":2,"break_minutes":20,"content":"深蹲"}
+    ]));
+    settings.idle_reset = true;
+    settings.schedules[0].periods[0].work_minutes = 1;
+    settings.schedules[0].periods[0].break_minutes = 10;
+    let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(9, 0));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        at(9, 1),
+    );
+    app.dispatch(Action::StartBreak, at(9, 1));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 600,
+            idle_secs: 600,
+        },
+        at(9, 11),
+    );
+    assert_eq!(app.info().round.unwrap().number, 2);
+    assert_eq!(app.info().break_seconds, 1200);
+    for minute in 12..=40 {
+        let still_away = app.dispatch(
+            Action::Tick {
+                elapsed_secs: 60,
+                idle_secs: (minute - 1) as u64 * 60,
+            },
+            at(9, minute),
+        );
+        assert!(still_away.events.is_empty());
+        assert_eq!(app.info().mode, Mode::Work);
+        assert_eq!(app.info().remaining, 60);
+        assert_eq!(app.info().round.unwrap().number, 2);
+    }
+}
+
+#[test]
+fn away_work_uses_the_actual_override_rest_threshold_and_only_resets_its_round() {
+    for (idle_secs, remaining) in [(599, 1800), (600, 3000), (601, 3000)] {
+        let mut settings = settings_with_overrides(serde_json::json!([
+            {"round":1,"work_minutes":50,"break_minutes":10,"content":"爬楼"}
+        ]));
+        settings.idle_reset = true;
+        let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(9, 0));
+        app.dispatch(
+            Action::Tick {
+                elapsed_secs: 600,
+                idle_secs: 0,
+            },
+            at(9, 10),
+        );
+        let away = app.dispatch(
+            Action::Tick {
+                elapsed_secs: 600,
+                idle_secs,
+            },
+            at(9, 20),
+        );
+        assert_eq!(app.info().mode, Mode::Work);
+        assert_eq!(app.info().remaining, remaining);
+        assert_eq!(app.info().round.unwrap().number, 1);
+        assert_eq!(app.info().tip.as_deref(), Some("爬楼"));
+        assert_eq!(
+            (app.info().work_seconds, app.info().break_seconds),
+            (3000, 600)
+        );
+        assert!(away.events.is_empty());
+        assert_eq!(away.state, Some(app.info()));
+    }
+}
+
+#[test]
+fn away_reminder_uses_the_actual_rest_threshold_before_finishing_exactly_one_round() {
+    for (idle_secs, expected_round, expected_mode) in [
+        (599, 1, Mode::Remind),
+        (600, 2, Mode::Work),
+        (601, 2, Mode::Work),
+    ] {
+        let mut settings = settings_with_overrides(serde_json::json!([
+            {"round":1,"work_minutes":50,"break_minutes":10,"content":"爬楼"},
+            {"round":2,"content":"深蹲"}
+        ]));
+        settings.idle_reset = true;
+        let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(9, 0));
+        app.dispatch(
+            Action::Tick {
+                elapsed_secs: 3000,
+                idle_secs: 0,
+            },
+            at(9, 50),
+        );
+        let away = app.dispatch(
+            Action::Tick {
+                elapsed_secs: 600,
+                idle_secs,
+            },
+            at(10, 0),
+        );
+        assert_eq!(app.info().mode, expected_mode);
+        assert_eq!(app.info().round.unwrap().number, expected_round);
+        assert_eq!(
+            app.info().remaining,
+            if expected_round == 1 { 0 } else { 3300 }
+        );
+        assert_eq!(
+            app.info().tip.as_deref(),
+            Some(if expected_round == 1 {
+                "爬楼"
+            } else {
+                "深蹲"
+            })
+        );
+        assert!(away.events.is_empty());
+    }
+}
+
+#[test]
+fn disabled_away_reset_and_manual_pause_do_not_process_idle_work_or_reminders() {
+    for (enabled, paused) in [(false, false), (true, true)] {
+        for phase in [Mode::Work, Mode::Remind] {
+            let mut settings = settings_with_overrides(serde_json::json!([
+                {"round":1,"work_minutes":50,"break_minutes":10,"content":"爬楼"}
+            ]));
+            settings.idle_reset = enabled;
+            let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(9, 0));
+            let elapsed = if phase == Mode::Work { 600 } else { 3000 };
+            let minute = if phase == Mode::Work { 10 } else { 50 };
+            app.dispatch(
+                Action::Tick {
+                    elapsed_secs: elapsed,
+                    idle_secs: 0,
+                },
+                at(9, minute),
+            );
+            if paused {
+                app.dispatch(Action::TogglePause, at(9, minute));
+            }
+            let away = app.dispatch(
+                Action::Tick {
+                    elapsed_secs: 600,
+                    idle_secs: 60000,
+                },
+                if phase == Mode::Work {
+                    at(9, 20)
+                } else {
+                    at(10, 0)
+                },
+            );
+            assert_eq!(app.info().mode, phase);
+            assert_eq!(app.info().round.unwrap().number, 1);
+            assert_eq!(
+                app.info().remaining,
+                match (phase, paused) {
+                    (Mode::Work, true) => 2400,
+                    (Mode::Work, false) => 1800,
+                    _ => 0,
+                }
+            );
+            assert_eq!(app.info().paused, paused);
+            assert!(away.events.is_empty());
+        }
+    }
+}
+
+#[test]
+fn returning_to_the_computer_allows_work_and_a_fresh_away_period() {
+    let mut settings = settings_with_overrides(serde_json::json!([
+        {"round":1,"content":"爬楼"}, {"round":2,"content":"深蹲"}
+    ]));
+    settings.idle_reset = true;
+    settings.schedules[0].periods[0].work_minutes = 1;
+    settings.schedules[0].periods[0].break_minutes = 10;
+    let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(9, 0));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        at(9, 1),
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 600,
+            idle_secs: 600,
+        },
+        at(9, 11),
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 660,
+        },
+        at(9, 12),
+    );
+    assert_eq!(app.info().remaining, 60);
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 0,
+            idle_secs: 0,
+        },
+        at(9, 12),
+    );
+    assert_eq!(app.info().remaining, 60);
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        at(9, 13),
+    );
+    assert_eq!(app.info().mode, Mode::Remind);
+    assert_eq!(app.info().round.unwrap().number, 2);
+    let away_again = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 600,
+            idle_secs: 600,
+        },
+        at(9, 23),
+    );
+    assert_eq!(app.info().mode, Mode::Work);
+    assert_eq!(app.info().round.unwrap().number, 3);
+    assert!(away_again.events.is_empty());
+}
+
+#[test]
+fn period_boundary_precedes_away_reminder_completion_for_idle_or_a_new_period() {
+    for next_period in [false, true] {
+        let mut settings = settings_with_overrides(serde_json::json!([
+            {"round":1,"work_minutes":50,"break_minutes":10,"content":"爬楼"}
+        ]));
+        settings.idle_reset = true;
+        settings.schedules[0].periods[0].end = "10:00".into();
+        if next_period {
+            settings.schedules[0].periods.push(serde_json::from_value(serde_json::json!({
+                "id":"next-period", "start":"10:00", "end":"12:00", "work_minutes":40, "break_minutes":3,
+                "overrides":[{"round":1,"content":"下午伸展"}]
+            })).unwrap());
+        }
+        let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(9, 0));
+        app.dispatch(
+            Action::Tick {
+                elapsed_secs: 3000,
+                idle_secs: 0,
+            },
+            at(9, 50),
+        );
+        let boundary = app.dispatch(
+            Action::Tick {
+                elapsed_secs: 600,
+                idle_secs: 600,
+            },
+            at(10, 0),
+        );
+        assert!(boundary.events.is_empty());
+        assert!(boundary.update_windows);
+        if next_period {
+            assert_eq!(app.info().mode, Mode::Work);
+            assert_eq!(app.info().remaining, 2400);
+            assert_eq!(app.info().round.unwrap().period_id, "next-period");
+            assert_eq!(app.info().round.unwrap().number, 1);
+        } else {
+            assert_eq!(app.info().mode, Mode::Idle);
+            assert!(app.info().round.is_none());
+        }
+    }
+}
+
+#[test]
+fn a_disabled_away_switch_stays_disabled_even_at_the_idle_input_limit() {
+    let settings = settings_with_overrides(serde_json::json!([
+        {"round":1,"work_minutes":50,"break_minutes":10,"content":"爬楼"}
+    ]));
+    for phase in [Mode::Work, Mode::Remind] {
+        let mut app = TimerApp::new_at(settings.clone(), fastrand::Rng::with_seed(42), at(9, 0));
+        if phase == Mode::Remind {
+            app.dispatch(
+                Action::Tick {
+                    elapsed_secs: 3000,
+                    idle_secs: 0,
+                },
+                at(9, 50),
+            );
+        }
+        let now = if phase == Mode::Work {
+            at(9, 1)
+        } else {
+            at(9, 51)
+        };
+        app.dispatch(
+            Action::Tick {
+                elapsed_secs: 1,
+                idle_secs: u64::MAX,
+            },
+            now,
+        );
+        assert_eq!(app.info().mode, phase);
+        assert_eq!(
+            app.info().remaining,
+            if phase == Mode::Work { 2999 } else { 0 }
+        );
+        assert_eq!(app.info().round.unwrap().number, 1);
+    }
+}
