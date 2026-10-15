@@ -1,0 +1,59 @@
+name: Windows 原生浮窗验收
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-native-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-check:
+    name: 真实 WebView2 浮窗
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 安装前端依赖
+        run: npm ci
+
+      - name: 创建独立验收配置
+        shell: pwsh
+        run: |
+          @{
+            productName = "Sit Break Native Check"
+            identifier = "com.sitbreak.nativecheck"
+          } | ConvertTo-Json | Set-Content "$env:RUNNER_TEMP/sit-break-native-check.json" -Encoding utf8
+
+      - name: 构建含真实页面资源的 debug 应用
+        run: npm run tauri build -- --debug --no-bundle --config "$env:RUNNER_TEMP/sit-break-native-check.json" -- --locked
+
+      - name: 启动 exe 并验收真实原生浮窗
+        run: node scripts/native-webview-check.mjs src-tauri/target/debug/sit-break.exe .scratch/native-webview-check
+
+      - name: 上传原生截图与运行报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-native-WebView2-check
+          path: .scratch/native-webview-check/
+          if-no-files-found: warn
+          retention-days: 14
