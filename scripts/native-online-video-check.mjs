@@ -129,6 +129,7 @@ export async function checkOnlineVideo(context) {
     await waitFor('网络恢复后重试可播', () => app.reminder.evaluate('document.querySelector("video")?.currentTime>0'));
     checks.push({ name: '受控 HTTP 挂起超时、持续计时和网络恢复重试' });
     await app.reminder.evaluate('document.getElementById("btnEnd").click()');
+    await waitFor('线上验收结束本轮后恢复原设置', async () => (await app.reminder.invoke('timer_info')).mode !== 'break');
     await app.settings.invoke('save_settings', { settings: previousSettings });
     await app.settings.invoke('reset_timer');
     return app;
