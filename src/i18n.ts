@@ -154,6 +154,7 @@ export const STR: Record<Lang, Record<string, string>> = {
     startBreak: "开始休息 {n} 分钟",
     snooze: "再等等",
     untilBack: "剩余 {t}",
+    remainingTime: "剩余时间",
     endBreak: "提前结束休息",
   },
   en: {
@@ -307,6 +308,7 @@ export const STR: Record<Lang, Record<string, string>> = {
     startBreak: "Take a break ({n} min)",
     snooze: "Snooze",
     untilBack: "{t} left",
+    remainingTime: "Time left",
     endBreak: "End break",
   },
 };

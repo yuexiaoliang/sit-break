@@ -18,11 +18,10 @@ const tipText = document.getElementById("tipText")!;
 const stretchText = document.getElementById("stretchText")!;
 const breakTimeEl = document.getElementById("breakTime")!;
 const ringCap = document.getElementById("ringCap")!;
-const ring = document.getElementById("ring") as unknown as SVGCircleElement;
+const breakProgress = document.getElementById("breakProgress") as HTMLProgressElement;
 const btnBreak = document.getElementById("btnBreak") as HTMLButtonElement;
 const guidanceView = createGuidanceView(document.getElementById("guidanceContent")!);
 
-const RING_LEN = 2 * Math.PI * 64;
 let S = STR.zh;
 
 function showRemindCard() {
@@ -72,13 +71,14 @@ function renderState(state: TimerState) {
   } else if (state.mode === "break") {
     cardBreak.querySelector<HTMLElement>('[data-i18n="onBreak"]')!.textContent = state.paused ? `${S.onBreak} · ${S.paused}` : S.onBreak;
     breakTimeEl.textContent = fmtTime(state.remaining);
-    ringCap.textContent = round + (state.paused ? S.paused : fmt(S.untilBack, { t: fmtTime(state.remaining) }));
+    breakTimeEl.setAttribute("aria-label", fmt(S.untilBack, { t: fmtTime(state.remaining) }));
+    ringCap.textContent = round + S.remainingTime;
     if (stretchText.textContent !== (state.tip ?? "")) stretchText.textContent = state.tip ?? "";
     stretchText.hidden = !state.tip?.trim();
     cardBreak.classList.toggle("has-guidance", Boolean(state.guidance));
     guidanceView.show(state.guidance, S);
     const progress = state.break_seconds > 0 ? state.remaining / state.break_seconds : 0;
-    ring.style.strokeDashoffset = String(RING_LEN * (1 - progress));
+    breakProgress.value = Math.min(1, Math.max(0, progress));
     showBreakCard();
   }
 }

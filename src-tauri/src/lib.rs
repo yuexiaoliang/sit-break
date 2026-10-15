@@ -591,7 +591,7 @@ fn update_windows(app: &AppHandle) {
             if let Some(r) = &reminder {
                 let media = mode == Mode::Break && info.guidance.is_some();
                 let (mut width, mut height): (f64, f64) = if media {
-                    (420.0, 460.0)
+                    (624.0, 344.0)
                 } else {
                     (380.0, 368.0)
                 };
@@ -602,8 +602,12 @@ fn update_windows(app: &AppHandle) {
                     .or_else(|| r.primary_monitor().ok().flatten())
                 {
                     let area = monitor.work_area();
-                    width = width
-                        .min((f64::from(area.size.width) / monitor.scale_factor() - 24.0).max(1.0));
+                    let available_width =
+                        (f64::from(area.size.width) / monitor.scale_factor() - 24.0).max(1.0);
+                    if media && available_width < 560.0 {
+                        height = 460.0;
+                    }
+                    width = width.min(available_width);
                     height = height.min(
                         (f64::from(area.size.height) / monitor.scale_factor() - 24.0).max(1.0),
                     );

@@ -1,4 +1,4 @@
-/* 浮窗与 HTML 作者模板共用的语义配色，主题变化仅更新 CSS。 */
+/* 浮窗共用的语义配色，主题变化仅更新 CSS。 */
 :root {
   --sb-background: #ffffff;
   --sb-surface: #f0f8f4;

@@ -127,7 +127,10 @@ export function createGuidanceView(container: HTMLElement) {
     retry = null;
   }
   function updateLabels() {
-    if (video) video.setAttribute("aria-label", strings.videoGuidance);
+    if (video) {
+      video.setAttribute("aria-label", strings.videoGuidance);
+      video.hidden = failure === "load" || failure === "timeout";
+    }
     if (status && retry) {
       status.textContent = failure === "autoplay" ? strings.videoAutoplay : failure === "timeout" ? strings.videoTimeout : failure ? strings.videoFailed : strings.videoLoading;
       status.hidden = failure === null && !loading;

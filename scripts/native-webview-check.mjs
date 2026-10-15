@@ -203,7 +203,7 @@ async function videoSample(connection, objectId, diagnostic = report.video) {
         buffered:Array.from({length:this.buffered.length}, (_,i)=>[this.buffered.start(i),this.buffered.end(i)]),
         source:this.getAttribute('src'), currentSrc:this.currentSrc,
         rect:{x:r.x,y:r.y,right:r.right,bottom:r.bottom},
-        endButtonTop:document.getElementById('btnEnd').getBoundingClientRect().top };
+        endButton:(() => { const r=document.getElementById('btnEnd').getBoundingClientRect(); return {x:r.x,y:r.y,right:r.right,bottom:r.bottom}; })() };
     }` });
   assert.ok(!result.exceptionDetails, JSON.stringify(result.exceptionDetails));
   diagnostic.lastSample = result.result.value;
@@ -251,7 +251,7 @@ async function checkSimpleLocalVideo(app) {
     report.video.initial = initial;
     assert.ok(initial.muted && initial.defaultMuted && initial.loop && initial.controls && !initial.paused, '本地视频副本自动静音循环并带播放控制');
     assert.ok(initial.width > 0 && initial.height > 0 && initial.readyState >= 2);
-    assert.ok(initial.rect.x >= 0 && initial.rect.y >= 0 && initial.rect.bottom <= initial.endButtonTop, '视频内容不能遮挡结束按钮');
+    assert.ok(initial.rect.x >= 0 && initial.rect.y >= 0 && (initial.rect.right <= initial.endButton.x || initial.rect.bottom <= initial.endButton.y), '视频与结束按钮各占独立区域，不能重叠');
     assert.equal(await app.reminder.evaluate('document.getElementById("stretchText").hidden'), true, '仅指引休息省略文字区域');
     await delay(1100);
     const playing = await videoSample(app.reminder, objectId);
@@ -326,7 +326,7 @@ try {
   originalTheme = (await powershell()).lightTheme;
   const settings = await app.settings.invoke('get_settings');
   assert.equal(settings.autostart, false, '独立验收构建不应启用开机启动');
-  const marker = '原生验收：站立活动\n用户文字应完整保留';
+  const marker = '原生验收：站立活动\n用户文字应完整保留，长说明可以滚动阅读。\n'.repeat(12);
   await app.settings.invoke('save_settings', { settings: { ...settings,
     use_schedule: true, sound: false, idle_reset: false, show_widget: false, language: 'en',
     tips: [{ id: 'native-check-tip', text: marker }],
@@ -363,6 +363,33 @@ try {
   assert.ok(after.remaining < before.remaining && after.remaining > 0, '真实休息倒计时必须推进');
   assert.equal(after.tip, marker);
   const resting = await inspectLayout(app.reminder, 'btnEnd');
+  const textLayout = () => app.reminder.evaluate(`(() => {
+    const text=document.getElementById('stretchText');
+    const rect=id=>{const r=document.getElementById(id).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};};
+    return {content:text.textContent,scrollTop:text.scrollTop,scrollHeight:text.scrollHeight,clientHeight:text.clientHeight,
+      timer:rect('breakTime'),button:rect('btnEnd'),fontSize:getComputedStyle(text).fontSize,hasVideo:!!document.querySelector('video'),hasRing:!!document.querySelector('.ring-wrap svg')};
+  })()`);
+  const plainBeforeScroll=await textLayout();
+  assert.equal(plainBeforeScroll.content,marker);
+  assert.equal(plainBeforeScroll.fontSize,'16px');
+  assert.ok(!plainBeforeScroll.hasVideo && !plainBeforeScroll.hasRing, '纯文字休息使用文字主体与线性进度');
+  assert.ok(plainBeforeScroll.scrollHeight > plainBeforeScroll.clientHeight && plainBeforeScroll.clientHeight > 60);
+  await app.reminder.evaluate('document.getElementById("stretchText").focus()');
+  await app.reminder.call('Input.dispatchKeyEvent',{type:'keyDown',key:'PageDown',code:'PageDown',windowsVirtualKeyCode:34});
+  await app.reminder.call('Input.dispatchKeyEvent',{type:'keyUp',key:'PageDown',code:'PageDown',windowsVirtualKeyCode:34});
+  let lastPlainScroll = -1;
+  await waitFor('纯文字说明通过键盘独立滚动并稳定', async () => {
+    const position = (await textLayout()).scrollTop;
+    const stable = position > 0 && position === lastPlainScroll;
+    lastPlainScroll = position;
+    return stable;
+  });
+  const plainAfterScroll=await textLayout();
+  assert.deepEqual(plainAfterScroll.timer,plainBeforeScroll.timer);
+  assert.deepEqual(plainAfterScroll.button,plainBeforeScroll.button);
+  await app.reminder.screenshot('02-text-only-scrolled');
+  report.checks.push({name:'纯文字休息：线性进度、正常字号、键盘独立滚动与固定操作',plainBeforeScroll,plainAfterScroll});
+
   report.checks.push({ name: '休息倒计时与始终可见的提前结束入口', before, after, ...resting });
 
   const themes = [];
@@ -373,6 +400,7 @@ try {
     assert.equal(state.mode, 'break');
     assert.ok(state.remaining <= after.remaining && state.remaining > 0, '主题切换不得重新启动休息');
     const layout = await inspectLayout(app.reminder, 'btnEnd');
+    assert.equal((await textLayout()).scrollTop, plainAfterScroll.scrollTop, '主题变化保留纯文字滚动位置');
     await app.reminder.screenshot(`02-break-${theme}`);
     themes.push({ theme, state, ...layout });
   }

@@ -9,12 +9,13 @@ export async function checkLocalVideo(context) {
   report.localVideo = { status: 'running', fixtureMode: 'preimported-copy',
     notCovered: '未操作 Windows 原生文件选择器；不证明文件选择、导入命令或导入 UI。' };
   const previousSettings = await app.settings.invoke('get_settings');
+  const longText = '站起来，先看看窗外，再按照自己的节奏活动。\n原生验收：长文字可以滚动阅读，倒计时和结束按钮保持可见。\n'.repeat(16);
   const bytes = await readFile(new URL('../src/assets/guidance/squat-demo.mp4', import.meta.url));
   const firstGuidance = await preimportedVideo(context.dataDirectory, bytes);
   report.localVideo.firstGuidance = firstGuidance;
   await app.settings.invoke('save_settings', { settings: { ...previousSettings,
     use_schedule: true, language: 'en', sound: false, idle_reset: false,
-    tips: [{ id: 'native-local-video', text: 'Local resource fixture', guidance: firstGuidance }],
+    tips: [{ id: 'native-local-video', text: longText, guidance: firstGuidance }],
     schedules: [{ id: 'native-local-schedule', name: '本地副本原生验证', enabled: true,
       repeat: { kind: 'weekly', weekdays: [1, 2, 3, 4, 5, 6, 7] },
       periods: [{ id: 'native-local-period', start: '00:00', end: '24:00', work_minutes: 1, break_minutes: 2, overrides: [] }] }],
@@ -60,6 +61,33 @@ export async function checkLocalVideo(context) {
     await app.reminder.evaluate('document.querySelector("#guidanceContent video").pause(); document.querySelector("#guidanceContent video").currentTime=1.5');
     await waitFor('本地资源协议支持实际 seek', async () => Math.abs((await sample()).currentTime - 1.5) < 0.15);
     await inspectLayout(app.reminder, 'btnEnd');
+    const layoutSample = () => app.reminder.evaluate(`(() => {
+      const rect = id => { const r=document.getElementById(id).getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom}; };
+      const text=document.getElementById('stretchText');
+      return {timer:rect('breakTime'),button:rect('btnEnd'),video:rect('guidanceContent'),
+        text:rect('stretchText'),content:text.textContent,scrollTop:text.scrollTop,scrollHeight:text.scrollHeight,clientHeight:text.clientHeight,fontSize:getComputedStyle(text).fontSize};
+    })()`);
+    const beforeScroll = await layoutSample();
+    assert.equal(beforeScroll.content, longText, '完整保留用户长文字');
+    assert.ok(beforeScroll.video.right < beforeScroll.timer.x, '宽屏浮窗视频在左、计时在右');
+    assert.ok(beforeScroll.scrollHeight > beforeScroll.clientHeight && beforeScroll.clientHeight > 40, '长文字有可用的独立滚动区');
+    assert.equal(beforeScroll.fontSize, '14px', '长文字保持可读字号');
+    await app.reminder.evaluate('document.getElementById("stretchText").focus()');
+    await app.reminder.call('Input.dispatchKeyEvent', {type:'keyDown',key:'PageDown',code:'PageDown',windowsVirtualKeyCode:34});
+    await app.reminder.call('Input.dispatchKeyEvent', {type:'keyUp',key:'PageDown',code:'PageDown',windowsVirtualKeyCode:34});
+    let lastScroll = -1;
+    await waitFor('真实 WebView2 通过键盘滚动长文案并稳定', async () => {
+      const position = (await layoutSample()).scrollTop;
+      const stable = position > 0 && position === lastScroll;
+      lastScroll = position;
+      return stable;
+    });
+    const afterScroll = await layoutSample();
+    assert.deepEqual(afterScroll.timer, beforeScroll.timer, '滚动说明不移动倒计时');
+    assert.deepEqual(afterScroll.button, beforeScroll.button, '滚动说明不移动结束按钮');
+    assert.deepEqual(afterScroll.video, beforeScroll.video, '滚动说明不移动视频');
+    assert.ok((await sample()).same, '说明滚动保留同一播放器');
+    report.checks.push({name:'横向视频浮窗：长文案完整保留、键盘独立滚动、计时与操作固定',beforeScroll,afterScroll});
     await app.reminder.screenshot('local-video-fixture-playing');
     replacement = await preimportedVideo(context.dataDirectory, bytes);
     report.localVideo.replacement = replacement;
