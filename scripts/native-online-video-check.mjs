@@ -53,7 +53,7 @@ export async function checkOnlineVideo(context) {
           periods: [{ id: 'native-online-period', start: '00:00', end: '24:00', work_minutes: 1, break_minutes: 1, overrides: [] }] }],
       } });
       await app.settings.invoke('open_settings');
-      await waitFor('在线视频选择入口', () => app.settings.evaluate('document.querySelector(".reminder-entry .guidance-picker select")?.options.length >= 3'));
+      await waitFor('本轮设置加载完成后显示在线视频选择入口', () => app.settings.evaluate('document.querySelector(".reminder-entry[data-reminder-id=native-online-video] .guidance-picker select")?.value === "squat-demo"'));
       await app.settings.evaluate(`(() => {
         const picker = document.querySelector('.reminder-entry .guidance-picker');
         const select = picker.querySelector('select'); select.value = 'online-video'; select.dispatchEvent(new Event('change', { bubbles:true }));
