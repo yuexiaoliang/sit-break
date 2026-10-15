@@ -234,7 +234,6 @@ impl GuidanceResources {
         let response = || {
             Response::builder()
                 .header("x-content-type-options", "nosniff")
-                .header("access-control-allow-origin", "*")
                 .header(
                     "access-control-expose-headers",
                     "content-range, accept-ranges, content-length",

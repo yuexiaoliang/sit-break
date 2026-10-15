@@ -19,9 +19,16 @@
     const href = element.getAttribute('href') || '';
     event.preventDefault();
     // srcdoc 的 fallback base URL 来自宿主；不能让 #fragment 默认解析后导航到应用页面。
-    if (href.startsWith('#') && !element.hasAttribute('download')) {
+    let fragment = href.startsWith('#') ? href : null;
+    if (fragment === null && /^https?:/.test(location.protocol)) {
       try {
-        const id = decodeURIComponent(href.slice(1));
+        const destination = new URL(element.href);
+        if (destination.href.split('#')[0] === location.href.split('#')[0] && destination.hash) fragment = destination.hash;
+      } catch { /* 无效地址不进行页内导航。 */ }
+    }
+    if (fragment !== null && !element.hasAttribute('download')) {
+      try {
+        const id = decodeURIComponent(fragment.slice(1));
         if (!id) window.scrollTo(0, 0);
         else (document.getElementById(id) || document.getElementsByName(id)[0])?.scrollIntoView();
       } catch { /* 无效的 fragment 保留当前页面。 */ }
@@ -30,7 +37,10 @@
     external(element.href);
   }, true);
   window.open = (url) => { if (url) external(url); return null; };
-  const ready = () => send('ready');
+  const ready = () => {
+    // 原生网络错误文档或纯文本错误响应不是已就绪的 HTML 指引。
+    if (['text/html', 'application/xhtml+xml'].includes(document.contentType)) send('ready');
+  };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready, { once: true });
   else ready();
 })();

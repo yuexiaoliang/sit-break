@@ -103,6 +103,9 @@ impl Guidance {
         match (&self.kind, &self.source) {
             (GuidanceKind::Video, GuidanceSource::Builtin { id }) => id == "squat-demo",
             (GuidanceKind::Video, GuidanceSource::Online { url }) => valid_guidance_url(url),
+            (GuidanceKind::Html, GuidanceSource::Online { url }) => {
+                guidance_webview::valid_online_document(url)
+            }
             (_, GuidanceSource::Local { id }) => guidance_resources::valid_id(id),
             (GuidanceKind::Html, _) => false,
         }
@@ -908,6 +911,49 @@ async fn read_guidance_html(
 }
 
 #[tauri::command]
+async fn prepare_online_guidance(
+    app: AppHandle,
+    guidance: Guidance,
+    session: String,
+) -> Result<(), String> {
+    let GuidanceSource::Online { ref url } = guidance.source else {
+        return Err("html-isolation-unavailable".into());
+    };
+    if guidance.kind != GuidanceKind::Html || !guidance_webview::valid_online_document(url) {
+        return Err("html-isolation-unavailable".into());
+    }
+    let info = app.state::<Mutex<TimerApp>>().lock().unwrap().info();
+    if info.mode != Mode::Break || info.guidance.as_ref() != Some(&guidance) {
+        return Err("html-isolation-unavailable".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let GuidanceSource::Online { url } = guidance.source else {
+            unreachable!()
+        };
+        app.state::<guidance_webview::GuidanceIsolation>()
+            .prepare_online(&session, &url)
+    })
+    .await
+    .map_err(|_| "html-isolation-unavailable".to_string())?
+}
+
+#[tauri::command]
+fn confirm_online_guidance(
+    app: AppHandle,
+    session: String,
+    document_url: String,
+) -> Result<(), String> {
+    app.state::<guidance_webview::GuidanceIsolation>()
+        .confirm_online(&session, &document_url)
+}
+
+#[tauri::command]
+fn release_guidance_html(app: AppHandle, session: String) {
+    app.state::<guidance_webview::GuidanceIsolation>()
+        .release(&session);
+}
+
+#[tauri::command]
 fn get_platform() -> &'static str {
     std::env::consts::OS
 }
@@ -1153,14 +1199,44 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .register_uri_scheme_protocol("guidance", |context, request| {
+            // 用户网页的 opaque Origin 不可读取副本。播放器的普通 no-cors 请求仍可播放。
+            let trusted_origin = request
+                .headers()
+                .get("origin")
+                .filter(|origin| {
+                    let Ok(origin) = origin.to_str() else {
+                        return false;
+                    };
+                    matches!(
+                        origin,
+                        "tauri://localhost" | "http://tauri.localhost" | "https://tauri.localhost"
+                    ) || (cfg!(debug_assertions)
+                        && context
+                            .app_handle()
+                            .config()
+                            .build
+                            .dev_url
+                            .as_ref()
+                            .is_some_and(|url| url.origin().ascii_serialization() == origin))
+                })
+                .cloned();
             let state = context.app_handle().state::<GuidanceResourceState>();
-            match &state.0 {
+            let mut response = match &state.0 {
                 Some(resources) => resources.video_response(request),
                 None => tauri::http::Response::builder()
                     .status(503)
                     .body(Vec::new())
                     .unwrap(),
+            };
+            response
+                .headers_mut()
+                .insert("vary", tauri::http::HeaderValue::from_static("Origin"));
+            if let Some(origin) = trusted_origin {
+                response
+                    .headers_mut()
+                    .insert("access-control-allow-origin", origin);
             }
+            response
         })
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -1172,6 +1248,9 @@ pub fn run() {
             import_guidance_video,
             import_guidance_html,
             read_guidance_html,
+            prepare_online_guidance,
+            confirm_online_guidance,
+            release_guidance_html,
             get_settings,
             timer_info,
             preview_schedule,

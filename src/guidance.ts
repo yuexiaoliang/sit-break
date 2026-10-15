@@ -14,7 +14,7 @@ function validOnlineUrl(value: string): boolean {
   try {
     const url = new URL(value);
     const authority = value.slice(value.indexOf("://") + 3).split(/[/?#]/, 1)[0];
-    return ["http:", "https:"].includes(url.protocol) && !!url.hostname && !url.username && !url.password && !authority.includes("@");
+    return ["http:", "https:"].includes(url.protocol) && !!url.hostname && !url.hostname.toLowerCase().replace(/\.$/, "").endsWith(".localhost") && !url.username && !url.password && !authority.includes("@");
   } catch { return false; }
 }
 
@@ -58,7 +58,7 @@ export function guidancePicker(value: Guidance | null | undefined, strings: Reco
   const caption = document.createElement("span");
   caption.textContent = strings.guidance;
   const select = document.createElement("select");
-  for (const [id, name] of [["", strings.noGuidance], ["squat-demo", strings.squatDemo], ["local-video", strings.localVideo], ["local-html", strings.localHtml], ["online-video", strings.onlineVideo]]) {
+  for (const [id, name] of [["", strings.noGuidance], ["squat-demo", strings.squatDemo], ["local-video", strings.localVideo], ["local-html", strings.localHtml], ["online-video", strings.onlineVideo], ["online-html", strings.onlineHtml]]) {
     const option = document.createElement("option");
     option.value = id;
     option.textContent = name;
@@ -84,23 +84,25 @@ export function guidancePicker(value: Guidance | null | undefined, strings: Reco
   const validateUrl = () => {
     const valid = validOnlineUrl(input.value);
     input.setCustomValidity(valid ? "" : strings.guidanceUrlInvalid);
-    if (valid) commit({ kind: "video", source: { type: "online", url: input.value } });
+    if (valid) commit({ kind: select.value === "online-html" ? "html" : "video", source: { type: "online", url: input.value } });
   };
   function selectCurrent() {
     const source = current?.source;
-    select.value = source?.type === "local" ? `local-${current!.kind}` : source?.type === "online" ? "online-video" : source?.type === "builtin" ? source.id : "";
+    select.value = source?.type === "local" ? `local-${current!.kind}` : source?.type === "online" ? `online-${current!.kind}` : source?.type === "builtin" ? source.id : "";
     if (source?.type === "online") input.value = source.url;
   }
   function renderSource() {
-    const online = select.value === "online-video";
-    const html = select.value === "local-html";
-    const local = select.value === "local-video" || html;
+    const online = select.value.startsWith("online-");
+    const html = select.value.endsWith("html");
+    const local = select.value.startsWith("local-");
     input.hidden = !online;
     input.disabled = !online;
     input.required = online;
     input.setCustomValidity("");
     hint.hidden = !online && !local;
-    hint.textContent = online ? strings.videoUrlHint : html ? strings.localHtmlHint : strings.localVideoHint;
+    input.placeholder = html ? "https://example.com/guide.html" : "https://example.com/video.mp4";
+    input.setAttribute("aria-label", html ? strings.htmlUrl : strings.videoUrl);
+    hint.textContent = online ? html ? strings.htmlUrlHint : strings.videoUrlHint : html ? strings.localHtmlHint : strings.localVideoHint;
     choose.hidden = !local;
     choose.textContent = html ? strings.chooseLocalHtml : strings.chooseLocalVideo;
     if (online) validateUrl();
@@ -142,9 +144,9 @@ export function guidancePicker(value: Guidance | null | undefined, strings: Reco
       void importFile();
       return;
     }
-    if (select.value !== "online-video") commit(select.value ? { kind: "video", source: { type: "builtin", id: select.value } } : null);
+    if (!select.value.startsWith("online-")) commit(select.value ? { kind: "video", source: { type: "builtin", id: select.value } } : null);
     renderSource();
-    if (select.value === "online-video") input.focus();
+    if (select.value.startsWith("online-")) input.focus();
   });
   choose.addEventListener("click", () => { void importFile(); });
   input.addEventListener("input", validateUrl);
