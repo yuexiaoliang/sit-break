@@ -473,6 +473,7 @@ fn all_current_phases_restore_their_old_snapshot_and_future_rounds_use_saved_edi
     for guidance in [
         serde_json::json!({"kind":"video", "source":{"type":"builtin", "id":"squat-demo"}}),
         serde_json::json!({"kind":"video", "source":{"type":"online", "url":"https://example.com/exercise.mp4"}}),
+        serde_json::json!({"kind":"video", "source":{"type":"local", "id":"local-0123456789abcdef0123456789abcdef"}}),
     ] {
         for phase in [Mode::Work, Mode::Remind, Mode::Break] {
             for paused in [false, true] {
