@@ -190,6 +190,106 @@ fn reminder_text_is_displayed_verbatim_and_stays_selected_when_preferences_are_s
 }
 
 #[test]
+fn invalid_online_video_addresses_leave_the_previous_saved_reminder_and_timer_intact() {
+    let path = std::env::temp_dir().join(format!(
+        "sit-break-online-invalid-{}.json",
+        fastrand::u64(..)
+    ));
+    let mut app = simple_timer();
+    app.settings().save_to(&path).unwrap();
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 12,
+            idle_secs: 0,
+        },
+        Duration::from_secs(12),
+    );
+    let previous = app.info();
+    for address in [
+        "https://user:secret@example.com/demo.mp4",
+        "https://example.com/\nvideo.mp4",
+        "javascript:alert(1)",
+        "file:///tmp/video.mp4",
+        "https://",
+        "not a url",
+        " https://example.com/demo.mp4",
+        "https://example.com/%0Avideo.mp4",
+        "https:example.com/video.mp4",
+        "https://example.com\\video.mp4",
+    ] {
+        let mut draft = serde_json::to_value(app.settings()).unwrap();
+        draft["tips"][0]["guidance"] =
+            serde_json::json!({"kind":"video","source":{"type":"online","url":address}});
+        let draft: Settings = serde_json::from_value(draft).unwrap();
+        let output = app.dispatch(Action::SaveSettings(draft.clone()), Duration::from_secs(12));
+        assert!(
+            output
+                .validation_errors
+                .iter()
+                .any(|error| error.code == "guidance_invalid"),
+            "accepted {address:?}"
+        );
+        assert!(output.persist_settings.is_none());
+        assert!(draft.save_to(&path).is_err());
+        assert_eq!(app.info(), previous);
+        assert!(app.settings().tips[0].guidance.is_none());
+    }
+    let reopened = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    assert!(reopened.settings().tips[0].guidance.is_none());
+    assert_eq!(reopened.settings().tips[0].text, "走动一下");
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn online_video_reminder_is_saved_reloaded_and_kept_for_the_active_break() {
+    let path = std::env::temp_dir().join(format!("sit-break-online-{}.json", fastrand::u64(..)));
+    let mut app = simple_timer();
+    let mut draft = serde_json::to_value(app.settings()).unwrap();
+    let guidance = serde_json::json!({"kind":"video","source":{"type":"online","url":"http://127.0.0.1:34567/demo.mp4?shared=1#clip"}});
+    draft["tips"][0]["text"] = "".into();
+    draft["tips"][0]["guidance"] = guidance.clone();
+    let saved = app.dispatch(
+        Action::SaveSettings(serde_json::from_value(draft).unwrap()),
+        Duration::ZERO,
+    );
+    assert!(saved.validation_errors.is_empty());
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let mut app = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        Duration::from_secs(60),
+    );
+    assert_eq!(
+        serde_json::to_value(app.info()).unwrap()["guidance"],
+        guidance
+    );
+    assert_eq!(app.info().tip.as_deref(), Some(""));
+    app.dispatch(Action::StartBreak, Duration::from_secs(60));
+    let mut replacement = app.settings().clone();
+    replacement.tips[0].guidance = None;
+    replacement.tips[0].text = "下轮纯文字".into();
+    app.dispatch(Action::SaveSettings(replacement), Duration::from_secs(60));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 15,
+            idle_secs: 0,
+        },
+        Duration::from_secs(75),
+    );
+    assert_eq!(app.info().remaining, 45);
+    assert_eq!(
+        serde_json::to_value(app.info()).unwrap()["guidance"],
+        guidance
+    );
+    app.dispatch(Action::EndBreak, Duration::from_secs(75));
+    assert!(app.info().guidance.is_none());
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn guidance_only_reminder_can_be_saved_reopened_and_shown_without_added_text() {
     let path = std::env::temp_dir().join(format!("sit-break-guidance-{}.json", fastrand::u64(..)));
     let mut app = simple_timer();

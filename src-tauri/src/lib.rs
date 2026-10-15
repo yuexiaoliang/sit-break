@@ -82,6 +82,7 @@ pub enum GuidanceKind {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum GuidanceSource {
     Builtin { id: String },
+    Online { url: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,8 +93,53 @@ pub struct Guidance {
 
 impl Guidance {
     pub fn is_valid(&self) -> bool {
-        matches!((&self.kind, &self.source), (GuidanceKind::Video, GuidanceSource::Builtin { id }) if id == "squat-demo")
+        match (&self.kind, &self.source) {
+            (GuidanceKind::Video, GuidanceSource::Builtin { id }) => id == "squat-demo",
+            (GuidanceKind::Video, GuidanceSource::Online { url }) => valid_guidance_url(url),
+        }
     }
+}
+
+fn valid_guidance_url(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if !(lower.starts_with("http://") || lower.starts_with("https://"))
+        || value
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace() || c == '\\')
+    {
+        return false;
+    }
+    let bytes = value.as_bytes();
+    for (index, byte) in bytes.iter().enumerate() {
+        if *byte == b'%' {
+            let Some(pair) = bytes.get(index + 1..index + 3) else {
+                return false;
+            };
+            let Ok(pair) = std::str::from_utf8(pair) else {
+                return false;
+            };
+            let Ok(decoded) = u8::from_str_radix(pair, 16) else {
+                return false;
+            };
+            if decoded <= 0x1f || decoded == 0x7f {
+                return false;
+            }
+        }
+    }
+    tauri::Url::parse(value).is_ok_and(|url| {
+        matches!(url.scheme(), "http" | "https")
+            && url.host_str().is_some_and(|host| !host.is_empty())
+            && url.username().is_empty()
+            && url.password().is_none()
+            && !value
+                .split("://")
+                .nth(1)
+                .unwrap_or("")
+                .split(['/', '?', '#'])
+                .next()
+                .unwrap_or("")
+                .contains('@')
+    })
 }
 
 impl From<String> for ReminderEntry {
@@ -724,6 +770,53 @@ fn apply_break(app: AppHandle, minutes: u32) {
 // ---------------- Tauri commands ----------------
 
 #[tauri::command]
+async fn open_guidance_url(url: String) -> Result<(), String> {
+    if !valid_guidance_url(&url) {
+        return Err("invalid guidance URL".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        // 将 URL 作为一个原生参数传递；用户内容永远不进入命令解释器。
+        #[cfg(target_os = "macos")]
+        let result = std::process::Command::new("/usr/bin/open")
+            .arg("--")
+            .arg(&url)
+            .status()
+            .map_err(|error| error.to_string())?
+            .success();
+        #[cfg(windows)]
+        let result = {
+            use windows::core::{w, PCWSTR};
+            use windows::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
+            let wide: Vec<u16> = url.encode_utf16().chain(Some(0)).collect();
+            let instance = unsafe {
+                ShellExecuteW(
+                    None,
+                    w!("open"),
+                    PCWSTR(wide.as_ptr()),
+                    PCWSTR::null(),
+                    PCWSTR::null(),
+                    SW_SHOWNORMAL,
+                )
+            };
+            instance.0 as isize > 32
+        };
+        #[cfg(not(any(target_os = "macos", windows)))]
+        let result = std::process::Command::new("xdg-open")
+            .arg(&url)
+            .status()
+            .map_err(|error| error.to_string())?
+            .success();
+        if result {
+            Ok(())
+        } else {
+            Err("unable to open guidance URL".into())
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 fn get_platform() -> &'static str {
     std::env::consts::OS
 }
@@ -964,6 +1057,7 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             get_platform,
+            open_guidance_url,
             get_settings,
             timer_info,
             preview_schedule,
