@@ -201,7 +201,11 @@ export async function checkOnlineHtml(context) {
       beforeTimer: timer, afterTimer: afterAttack, hostUrl: await app.reminder.evaluate('location.href') };
     for (const name of ['parentDom', 'parentNativeCommand']) assert.ok(results[name]?.error, `${name}必须隔离`);
     for (const name of ['ownNativeCommand', 'ownReadSettings', 'ownSaveSettings']) assert.ok(results[name] === 'unavailable' || results[name] === 'pending' || results[name]?.error, `${name}不可执行`);
-    for (const name of ['fetchIpc', 'fetchFile', 'fetchAsset', 'fetchLocalVideo']) assert.ok(results[name]?.error, `${name}不可读取`);
+    // 在线页面没有本地 HTML 的 connect-src 限制；IPC 对无调用载荷的 GET 明确返回 405。
+    // 真正的命令执行由上面的 ownInvoke 和宿主状态检查验证，不能把方法拒绝误判为读取成功。
+    const ipcRead = results.fetchIpc;
+    assert.ok(ipcRead?.error || (ipcRead?.ok === false && ipcRead.status === 405), 'IPC GET 必须被阻止或明确拒绝方法');
+    for (const name of ['fetchFile', 'fetchAsset', 'fetchLocalVideo']) assert.ok(results[name]?.error, `${name}不可读取`);
     assert.deepEqual(afterSettings, baseline);
     assert.equal(afterAttack.mode, 'break');
     assert.ok(afterAttack.remaining <= timer.remaining && afterAttack.remaining >= timer.remaining - 15, '攻击期间只按正常墙钟计时');
