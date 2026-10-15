@@ -290,6 +290,92 @@ fn online_video_reminder_is_saved_reloaded_and_kept_for_the_active_break() {
 }
 
 #[test]
+fn online_html_cannot_replace_a_saved_guide_with_an_application_protocol_address() {
+    let mut app = simple_timer();
+    let previous = app.settings().clone();
+    for address in [
+        "http://tauri.localhost/reminder.html",
+        "http://ipc.localhost/invoke",
+        "https://guidance.localhost/local-0123456789abcdef0123456789abcdef",
+    ] {
+        let mut draft = serde_json::to_value(app.settings()).unwrap();
+        draft["tips"][0]["guidance"] =
+            serde_json::json!({"kind":"html","source":{"type":"online","url":address}});
+        let result = app.dispatch(
+            Action::SaveSettings(serde_json::from_value(draft).unwrap()),
+            Duration::ZERO,
+        );
+        assert!(!result.validation_errors.is_empty(), "accepted {address}");
+        assert!(result.persist_settings.is_none());
+        assert_eq!(
+            serde_json::to_value(app.settings()).unwrap(),
+            serde_json::to_value(&previous).unwrap()
+        );
+    }
+}
+
+#[test]
+fn online_html_only_reminder_is_saved_reopened_and_kept_when_its_address_is_replaced() {
+    let path =
+        std::env::temp_dir().join(format!("sit-break-online-html-{}.json", fastrand::u64(..)));
+    let mut app = simple_timer();
+    let mut draft = serde_json::to_value(app.settings()).unwrap();
+    let guide = serde_json::json!({"kind":"html","source":{"type":"online","url":"http://127.0.0.1:34567/guide.html?shared=1#steps"}});
+    draft["tips"][0]["text"] = "".into();
+    draft["tips"][0]["guidance"] = guide.clone();
+    let saved = app.dispatch(
+        Action::SaveSettings(serde_json::from_value(draft).unwrap()),
+        Duration::ZERO,
+    );
+    assert!(
+        saved.validation_errors.is_empty(),
+        "{:?}",
+        saved.validation_errors
+    );
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let mut app = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    assert_eq!(
+        serde_json::to_value(app.settings()).unwrap()["tips"][0]["guidance"],
+        guide
+    );
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        Duration::from_secs(60),
+    );
+    app.dispatch(Action::StartBreak, Duration::from_secs(60));
+    let mut replacement = app.settings().clone();
+    replacement.tips[0].guidance = Some(serde_json::from_value(serde_json::json!({"kind":"html","source":{"type":"online","url":"https://example.com/new-guide"}})).unwrap());
+    let saved = app.dispatch(Action::SaveSettings(replacement), Duration::from_secs(60));
+    assert!(saved.validation_errors.is_empty());
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 15,
+            idle_secs: 0,
+        },
+        Duration::from_secs(75),
+    );
+    assert_eq!(app.info().remaining, 45);
+    assert_eq!(app.info().tip.as_deref(), Some(""));
+    assert_eq!(serde_json::to_value(app.info()).unwrap()["guidance"], guide);
+    let mut reopened = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    let mut removed = reopened.settings().clone();
+    removed.tips[0].guidance = None;
+    removed.tips[0].text = "下一轮文字".into();
+    let saved = reopened.dispatch(Action::SaveSettings(removed), Duration::ZERO);
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    assert!(TimerApp::load_from(&path, fastrand::Rng::with_seed(42))
+        .settings()
+        .tips[0]
+        .guidance
+        .is_none());
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn builtin_html_can_be_selected_for_a_reminder_and_a_scheduled_round_after_reopening() {
     let path =
         std::env::temp_dir().join(format!("sit-break-builtin-html-{}.json", fastrand::u64(..)));

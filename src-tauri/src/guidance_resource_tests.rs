@@ -69,6 +69,40 @@ fn imported_video_survives_source_deletion_and_resource_store_reopening() {
 }
 
 #[test]
+fn imported_video_does_not_grant_opaque_or_remote_pages_permission_to_read_the_copy() {
+    let dir = std::env::temp_dir().join(format!("sit-break-video-origin-{}", fastrand::u64(..)));
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("guide.mp4");
+    std::fs::write(
+        &source,
+        include_bytes!("../../src/assets/guidance/squat-demo.mp4"),
+    )
+    .unwrap();
+    let resources = GuidanceResources::open(dir.join("imports")).unwrap();
+    let guide = resources.import_video(&source).unwrap();
+    let crate::GuidanceSource::Local { id } = guide.source else {
+        unreachable!()
+    };
+    for origin in ["null", "https://example.com"] {
+        let response = resources.video_response(
+            Request::get(format!("guidance://localhost/{id}"))
+                .header("origin", origin)
+                .body(Vec::new())
+                .unwrap(),
+        );
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .is_none(),
+            "untrusted {origin} may not read an imported copy"
+        );
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn replacing_and_removing_guidance_keeps_current_and_valid_restored_copies_until_unreferenced() {
     use crate::{
         timer::{Action, LocalTime, TimerApp, TimerTime},

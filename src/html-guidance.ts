@@ -11,7 +11,10 @@ export function createHtmlGuidanceView(container: HTMLElement, validUrl: (value:
   let frame: HTMLIFrameElement | null = null;
   let status: HTMLParagraphElement | null = null;
   let retry: HTMLButtonElement | null = null;
+  let external: HTMLButtonElement | null = null;
   let session = "";
+  let onlineUrl = "";
+  let documentUrl = "";
   let timer: ReturnType<typeof setTimeout> | undefined;
   let failure = false;
   let loading = false;
@@ -22,12 +25,14 @@ export function createHtmlGuidanceView(container: HTMLElement, validUrl: (value:
     if (frame) frame.title = strings.htmlGuidance;
     if (status) {
       status.hidden = !loading && !failure && !browserFailed;
-      status.textContent = browserFailed ? strings.openBrowserFailed : failure ? strings.htmlFailed : strings.htmlLoading;
+      status.textContent = browserFailed ? strings.openBrowserFailed : failure ? onlineUrl ? strings.onlineHtmlFailed : strings.htmlFailed : strings.htmlLoading;
     }
     if (retry) {
-      retry.hidden = !failure;
+      // 网页自身的 HTTP 错误页也可能运行脚本；在线来源始终保留可主动重新加载的恢复入口。
+      retry.hidden = loading || (!failure && !onlineUrl);
       retry.textContent = strings.retryGuidance;
     }
+    if (external) external.textContent = strings.openInBrowser;
   }
 
   function clear() {
@@ -35,16 +40,19 @@ export function createHtmlGuidanceView(container: HTMLElement, validUrl: (value:
     clearTimeout(timer);
     timer = undefined;
     const previous = frame;
+    const previousSession = session;
     frame = null;
     previous?.remove();
     // 销毁整个 browsing context，停止用户页面中可能存在的媒体、动画和脚本。
     if (previous) { previous.removeAttribute("srcdoc"); previous.src = "about:blank"; }
     container.replaceChildren();
     container.hidden = true;
-    key = session = "";
+    key = session = onlineUrl = documentUrl = "";
     status = null;
     retry = null;
+    external = null;
     loading = failure = browserFailed = false;
+    void invoke("release_guidance_html", { session: previousSession }).catch(() => {});
   }
 
   window.addEventListener("message", (event: MessageEvent<unknown>) => {
@@ -52,15 +60,24 @@ export function createHtmlGuidanceView(container: HTMLElement, validUrl: (value:
     if (!current || event.source !== current.contentWindow || event.origin !== "null") return;
     const message = event.data as Record<string, unknown> | null;
     if (!message || typeof message !== "object" || message.source !== "sit-break-guidance" || message.session !== session) return;
-    // 本地页面只有 about:srcdoc 握手有效，错误文档的初始化脚本不构成加载成功。
-    if (typeof message.documentUrl !== "string" || message.documentUrl.split("#", 1)[0] !== "about:srcdoc") return;
-    if (message.type === "ready") {
+    // 错误文档的初始化脚本不构成加载成功。在线重定向的最终地址还须由原生导航授权确认。
+    if (typeof message.documentUrl !== "string") return;
+    const reportedUrl = message.documentUrl;
+    if (onlineUrl ? !validUrl(reportedUrl) : reportedUrl.split("#", 1)[0] !== "about:srcdoc") return;
+    const ready = () => {
+      if (frame !== current) return;
       clearTimeout(timer);
       timer = undefined;
       loading = failure = false;
+      documentUrl = reportedUrl.split("#", 1)[0];
       current.dataset.state = "ready";
       updateLabels();
-    } else if (message.type === "external" && typeof message.url === "string" && validUrl(message.url)) {
+    };
+    if (message.type === "ready") {
+      if (onlineUrl) {
+        void invoke("confirm_online_guidance", { session, documentUrl: reportedUrl }).then(ready).catch(() => {});
+      } else ready();
+    } else if (message.type === "external" && (!onlineUrl || documentUrl === reportedUrl.split("#", 1)[0]) && typeof message.url === "string" && validUrl(message.url)) {
       void openExternal(message.url).then(() => {
         if (frame === current) { browserFailed = false; updateLabels(); }
       }).catch(() => {
@@ -78,6 +95,7 @@ export function createHtmlGuidanceView(container: HTMLElement, validUrl: (value:
     if (nextKey === key) { updateLabels(); return; }
     clear();
     key = nextKey;
+    onlineUrl = guidance.source.type === "online" ? guidance.source.url : "";
     container.hidden = false;
     loading = true;
     const bytes = crypto.getRandomValues(new Uint8Array(16));
@@ -98,7 +116,24 @@ export function createHtmlGuidanceView(container: HTMLElement, validUrl: (value:
     retry.type = "button";
     retry.className = "guidance-retry";
     retry.addEventListener("click", () => { clear(); show(guidance, strings); });
-    container.append(page, status, retry);
+    const actions = document.createElement("div");
+    actions.className = "guidance-actions";
+    actions.append(retry);
+    if (onlineUrl) {
+      const url = onlineUrl;
+      external = document.createElement("button");
+      external.type = "button";
+      external.className = "guidance-external guidance-retry";
+      const button = external;
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        try { await openExternal(url); if (frame === page) browserFailed = false; }
+        catch { if (frame === page) browserFailed = true; }
+        finally { button.disabled = false; if (frame === page) updateLabels(); }
+      });
+      actions.append(button);
+    }
+    container.append(page, status, actions);
     updateLabels();
     const failed = () => {
       if (frame !== page) return;
@@ -109,12 +144,22 @@ export function createHtmlGuidanceView(container: HTMLElement, validUrl: (value:
       page.dataset.state = "failed";
       updateLabels();
     };
-    // read 也验证原生 frame 导航钩子已安装；没有隔离保障时不把内容装进 frame。
+    // 不用 iframe load 事件宣称成功；网络错误、拒绝内嵌或无响应均保留明确且诚实的恢复入口。
     timer = setTimeout(failed, 15_000);
-    void invoke<string>("read_guidance_html", { guidance, session }).then((content) => {
-      if (frame !== page) return;
-      page.srcdoc = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${policy}"><script>${bootstrap}</script>${content}`;
-    }).catch(failed);
+    if (onlineUrl) {
+      const url = onlineUrl;
+      // 先等原生 frame hook，随后只授权此次所选地址；站点响应头与样式按原样保留。
+      void invoke("prepare_online_guidance", { guidance, session }).then(() => {
+        if (frame === page) page.src = url;
+        else void invoke("release_guidance_html", { session: page.name }).catch(() => {});
+      }).catch(failed);
+    } else {
+      // read 同样验证原生隔离接线；用户内容永不作为应用协议页面执行。
+      void invoke<string>("read_guidance_html", { guidance, session }).then((content) => {
+        if (frame !== page) return;
+        page.srcdoc = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="${policy}"><script>${bootstrap}</script>${content}`;
+      }).catch(failed);
+    }
   }
   return { show, clear };
 }
