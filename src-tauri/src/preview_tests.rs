@@ -64,6 +64,28 @@ fn preview_reads_unsaved_draft_periods_gaps_and_rounds_without_applying_it() {
 }
 
 #[test]
+fn preview_distinguishes_guidance_only_rounds_from_random_reminders_without_selecting_them() {
+    let app = TimerApp::new_at(arrangement(), fastrand::Rng::with_seed(42), at(8, 0));
+    let mut draft = serde_json::to_value(app.settings()).unwrap();
+    let guidance =
+        serde_json::json!({"kind":"video","source":{"type":"builtin","id":"squat-demo"}});
+    draft["schedules"][0]["periods"][0]["overrides"] = serde_json::json!([
+        {"round":1,"guidance":guidance},
+        {"round":2}
+    ]);
+    let preview = app
+        .preview(&serde_json::from_value(draft).unwrap(), at(8, 0))
+        .unwrap();
+    let rounds = &preview.schedules[0].periods[0].rounds;
+    let state = serde_json::to_value(rounds).unwrap();
+    assert_eq!(state[0]["guidance"], guidance);
+    assert!(rounds[0].content.is_none());
+    assert!(state[1]["guidance"].is_null());
+    assert!(rounds[1].content.is_none());
+    assert_eq!(app.info().mode, Mode::Idle);
+}
+
+#[test]
 fn preview_keeps_current_snapshot_and_moves_future_draft_times_with_waiting_and_breaks() {
     let mut app = TimerApp::new_at(arrangement(), fastrand::Rng::with_seed(42), at(9, 0));
     let mut draft = app.settings().clone();

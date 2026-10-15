@@ -22,7 +22,7 @@ fn settings() -> Settings {
             "id":"schedule", "name":"工作日", "enabled":true,
             "repeat":{"kind":"weekly","weekdays":[1,2,3,4,5]},
             "periods":[{"id":"morning", "start":"09:00","end":"12:00","work_minutes":55,"break_minutes":5,"overrides":[
-                {"round":1,"work_minutes":50,"break_minutes":10,"content":"爬楼"},
+                {"round":1,"work_minutes":50,"break_minutes":10,"content":"爬楼","guidance":{"kind":"video","source":{"type":"builtin","id":"squat-demo"}}},
                 {"round":2,"work_minutes":20,"break_minutes":3,"content":"深蹲"}
             ]}]
         }])).unwrap(),
@@ -48,6 +48,27 @@ fn started_break() -> TimerApp {
         at(9, 56),
     );
     app
+}
+
+#[test]
+fn invalid_round_guidance_save_leaves_the_current_round_and_settings_intact() {
+    let mut app = TimerApp::new_at(settings(), fastrand::Rng::with_seed(42), at(9, 0));
+    let before = app.info();
+    let original = serde_json::to_value(app.settings()).unwrap();
+    let mut changed = original.clone();
+    changed["schedules"][0]["periods"][0]["overrides"][0]["guidance"] =
+        serde_json::json!({"kind":"video","source":{"type":"builtin","id":"missing"}});
+    let saved = app.dispatch(
+        Action::SaveSettings(serde_json::from_value(changed).unwrap()),
+        at(9, 1),
+    );
+    assert!(saved
+        .validation_errors
+        .iter()
+        .any(|error| error.field == "overrides.0.guidance" && error.code == "guidance_invalid"));
+    assert!(saved.persist_settings.is_none());
+    assert_eq!(app.info(), before);
+    assert_eq!(serde_json::to_value(app.settings()).unwrap(), original);
 }
 
 #[test]
@@ -171,6 +192,7 @@ fn editing_defaults_overrides_content_and_common_preferences_freezes_each_curren
         }
         app.dispatch(Action::TogglePause, at(9, 56));
         let before = app.info();
+        assert!(before.guidance.is_some());
         let mut changed = app.settings().clone();
         changed.sound = false;
         changed.language = "en".into();
@@ -181,9 +203,11 @@ fn editing_defaults_overrides_content_and_common_preferences_freezes_each_curren
         period.overrides[0].work_minutes = Some(40);
         period.overrides[0].break_minutes = Some(4);
         period.overrides[0].content = Some("修改后的爬楼".into());
+        period.overrides[0].guidance = None;
         period.overrides[1].work_minutes = Some(30);
         period.overrides[1].break_minutes = Some(8);
         period.overrides[1].content = Some("修改后的深蹲".into());
+        period.overrides[1].guidance = before.guidance.clone();
         let output = app.dispatch(Action::SaveSettings(changed), at(9, 56));
         assert_eq!(output.state, Some(before.clone()));
         assert_eq!(app.info(), before);
@@ -214,6 +238,7 @@ fn editing_defaults_overrides_content_and_common_preferences_freezes_each_curren
             at(10, 7),
         );
         assert_eq!(app.info().round.unwrap().number, 2);
+        assert_eq!(app.info().guidance, before.guidance);
         assert_eq!(
             (
                 app.info().work_seconds,
@@ -251,6 +276,7 @@ fn editing_defaults_overrides_content_and_common_preferences_freezes_each_curren
             next_day,
         );
         assert_eq!(next.info().round.unwrap().number, 1);
+        assert!(next.info().guidance.is_none());
         assert_eq!(
             (
                 next.info().work_seconds,

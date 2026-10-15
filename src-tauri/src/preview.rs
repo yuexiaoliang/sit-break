@@ -49,6 +49,7 @@ pub struct PreviewRound {
     pub work_seconds: u64,
     pub break_seconds: u64,
     pub content: Option<String>,
+    pub guidance: Option<crate::Guidance>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -73,6 +74,7 @@ fn rounds(period: &Period, mut cursor: i64, mut number: u32) -> Vec<PreviewRound
             work_seconds: definition.work_seconds,
             break_seconds: definition.break_seconds,
             content: definition.content,
+            guidance: definition.guidance,
         });
         if !starts_in_period || number == u32::MAX {
             break;

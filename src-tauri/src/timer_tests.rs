@@ -856,12 +856,17 @@ fn schedule_work_starts_at_the_first_round_only_inside_its_local_date_and_period
 
 #[test]
 fn repeated_postpones_preserve_the_round_tip_and_actual_lengths() {
+    let video = serde_json::json!({"kind":"video","source":{"type":"builtin","id":"squat-demo"}});
+    let mut settings = serde_json::to_value(scheduled_settings("12:00")).unwrap();
+    settings["tips"] = serde_json::json!([{"id":"global-video", "text":"", "guidance":video}]);
     let mut app = TimerApp::new_at(
-        scheduled_settings("12:00"),
+        serde_json::from_value(settings).unwrap(),
         fastrand::Rng::with_seed(42),
         at(9, 0),
     );
     let tip = app.info().tip.unwrap();
+    assert_eq!(tip, "");
+    assert_eq!(serde_json::to_value(app.info()).unwrap()["guidance"], video);
     app.dispatch(
         Action::Tick {
             elapsed_secs: 3000,
@@ -881,10 +886,12 @@ fn repeated_postpones_preserve_the_round_tip_and_actual_lengths() {
         );
         assert_eq!(app.info().round.unwrap().number, 1);
         assert_eq!(app.info().tip.as_deref(), Some(tip.as_str()));
+        assert_eq!(serde_json::to_value(app.info()).unwrap()["guidance"], video);
         assert!(output.events.iter().any(|event| matches!(event, TimerEvent::Reminder(payload) if payload.tip == tip && payload.break_seconds == 600)));
     }
     app.dispatch(Action::StartBreak, at(10, 0));
     assert_eq!(app.info().tip.as_deref(), Some(tip.as_str()));
+    assert_eq!(serde_json::to_value(app.info()).unwrap()["guidance"], video);
     assert_eq!(app.info().remaining, 600);
     let serialized = serde_json::to_value(app.info()).unwrap();
     assert_eq!(serialized["round"]["period_id"], "morning-period");
@@ -1431,6 +1438,75 @@ fn settings_with_overrides(overrides: serde_json::Value) -> Settings {
     period["break_minutes"] = serde_json::json!(5);
     period["overrides"] = overrides;
     serde_json::from_value(json).unwrap()
+}
+
+#[test]
+fn scheduled_rounds_save_and_use_each_text_guidance_combination_without_mixing() {
+    let video = serde_json::json!({"kind":"video","source":{"type":"builtin","id":"squat-demo"}});
+    let mut draft = serde_json::to_value(settings_with_overrides(serde_json::json!([
+        {"round":1,"content":"只读文字"},
+        {"round":2,"guidance":video},
+        {"round":3,"content":"下蹲，再喝水\n保持原文", "guidance":video},
+        {"round":4,"content":"  "}
+    ])))
+    .unwrap();
+    draft["tips"] = serde_json::json!([
+        {"id":"global", "text":"全局文字", "guidance":video}
+    ]);
+    let mut app = TimerApp::new_at(Settings::default(), fastrand::Rng::with_seed(42), at(9, 0));
+    let saved = app.dispatch(
+        Action::SaveSettings(serde_json::from_value(draft).unwrap()),
+        at(9, 0),
+    );
+    assert!(saved.validation_errors.is_empty());
+    let path = std::env::temp_dir().join(format!(
+        "sit-break-round-guidance-{}.json",
+        fastrand::u64(..)
+    ));
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let mut app = TimerApp::new_at(
+        Settings::load_from(&path),
+        fastrand::Rng::with_seed(42),
+        at(9, 0),
+    );
+    for (number, text, guidance) in [
+        (1, "只读文字", serde_json::Value::Null),
+        (2, "", video.clone()),
+        (3, "下蹲，再喝水\n保持原文", video.clone()),
+        (4, "全局文字", video.clone()),
+    ] {
+        assert_eq!(app.info().round.unwrap().number, number);
+        assert_eq!(app.info().tip.as_deref(), Some(text));
+        assert_eq!(
+            serde_json::to_value(app.info()).unwrap()["guidance"],
+            guidance
+        );
+        let reminder = app.dispatch(
+            Action::Tick {
+                elapsed_secs: 3300,
+                idle_secs: 0,
+            },
+            at(number + 8, 55),
+        );
+        assert!(
+            matches!(reminder.events.first(), Some(TimerEvent::Reminder(payload))
+            if payload.tip == text && serde_json::to_value(&payload.guidance).unwrap() == guidance)
+        );
+        app.dispatch(Action::StartBreak, at(number + 8, 55));
+        assert_eq!(app.info().tip.as_deref(), Some(text));
+        assert_eq!(
+            serde_json::to_value(app.info()).unwrap()["guidance"],
+            guidance
+        );
+        app.dispatch(Action::EndBreak, at(number + 9, 0));
+    }
+    let mut empty = app.settings().clone();
+    empty.tips.clear();
+    empty.schedules[0].periods[0].overrides.clear();
+    let fallback = TimerApp::new_at(empty, fastrand::Rng::with_seed(42), at(9, 0));
+    assert!(fallback.info().tip.is_some_and(|text| !text.is_empty()));
+    assert!(fallback.info().guidance.is_none());
+    std::fs::remove_file(path).unwrap();
 }
 
 #[test]
