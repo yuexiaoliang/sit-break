@@ -49,12 +49,15 @@ pub struct RoundOverride {
     pub break_minutes: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guidance: Option<crate::Guidance>,
 }
 
 pub(crate) struct RoundDefinition {
     pub work_seconds: u64,
     pub break_seconds: u64,
     pub content: Option<String>,
+    pub guidance: Option<crate::Guidance>,
 }
 
 impl Period {
@@ -75,6 +78,7 @@ impl Period {
                 .and_then(|item| item.content.as_deref())
                 .filter(|content| !content.trim().is_empty())
                 .map(str::to_owned),
+            guidance: adjustment.and_then(|item| item.guidance.clone()),
         }
     }
 }
@@ -241,6 +245,18 @@ impl crate::Settings {
                 }
                 let mut adjusted_rounds = std::collections::HashSet::new();
                 for (index, adjustment) in period.overrides.iter().enumerate() {
+                    if adjustment
+                        .guidance
+                        .as_ref()
+                        .is_some_and(|guidance| !guidance.is_valid())
+                    {
+                        report(
+                            sid,
+                            pid,
+                            &format!("overrides.{index}.guidance"),
+                            "guidance_invalid",
+                        );
+                    }
                     if adjustment.round == 0 {
                         report(
                             sid,
