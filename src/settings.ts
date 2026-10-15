@@ -479,6 +479,7 @@ document.getElementById("addReminder")!.addEventListener("click", () => {
 
 function describeSaveError(error: unknown): string {
   const failure = error as { kind?: string; errors?: ValidationError[]; message?: string };
+  if (failure.kind === "resource") return S.localVideoUnavailable;
   if (failure.kind !== "validation" || !failure.errors) return `${S.saveFailed} ${failure.message ?? String(error)}`;
   let first: HTMLElement | undefined;
   const messages = failure.errors.map((issue) => {

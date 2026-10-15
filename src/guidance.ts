@@ -1,9 +1,9 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 
 /** 一份动作指引归属一条提醒或单轮休息；资源描述不依赖文字。 */
 export interface Guidance {
   kind: "video";
-  source: { type: "builtin"; id: string } | { type: "online"; url: string };
+  source: { type: "builtin"; id: string } | { type: "online"; url: string } | { type: "local"; id: string };
 }
 
 /** UI 的即时校验与后端再次校验使用相同的 HTTP(S) 约定。 */
@@ -22,14 +22,41 @@ export async function openExternalGuidance(url: string): Promise<void> {
   await invoke("open_guidance_url", { url });
 }
 
+/** 导入只在当前 WebView 能读取并解码首帧后生效，失败时保留旧选择。 */
+async function checkImportedVideo(guidance: Guidance): Promise<void> {
+  if (guidance.source.type !== "local") throw "import-failed";
+  const id = guidance.source.id;
+  const player = document.createElement("video");
+  player.muted = true;
+  player.preload = "auto";
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      player.addEventListener("loadeddata", () => player.videoWidth > 0 ? resolve() : reject("unsupported-video"), { once: true });
+      player.addEventListener("error", () => reject(player.error?.code === 4 ? "unsupported-video" : "import-failed"), { once: true });
+      timeout = setTimeout(() => reject("import-failed"), 12_000);
+      player.src = convertFileSrc(id, "guidance");
+      player.load();
+    });
+  } finally {
+    clearTimeout(timeout);
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+  }
+}
+
 export function guidancePicker(value: Guidance | null | undefined, strings: Record<string, string>, onChange: (value: Guidance | null) => void): HTMLElement {
+  let current = value ?? null;
+  let importing = false;
+  const commit = (next: Guidance | null) => { current = next; onChange(next); };
   const group = document.createElement("div");
   group.className = "guidance-picker";
   const label = document.createElement("label");
   const caption = document.createElement("span");
   caption.textContent = strings.guidance;
   const select = document.createElement("select");
-  for (const [id, name] of [["", strings.noGuidance], ["squat-demo", strings.squatDemo], ["online-video", strings.onlineVideo]]) {
+  for (const [id, name] of [["", strings.noGuidance], ["squat-demo", strings.squatDemo], ["local-video", strings.localVideo], ["online-video", strings.onlineVideo]]) {
     const option = document.createElement("option");
     option.value = id;
     option.textContent = name;
@@ -44,34 +71,79 @@ export function guidancePicker(value: Guidance | null | undefined, strings: Reco
   input.spellcheck = false;
   const hint = document.createElement("p");
   hint.className = "guidance-hint";
-  hint.textContent = strings.videoUrlHint;
+  const choose = document.createElement("button");
+  choose.type = "button";
+  choose.className = "text-button guidance-import";
+  choose.textContent = strings.chooseLocalVideo;
+  const status = document.createElement("p");
+  status.className = "guidance-hint guidance-import-status";
+  status.setAttribute("role", "status");
+  status.hidden = true;
   const validateUrl = () => {
     const valid = validOnlineUrl(input.value);
     input.setCustomValidity(valid ? "" : strings.guidanceUrlInvalid);
-    if (valid) onChange({ kind: "video", source: { type: "online", url: input.value } });
+    if (valid) commit({ kind: "video", source: { type: "online", url: input.value } });
   };
+  function selectCurrent() {
+    const source = current?.source;
+    select.value = source?.type === "local" ? "local-video" : source?.type === "online" ? "online-video" : source?.type === "builtin" ? source.id : "";
+    if (source?.type === "online") input.value = source.url;
+  }
   function renderSource() {
     const online = select.value === "online-video";
-    input.hidden = hint.hidden = !online;
+    const local = select.value === "local-video";
+    input.hidden = !online;
     input.disabled = !online;
     input.required = online;
     input.setCustomValidity("");
+    hint.hidden = !online && !local;
+    hint.textContent = online ? strings.videoUrlHint : strings.localVideoHint;
+    choose.hidden = !local;
     if (online) validateUrl();
   }
-  if (value?.source.type === "online") {
-    select.value = "online-video";
-    input.value = value.source.url;
-  } else {
-    select.value = value?.source.type === "builtin" ? value.source.id : "";
+  async function importVideo() {
+    if (importing) return;
+    importing = true;
+    choose.disabled = true;
+    select.setCustomValidity(strings.importingVideo);
+    group.dataset.importing = "true";
+    status.hidden = false;
+    status.textContent = strings.importingVideo;
+    try {
+      const imported = await invoke<Guidance | null>("import_guidance_video");
+      if (imported) {
+        await checkImportedVideo(imported);
+        commit(imported);
+      }
+      status.hidden = true;
+    } catch (error) {
+      status.textContent = error === "unsupported-video" ? strings.unsupportedVideo : strings.importVideoFailed;
+    } finally {
+      importing = false;
+      choose.disabled = false;
+      select.setCustomValidity("");
+      delete group.dataset.importing;
+      selectCurrent();
+      renderSource();
+    }
   }
+  selectCurrent();
   select.addEventListener("change", () => {
-    if (select.value !== "online-video") onChange(select.value ? { kind: "video", source: { type: "builtin", id: select.value } } : null);
+    if (importing) { select.value = "local-video"; return; }
+    status.hidden = true;
+    if (select.value === "local-video") {
+      renderSource();
+      void importVideo();
+      return;
+    }
+    if (select.value !== "online-video") commit(select.value ? { kind: "video", source: { type: "builtin", id: select.value } } : null);
     renderSource();
     if (select.value === "online-video") input.focus();
   });
+  choose.addEventListener("click", () => { void importVideo(); });
   input.addEventListener("input", validateUrl);
   label.append(caption, select);
-  group.append(label, input, hint);
+  group.append(label, input, hint, choose, status);
   renderSource();
   return group;
 }
@@ -231,7 +303,7 @@ export function createGuidanceView(container: HTMLElement) {
     });
     container.append(player, status, actions, externalStatus);
     const source = guidance.source;
-    const url = source.type === "builtin" && source.id === "squat-demo" ? squatDemoUrl : source.type === "online" && validOnlineUrl(source.url) ? source.url : null;
+    const url = source.type === "builtin" && source.id === "squat-demo" ? squatDemoUrl : source.type === "online" && validOnlineUrl(source.url) ? source.url : source.type === "local" && /^local-[a-f0-9]{32}$/i.test(source.id) ? convertFileSrc(source.id, "guidance") : null;
     if (url) {
       waitForPlayback(player);
       player.src = url;

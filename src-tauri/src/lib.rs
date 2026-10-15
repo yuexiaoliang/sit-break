@@ -10,9 +10,13 @@ use tauri::{
 use tauri_plugin_autostart::MacosLauncher;
 #[cfg(not(windows))]
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_dialog::DialogExt;
 
 #[cfg(test)]
 mod editing_tests;
+#[cfg(test)]
+mod guidance_resource_tests;
+pub mod guidance_resources;
 mod platform;
 mod power;
 pub mod preview;
@@ -83,6 +87,7 @@ pub enum GuidanceKind {
 pub enum GuidanceSource {
     Builtin { id: String },
     Online { url: String },
+    Local { id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,6 +101,7 @@ impl Guidance {
         match (&self.kind, &self.source) {
             (GuidanceKind::Video, GuidanceSource::Builtin { id }) => id == "squat-demo",
             (GuidanceKind::Video, GuidanceSource::Online { url }) => valid_guidance_url(url),
+            (GuidanceKind::Video, GuidanceSource::Local { id }) => guidance_resources::valid_id(id),
         }
     }
 }
@@ -271,6 +277,8 @@ fn choose_tip(settings: &Settings, previous: Option<&str>, rng: &mut fastrand::R
 }
 
 struct TimerClock(Instant);
+
+struct GuidanceResourceState(Option<guidance_resources::GuidanceResources>);
 
 #[derive(Default)]
 struct PanelState {
@@ -817,6 +825,34 @@ async fn open_guidance_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn import_guidance_video(app: AppHandle) -> Result<Option<Guidance>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resources = app.state::<GuidanceResourceState>();
+        let resources = resources.0.as_ref().ok_or("resource-unavailable")?;
+        let title = if is_zh(app.state::<Mutex<TimerApp>>().lock().unwrap().settings()) {
+            "导入本地视频"
+        } else {
+            "Import local video"
+        };
+        let mut dialog = app
+            .dialog()
+            .file()
+            .set_title(title)
+            .add_filter("MP4 video", &["mp4", "m4v"]);
+        if let Some(window) = app.get_webview_window("settings") {
+            dialog = dialog.set_parent(&window);
+        }
+        let Some(file) = dialog.blocking_pick_file() else {
+            return Ok(None);
+        };
+        let path = file.into_path().map_err(|_| "import-failed")?;
+        resources.import_video(&path).map(Some)
+    })
+    .await
+    .map_err(|_| "import-failed".to_string())?
+}
+
+#[tauri::command]
 fn get_platform() -> &'static str {
     std::env::consts::OS
 }
@@ -853,6 +889,15 @@ fn save_settings(app: AppHandle, settings: Settings) -> Result<(), serde_json::V
     let errors = settings.validate();
     if !errors.is_empty() {
         return Err(json!({ "kind": "validation", "errors": errors }));
+    }
+    if guidance_resources::settings_guidance(&settings)
+        .any(|guidance| matches!(guidance.source, GuidanceSource::Local { .. }))
+    {
+        let state = app.state::<GuidanceResourceState>();
+        let resources = state.0.as_ref().ok_or_else(|| json!({"kind":"resource"}))?;
+        resources
+            .validate_settings(&settings)
+            .map_err(|_| json!({"kind":"resource"}))?;
     }
     if settings.autostart != autostart_is_enabled(&app) {
         autostart_set(&app, settings.autostart)
@@ -1051,6 +1096,17 @@ pub fn run() {
                 eprintln!("error opening existing application: {error}");
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
+        .register_uri_scheme_protocol("guidance", |context, request| {
+            let state = context.app_handle().state::<GuidanceResourceState>();
+            match &state.0 {
+                Some(resources) => resources.video_response(request),
+                None => tauri::http::Response::builder()
+                    .status(503)
+                    .body(Vec::new())
+                    .unwrap(),
+            }
+        })
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
@@ -1058,6 +1114,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_platform,
             open_guidance_url,
+            import_guidance_video,
             get_settings,
             timer_info,
             preview_schedule,
@@ -1087,6 +1144,15 @@ pub fn run() {
             } else {
                 TimerApp::new_at(settings.clone(), fastrand::Rng::new(), now)
             };
+            let resources = handle.path().app_data_dir().ok().and_then(|directory| {
+                guidance_resources::GuidanceResources::open(directory.join("guidance")).ok()
+            });
+            if let Some(resources) = &resources {
+                if let Err(error) = resources.retain_for(timer.settings(), &timer.info()) {
+                    eprintln!("无法回收未引用的动作指引：{error}");
+                }
+            }
+            handle.manage(GuidanceResourceState(resources));
             handle.manage(Mutex::new(timer));
 
             // ---- 窗口（在 manage 之后创建，页面加载时状态已就绪）----
