@@ -16,6 +16,7 @@ const fixtureBaseUrl = __FIXTURE_BASE_URL_JSON__;
 const knownFileUrl = __KNOWN_FILE_URL_JSON__;
 const validAssetUrl = __VALID_ASSET_URL_JSON__;
 const validGuidanceUrl = __VALID_GUIDANCE_URL_JSON__;
+const nestedAppUrl = __NESTED_APP_URL_JSON__;
 const attackSettings = __ATTACK_SETTINGS_JSON__;
 const record = (name, value) => { results[name] = value; document.getElementById('results').textContent = JSON.stringify(results); };
 const attempt = async (name, action) => {
@@ -47,6 +48,13 @@ document.getElementById('run-attacks').addEventListener('click', async () => {
   await attempt('nestedFrame', () => {
     const frame = document.createElement('iframe'); frame.id = 'nested-attempt';
     frame.src = fixtureBaseUrl + '/nested-attempt'; document.body.append(frame); return 'inserted';
+  });
+  if (nestedAppUrl) await attempt('nestedAppFrame', () => {
+    const frame = document.createElement('iframe'); frame.id = 'nested-app-attempt';
+    // 故意不设置 name，验证非指引名称的真实应用子帧是否获得原生权限。
+    frame.addEventListener('load', () => { frame.dataset.event = 'load'; });
+    frame.addEventListener('error', () => { frame.dataset.event = 'error'; });
+    frame.src = nestedAppUrl; document.body.append(frame); return 'inserted';
   });
   await attempt('topNavigation', () => { top.location.href = 'about:blank#sandbox-escape'; return 'attempted'; });
   await attempt('topLink', () => {

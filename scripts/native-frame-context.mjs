@@ -24,7 +24,10 @@ export async function createFrameInspector(connection) {
   disposers.push(connection.on('Target.attachedToTarget', ({ sessionId, targetInfo }) => {
     if (targetInfo.type !== 'iframe') return;
     attached.add(sessionId);
-    void connection.call('Runtime.enable', {}, sessionId).catch((error) => {
+    void Promise.all([
+      connection.call('Runtime.enable', {}, sessionId),
+      connection.call('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, sessionId),
+    ]).catch((error) => {
       if (attached.has(sessionId)) attachmentErrors.set(sessionId, error);
     });
   }));
@@ -33,12 +36,20 @@ export async function createFrameInspector(connection) {
   await connection.call('Runtime.disable');
   await connection.call('Runtime.enable');
 
-  async function frameInfo(namePrefix = 'sit-break-guidance-') {
-    const { frameTree } = await connection.call('Page.getFrameTree');
-    const frames = [];
-    const visit = (tree) => { frames.push(tree.frame); for (const child of tree.childFrames ?? []) visit(child); };
-    visit(frameTree);
-    const frame = frames.find((item) => item.parentId && item.name?.startsWith(namePrefix));
+  async function frameTree() {
+    const root = await connection.call('Page.getFrameTree');
+    const children = await Promise.allSettled([...attached].map(sessionId => connection.call('Page.getFrameTree', {}, sessionId)));
+    const frames = new Map();
+    const visit = (tree) => { frames.set(tree.frame.id, { ...frames.get(tree.frame.id), ...tree.frame }); for (const child of tree.childFrames ?? []) visit(child); };
+    visit(root.frameTree);
+    for (const child of children) if (child.status === 'fulfilled') visit(child.value.frameTree);
+    return [...frames.values()];
+  }
+
+  async function frameInfo(selector = 'sit-break-guidance-') {
+    const frames = await frameTree();
+    const frame = frames.find((item) => typeof selector === 'string'
+      ? item.parentId && item.name?.startsWith(selector) : item.id === selector.frameId);
     if (!frame) return null;
     const context = [...contexts.values()].find((item) => item.auxData?.frameId === frame.id && item.auxData?.isDefault);
     if (!context) {
@@ -50,6 +61,23 @@ export async function createFrameInspector(connection) {
 
   return {
     frameInfo,
+    /** 由实际 iframe DOM owner 取得无 name 子帧 ID，避免把请求地址当作加载成功。 */
+    async elementFrameInfo(expression, parentSelector) {
+      const parent = await frameInfo(parentSelector);
+      assert.ok(parent, '未找到 iframe owner 所在的真实上下文');
+      const remote = await connection.call('Runtime.evaluate', { expression, contextId: parent.contextId,
+        returnByValue: false }, parent.sessionId);
+      assert.ok(!remote.exceptionDetails && remote.result.objectId, '未取得实际 iframe 元素');
+      try {
+        const { node } = await connection.call('DOM.describeNode', { objectId: remote.result.objectId }, parent.sessionId);
+        assert.ok(node.frameId, '实际 iframe owner 尚无 frame ID');
+        const frame = (await frameTree()).find(item => item.id === node.frameId);
+        return { frameId: node.frameId, url: frame?.url ?? null, name: frame?.name ?? '',
+          context: await frameInfo({ frameId: node.frameId }) };
+      } finally {
+        await connection.call('Runtime.releaseObject', { objectId: remote.result.objectId }, parent.sessionId);
+      }
+    },
     async evaluate(expression, namePrefix) {
       const frame = await frameInfo(namePrefix);
       assert.ok(frame, '没有找到实际指引 iframe 的默认脚本上下文');

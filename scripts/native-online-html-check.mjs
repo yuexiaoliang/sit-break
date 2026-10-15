@@ -179,11 +179,13 @@ export async function checkOnlineHtml(context) {
     fixture.setMode('success');
     const attackSettings = { ...settingsFor(fixture.attackUrl, 'native-online-attacks'), sound: true };
     const hostUrl = await app.reminder.evaluate('location.href');
+    const nestedAppUrl = new URL('settings.html', hostUrl).href;
     const localVideoUrl = `http://guidance.localhost/${retainedVideo.source.id}`;
-    const knownResources = await app.reminder.evaluate(`(async()=>{const a=await fetch(${JSON.stringify(hostUrl)});const v=await fetch(${JSON.stringify(localVideoUrl)},{method:'HEAD'});return{asset:a.status,video:v.status};})()`);
-    assert.deepEqual(knownResources, { asset: 200, video: 200 });
+    const knownResources = await app.reminder.evaluate(`(async()=>{const a=await fetch(${JSON.stringify(hostUrl)});const v=await fetch(${JSON.stringify(localVideoUrl)},{method:'HEAD'});
+      const settings=await fetch(${JSON.stringify(nestedAppUrl)});return{asset:a.status,video:v.status,settings:settings.status,settingsForm:(await settings.text()).includes('id="settingsForm"')};})()`);
+    assert.deepEqual(knownResources, { asset: 200, video: 200, settings: 200, settingsForm: true });
     fixture.setAttackHtml(await renderCapabilityFixture({ baseUrl: fixture.baseUrl, knownFileUrl: pathToFileURL(markerPath).href,
-      validAssetUrl: hostUrl, validGuidanceUrl: localVideoUrl, attackSettings }));
+      validAssetUrl: hostUrl, validGuidanceUrl: localVideoUrl, nestedAppUrl, attackSettings }));
     await begin(fixture.attackUrl, 'native-online-attacks'); await waitFor('在线攻击页面真实就绪', ready);
     const baseline = await app.settings.invoke('get_settings');
     await app.settings.invoke('save_settings', { settings: attackSettings });
@@ -204,6 +206,50 @@ export async function checkOnlineHtml(context) {
     assert.equal(await app.reminder.evaluate('location.href'), hostUrl);
     await app.reminder.screenshot('online-html-capability-attacks');
     report.checks.push({ name: '在线opaque网页实际IPC、设置、文件和受控资源攻击被拒绝', knownResources, results, settingsUnchanged: true });
+
+    report.onlineHtml.stage = '无 name 应用子帧的实际 RPC 隔离';
+    const nested = { requestedUrl: nestedAppUrl, payloadAcceptedByHost: true, commands: {} };
+    report.onlineHtml.nestedApp = nested;
+    let previousUrl;
+    let stableSince = Date.now();
+    await waitFor('定位无 name 子帧及其实际默认脚本上下文', async () => {
+      nested.owner = await inspector.evaluate(`(() => { const f=document.getElementById('nested-app-attempt');
+        return f && {src:f.src,name:f.name,hasName:f.hasAttribute('name'),event:f.dataset.event}; })()`);
+      nested.frame = await inspector.elementFrameInfo('document.getElementById("nested-app-attempt")');
+      if (nested.frame.url !== previousUrl) { previousUrl = nested.frame.url; stableSince = Date.now(); }
+      if (!nested.frame.context) return false;
+      // 应用模块可能因真实 IPC 未决而阻止 load；不把这个事件当作文档或权限证据。
+      return Date.now() - stableSince >= 1000;
+    }, 12_000);
+    assert.equal(nested.owner.hasName, false); assert.equal(nested.owner.name, '');
+    const selector = { frameId: nested.frame.frameId };
+    nested.document = await inspector.evaluate(`({url:location.href,title:document.title,
+      readyState:document.readyState,settingsForm:!!document.getElementById('settingsForm')})`, selector);
+    nested.appDocumentLoaded = nested.document.url === nestedAppUrl && nested.document.settingsForm;
+    const nestedTimer = await app.reminder.invoke('timer_info');
+    for (const [command, payload] of [['get_settings', {}], ['save_settings', { settings: attackSettings }], ['end_break', {}]]) {
+      try {
+        nested.commands[command] = await inspector.evaluate(`(async()=>{
+          if(typeof window.__TAURI_INTERNALS__?.invoke!=='function')return 'unavailable';
+          try{return await Promise.race([window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)},${JSON.stringify(payload)}).then(()=>'resolved'),
+            new Promise(done=>setTimeout(()=>done('pending'),800))]);}catch(error){return {error:error?.name||typeof error};}
+        })()`, selector);
+      } catch (error) { nested.commands[command] = { debugError: error.message }; }
+    }
+    const nestedAfterSettings = await app.settings.invoke('get_settings');
+    nested.afterTimer = await app.reminder.invoke('timer_info');
+    nested.hostUrl = await app.reminder.evaluate('location.href');
+    nested.settingsUnchanged = JSON.stringify(nestedAfterSettings) === JSON.stringify(baseline);
+    for (const [command, outcome] of Object.entries(nested.commands)) {
+      assert.ok(outcome === 'unavailable' || outcome === 'pending' || outcome?.error, `无name子帧 ${command} 不得执行成功`);
+    }
+    assert.deepEqual(nestedAfterSettings, baseline, '嵌套应用页不能通过真实 save_settings 修改宿主');
+    assert.equal(nested.afterTimer.mode, 'break');
+    assert.ok(nested.afterTimer.remaining <= nestedTimer.remaining && nested.afterTimer.remaining >= nestedTimer.remaining - 7);
+    for (const key of ['round', 'guidance', 'work_seconds', 'break_seconds', 'paused']) assert.deepEqual(nested.afterTimer[key], nestedTimer[key]);
+    assert.equal(nested.hostUrl, hostUrl);
+    await app.reminder.screenshot('online-html-nested-app-capability');
+    report.checks.push({ name: '在线网页创建无name应用子帧：实际文档加载与真实RPC权限分别核对', ...nested, beforeTimer: nestedTimer });
     await end();
     await app.settings.invoke('save_settings', { settings: previousSettings }); await app.settings.invoke('reset_timer');
     report.onlineHtml.requests = [...fixture.requests]; report.onlineHtml.status = 'passed';
