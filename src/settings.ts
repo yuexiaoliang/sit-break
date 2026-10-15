@@ -543,7 +543,7 @@ form.addEventListener("invalid", (event) => {
 }, true);
 
 document.getElementById("btnClose")!.addEventListener("click", () => invoke("hide_settings"));
-window.addEventListener("keydown", (event) => { if (event.key === "Escape" && !(document.getElementById("schedulePreview") as HTMLDialogElement).open) invoke("hide_settings"); });
+window.addEventListener("keydown", (event) => { if (event.key === "Escape" && !document.querySelector("dialog[open]")) invoke("hide_settings"); });
 window.addEventListener("contextmenu", (event) => event.preventDefault());
 const win = getCurrentWindow();
 document.querySelectorAll(".shead, .preview-head").forEach((header) => header.addEventListener("mousedown", (event) => {

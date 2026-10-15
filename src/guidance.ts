@@ -1,5 +1,6 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { createHtmlGuidanceView } from "./html-guidance";
+import { openGuidanceAuthoring } from "./guidance-authoring";
 
 /** 一份动作指引归属一条提醒或单轮休息；资源描述不依赖文字。 */
 export interface Guidance {
@@ -58,7 +59,7 @@ export function guidancePicker(value: Guidance | null | undefined, strings: Reco
   const caption = document.createElement("span");
   caption.textContent = strings.guidance;
   const select = document.createElement("select");
-  for (const [id, name] of [["", strings.noGuidance], ["squat-demo", strings.squatDemo], ["local-video", strings.localVideo], ["local-html", strings.localHtml], ["online-video", strings.onlineVideo]]) {
+  for (const [id, name] of [["", strings.noGuidance], ["squat-demo", strings.squatDemo], ["stretch-demo", strings.stretchDemo], ["local-video", strings.localVideo], ["local-html", strings.localHtml], ["online-video", strings.onlineVideo]]) {
     const option = document.createElement("option");
     option.value = id;
     option.textContent = name;
@@ -142,14 +143,20 @@ export function guidancePicker(value: Guidance | null | undefined, strings: Reco
       void importFile();
       return;
     }
-    if (select.value !== "online-video") commit(select.value ? { kind: "video", source: { type: "builtin", id: select.value } } : null);
+    if (select.value !== "online-video") commit(select.value ? { kind: select.value === "stretch-demo" ? "html" : "video", source: { type: "builtin", id: select.value } } : null);
     renderSource();
     if (select.value === "online-video") input.focus();
   });
   choose.addEventListener("click", () => { void importFile(); });
   input.addEventListener("input", validateUrl);
   label.append(caption, select);
-  group.append(label, input, hint, choose, status);
+  const authoring = document.createElement("button");
+  authoring.type = "button";
+  authoring.className = "text-button guidance-authoring-trigger";
+  authoring.textContent = strings.htmlAuthoring;
+  authoring.setAttribute("aria-haspopup", "dialog");
+  authoring.addEventListener("click", () => openGuidanceAuthoring(strings, authoring));
+  group.append(label, input, hint, choose, status, authoring);
   renderSource();
   return group;
 }

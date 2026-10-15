@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>站起来，舒展一下</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --sb-background: #ffffff;
+      --sb-surface: #f0f8f4;
+      --sb-text: #1f2a24;
+      --sb-text-secondary: #52665a;
+      --sb-border: #d7e6dd;
+      --sb-accent: #1d7a56;
+      --sb-accent-strong: #176044;
+      --sb-on-accent: #ffffff;
+      --sb-accent-soft: rgba(47, 193, 134, .1);
+      --sb-accent-border: rgba(29, 122, 86, .22);
+      --sb-control-background: rgba(31, 174, 116, .08);
+      --sb-control-hover: rgba(31, 174, 116, .15);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --sb-background: #181d1b;
+        --sb-surface: #202b25;
+        --sb-text: #eef4f0;
+        --sb-text-secondary: #aebcb3;
+        --sb-border: #35483d;
+        --sb-accent: #4fe0a8;
+        --sb-accent-strong: #2fc186;
+        --sb-on-accent: #10261c;
+        --sb-accent-soft: rgba(79, 224, 168, .12);
+        --sb-accent-border: rgba(79, 224, 168, .2);
+        --sb-control-background: rgba(255, 255, 255, .07);
+        --sb-control-hover: rgba(255, 255, 255, .12);
+      }
+    }
+    * { box-sizing: border-box; }
+    html { height: 100%; background: var(--sb-background); }
+    body { margin: 0; padding: 12px; min-width: 0; overflow-wrap: anywhere; color: var(--sb-text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    h1 { margin: 0 0 7px; font-size: 19px; line-height: 1.3; }
+    p { margin: 0 0 10px; }
+    .intro { color: var(--sb-text-secondary); }
+    .steps { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+    .steps li { display: flex; align-items: baseline; gap: 9px; padding: 8px 10px; border-radius: 9px; background: var(--sb-surface); }
+    .step { flex: 0 0 20px; color: var(--sb-accent); font-weight: 700; }
+    details { margin-top: 10px; border: 1px solid var(--sb-border); border-radius: 9px; padding: 8px 10px; }
+    summary { cursor: pointer; font-weight: 600; }
+    details p { color: var(--sb-text-secondary); margin: 8px 0 0; }
+    button { margin-top: 10px; border: 1px solid var(--sb-accent-border); border-radius: 8px; padding: 7px 12px; background: var(--sb-accent-soft); color: var(--sb-accent); font: inherit; cursor: pointer; }
+    button:hover { background: var(--sb-control-hover); }
+    button:focus-visible, summary:focus-visible { outline: 2px solid var(--sb-accent); outline-offset: 3px; }
+    .confirmation { min-height: 1.5em; margin: 6px 0 0; color: var(--sb-text-secondary); font-size: 12px; }
+    @media (prefers-reduced-motion: no-preference) { button { transition: background .15s ease; } }
+    @media (max-width: 260px) { body { padding: 8px; } h1 { font-size: 17px; } .steps li { padding: 7px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>站起来，舒展一下</h1>
+    <p class="intro">给自己一小段离开键盘的时间。</p>
+    <ol class="steps">
+      <li><span class="step">1</span><span>放下手上的工作，让手臂自然放松。</span></li>
+      <li><span class="step">2</span><span>在方便时站起来，换一个舒服的姿势。</span></li>
+      <li><span class="step">3</span><span>看看远处，让视线离开屏幕。</span></li>
+    </ol>
+    <details>
+      <summary>按自己的节奏来</summary>
+      <p>这份示范只展示如何在小浮窗里安排内容。你可以修改文字、加入示意图或设计简单交互。休息倒计时和结束操作由浮窗提供。</p>
+    </details>
+    <button type="button" id="read" aria-pressed="false">我已读完</button>
+    <p class="confirmation" id="confirmation" role="status"></p>
+  </main>
+  <script>
+    const button = document.getElementById("read");
+    const confirmation = document.getElementById("confirmation");
+    button.addEventListener("click", () => {
+      const marked = button.getAttribute("aria-pressed") !== "true";
+      button.setAttribute("aria-pressed", String(marked));
+      button.textContent = marked ? "已读 · 点击撤销" : "我已读完";
+      confirmation.textContent = marked ? "按自己的节奏休息就好。" : "";
+    });
+  </script>
+</body>
+</html>
