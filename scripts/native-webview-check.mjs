@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { checkOnlineVideo } from './native-online-video-check.mjs';
 
 const usage = 'node scripts/native-webview-check.mjs <debug-exe> <output-directory>';
 if (process.argv.includes('--help')) {
@@ -21,7 +22,7 @@ const dataDirectory = join(process.env.APPDATA, identifier);
 const nativeProbe = fileURLToPath(new URL('./native-window.ps1', import.meta.url));
 const runFile = promisify(execFile);
 const delay = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
-const report = { startedAt: new Date().toISOString(), executable, identifier, runs: [], checks: [], video: { status: 'not_started' }, notCovered: ['HTML、导入副本、在线来源与外链场景尚未执行'] };
+const report = { startedAt: new Date().toISOString(), executable, identifier, runs: [], checks: [], video: { status: 'not_started' }, onlineVideo: { status: 'not_started' }, notCovered: ['HTML、导入副本场景尚未执行', '系统浏览器实际打开仍需单独验收；脚本只检查打开入口和非法 scheme 拒绝'] };
 const connections = [];
 let application;
 let originalTheme;
@@ -189,11 +190,15 @@ async function videoSample(connection, objectId) {
       return { connected:this.isConnected, same:this === document.querySelector('#guidanceContent video'),
         readyState:this.readyState, width:this.videoWidth, height:this.videoHeight, currentTime:this.currentTime,
         duration:this.duration, muted:this.muted, defaultMuted:this.defaultMuted, loop:this.loop, controls:this.controls, paused:this.paused,
+        seeking:this.seeking, networkState:this.networkState, error:this.error?.message,
+        seekable:Array.from({length:this.seekable.length}, (_,i)=>[this.seekable.start(i),this.seekable.end(i)]),
+        buffered:Array.from({length:this.buffered.length}, (_,i)=>[this.buffered.start(i),this.buffered.end(i)]),
         source:this.getAttribute('src'), currentSrc:this.currentSrc,
         rect:{x:r.x,y:r.y,right:r.right,bottom:r.bottom},
         endButtonTop:document.getElementById('btnEnd').getBoundingClientRect().top };
     }` });
   assert.ok(!result.exceptionDetails, JSON.stringify(result.exceptionDetails));
+  report.video.lastSample = result.result.value;
   return result.result.value;
 }
 
@@ -369,10 +374,14 @@ try {
   });
   report.checks.push({ name: '真实退出重开及提前结束操作', saved, restored });
   await checkBuiltinVideo(app);
+  report.onlineVideo.status = 'running';
+  app = await checkOnlineVideo({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, onApp: (next) => { app = next; } });
+  report.onlineVideo.status = 'passed';
   report.status = 'passed';
 } catch (error) {
   report.status = 'failed';
   if (report.video.status === 'running') report.video.status = 'failed';
+  if (report.onlineVideo.status === 'running') report.onlineVideo.status = 'failed';
   report.error = error.stack;
   for (const connection of connections) {
     try { if (connection.socket.readyState === WebSocket.OPEN) await connection.screenshot(`failure-${connection.label}`); }
