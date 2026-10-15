@@ -167,6 +167,10 @@ impl GuidanceResources {
             Response::builder()
                 .header("x-content-type-options", "nosniff")
                 .header("access-control-allow-origin", "*")
+                .header(
+                    "access-control-expose-headers",
+                    "content-range, accept-ranges, content-length",
+                )
         };
         if request.method() != Method::GET && request.method() != Method::HEAD {
             return response()
