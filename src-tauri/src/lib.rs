@@ -48,8 +48,8 @@ const TIPS: &[&str] = &[
     "下蹲 10 次，活动髋关节和膝盖",
 ];
 
-fn default_tips() -> Vec<String> {
-    TIPS.iter().map(|s| s.to_string()).collect()
+fn default_tips() -> Vec<ReminderEntry> {
+    TIPS.iter().map(|text| (*text).into()).collect()
 }
 
 const TIPS_EN: &[&str] = &[
@@ -65,8 +65,40 @@ const TIPS_EN: &[&str] = &[
     "Do 10 squats for your hips and knees",
 ];
 
-fn default_tips_en() -> Vec<String> {
-    TIPS_EN.iter().map(|s| s.to_string()).collect()
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReminderEntry {
+    pub id: String,
+    pub text: String,
+}
+
+impl From<String> for ReminderEntry {
+    fn from(text: String) -> Self {
+        Self {
+            id: format!("reminder-{:032x}", fastrand::u128(..)),
+            text,
+        }
+    }
+}
+
+impl From<&str> for ReminderEntry {
+    fn from(text: &str) -> Self {
+        text.to_owned().into()
+    }
+}
+
+impl<'de> Deserialize<'de> for ReminderEntry {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum StoredEntry {
+            Legacy(String),
+            Entry { id: String, text: String },
+        }
+        Ok(match StoredEntry::deserialize(deserializer)? {
+            StoredEntry::Legacy(text) => text.into(),
+            StoredEntry::Entry { id, text } => Self { id, text },
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,7 +114,7 @@ pub struct Settings {
     pub idle_reset: bool,
     pub language: String,
     pub widget_size: u32,
-    pub tips: Vec<String>,
+    pub tips: Vec<ReminderEntry>,
 }
 
 impl Default for Settings {
@@ -139,8 +171,8 @@ fn choose_tip(settings: &Settings, previous: Option<&str>, rng: &mut fastrand::R
     let mut tips: Vec<&str> = settings
         .tips
         .iter()
-        .map(|tip| tip.trim())
-        .filter(|tip| !tip.is_empty())
+        .map(|entry| entry.text.as_str())
+        .filter(|tip| !tip.trim().is_empty())
         .collect();
     if tips.is_empty() {
         tips.extend_from_slice(if is_zh(settings) { TIPS } else { TIPS_EN });
@@ -682,25 +714,10 @@ fn save_settings(app: AppHandle, settings: Settings) -> Result<(), serde_json::V
             .map_err(|message| json!({ "kind": "system", "message": message }))?;
     }
     let widget_size = settings.widget_size.clamp(40, 140);
-    let mut settings = Settings {
+    let settings = Settings {
         widget_size,
         ..settings
     };
-
-    // 切换语言时，若提示列表仍是另一语言的默认文案，则跟随切换（不覆盖自定义内容）
-    let zh_now = is_zh(&settings);
-    let other_defaults = if zh_now {
-        default_tips_en()
-    } else {
-        default_tips()
-    };
-    if settings.tips == other_defaults {
-        settings.tips = if zh_now {
-            default_tips()
-        } else {
-            default_tips_en()
-        };
-    }
 
     dispatch_timer(&app, Action::SaveSettings(settings));
     Ok(())
@@ -1136,7 +1153,7 @@ mod tip_tests {
         for _ in 0..100 {
             let tip = choose_tip(&settings, Some(&previous), &mut rng);
             assert_ne!(tip, previous);
-            assert!(settings.tips.contains(&tip));
+            assert!(settings.tips.iter().any(|entry| entry.text == tip));
             previous = tip;
         }
     }
@@ -1144,7 +1161,7 @@ mod tip_tests {
     #[test]
     fn custom_tips_beyond_the_first_ten_can_be_selected() {
         let settings = Settings {
-            tips: (0..25).map(|i| format!("Custom tip {i}")).collect(),
+            tips: (0..25).map(|i| format!("Custom tip {i}").into()).collect(),
             ..Settings::default()
         };
         let mut rng = fastrand::Rng::with_seed(7);
@@ -1152,7 +1169,7 @@ mod tip_tests {
         let mut previous: Option<String> = None;
         for _ in 0..1000 {
             let tip = choose_tip(&settings, previous.as_deref(), &mut rng);
-            assert!(settings.tips.contains(&tip));
+            assert!(settings.tips.iter().any(|entry| entry.text == tip));
             seen.insert(tip.clone());
             previous = Some(tip);
         }
@@ -1207,7 +1224,7 @@ mod tip_tests {
         let previous = choose_tip(&settings, None, &mut rng);
         settings.tips = vec!["New tip".into(), "Another new tip".into()];
         let tip = choose_tip(&settings, Some(&previous), &mut rng);
-        assert!(settings.tips.contains(&tip));
+        assert!(settings.tips.iter().any(|entry| entry.text == tip));
     }
 }
 

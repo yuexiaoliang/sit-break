@@ -602,7 +602,7 @@ fn missing_progress_and_legacy_simple_settings_keep_the_original_simple_startup(
     assert_eq!(reopened.info().remaining, 1620);
     assert_eq!(reopened.info().break_seconds, 180);
     assert!(!reopened.settings().sound);
-    assert_eq!(reopened.settings().tips, vec!["旧自定义提示"]);
+    assert_eq!(reopened.settings().tips[0].text, "旧自定义提示");
     std::fs::write(&progress_path, "{截断的进度").unwrap();
     let malformed = TimerApp::restore_from(
         Settings::load_from(&settings_path),
