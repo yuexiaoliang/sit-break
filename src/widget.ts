@@ -1,5 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { STR, currentLang, fmt } from "./i18n";
 import {
   getCurrentWindow,
   LogicalSize,
@@ -7,11 +8,7 @@ import {
   availableMonitors,
 } from "@tauri-apps/api/window";
 
-interface Tick {
-  mode: "work" | "remind" | "break";
-  remaining: number;
-  paused: boolean;
-}
+import type { TimerState } from "./timer-state";
 
 interface Settings {
   work_minutes: number;
@@ -29,26 +26,30 @@ const head = document.getElementById("head") as unknown as SVGCircleElement;
 const num = document.getElementById("num")!;
 const win = getCurrentWindow();
 
-let workTotal = 45 * 60;
-let breakTotal = 5 * 60;
 let lastSize = 64;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let S = STR.zh;
 
-function render(t: Tick) {
-  const total = t.mode === "break" ? breakTotal : workTotal;
+function render(t: TimerState) {
+  const total = t.mode === "break" ? t.break_seconds : t.work_seconds;
   const progress = total > 0 ? Math.min(1, t.remaining / total) : 0;
   ring.style.strokeDashoffset = String(100 - progress * 100);
   // 进度头部小珠：随倒计时沿圆环移动
   const phi = progress * 2 * Math.PI;
   head.setAttribute("cx", String(50 + 43 * Math.cos(phi)));
   head.setAttribute("cy", String(50 + 43 * Math.sin(phi)));
-  head.style.opacity = t.paused ? "0" : "1";
+  head.style.opacity = t.paused || t.mode === "idle" ? "0" : "1";
   // 始终读秒，让用户每秒都能感知时间在走
   const mm = Math.floor(t.remaining / 60);
   const ss = t.remaining % 60;
-  num.textContent = `${mm}:${String(ss).padStart(2, "0")}`;
+  num.textContent = t.mode === "idle" ? S.idle : `${mm}:${String(ss).padStart(2, "0")}`;
+  num.style.fontSize = `${Math.round(lastSize * (t.mode === "idle" ? 0.24 : 0.3))}px`;
+  const status = { work: S.working, remind: S.reminding, break: S.onBreak, idle: S.idle }[t.mode];
+  ball.title = [t.paused ? S.paused : "", status, t.round ? fmt(S.roundNumber, { n: t.round.number }) : "", t.mode === "idle" ? "" : fmt(S.actualDurations, { work: t.work_seconds / 60, rest: t.break_seconds / 60 })].filter(Boolean).join(" · ");
+  ball.setAttribute("aria-label", `${num.textContent} · ${ball.title}`);
   ball.classList.toggle("paused", t.paused);
   ball.classList.toggle("break", t.mode === "break");
+  ball.classList.toggle("idle", t.mode === "idle");
 }
 
 function applySize(size: number) {
@@ -65,14 +66,12 @@ function applySize(size: number) {
 
 async function loadSize() {
   const s = await invoke<Settings>("get_settings");
-  workTotal = s.work_minutes * 60;
-  breakTotal = s.break_minutes * 60;
   applySize(Math.min(140, Math.max(40, s.widget_size)));
   return s;
 }
 
 // 计时状态
-listen<Tick>("tick", ({ payload }) => render(payload));
+listen<TimerState>("tick", ({ payload }) => render(payload));
 
 // 屏蔽 WebView 右键菜单；整个球任意位置可拖动
 window.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -104,8 +103,9 @@ ball.addEventListener(
 );
 
 listen("settings_changed", async () => {
+  S = STR[await currentLang()];
   await loadSize();
-  render(await invoke<Tick>("timer_info"));
+  render(await invoke<TimerState>("timer_info"));
 });
 
 // 恢复上次拖动的位置
@@ -146,4 +146,5 @@ await win.onMoved(({ payload }) => {
 
 // 初始渲染放最后，即使失败也不影响拖动等已注册的能力
 await loadSize();
-render(await invoke<Tick>("timer_info"));
+S = STR[await currentLang()];
+render(await invoke<TimerState>("timer_info"));

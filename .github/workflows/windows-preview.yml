@@ -1,0 +1,89 @@
+name: Windows 测试版
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Windows x64 安装包
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: 安装前端依赖
+        run: npm ci
+
+      - name: 配置独立测试版
+        shell: pwsh
+        run: |
+          @{
+            productName = "Sit Break Preview"
+            identifier = "com.sitbreak.preview"
+            bundle = @{
+              windows = @{
+                nsis = @{ languages = @("SimpChinese", "English") }
+              }
+            }
+          } | ConvertTo-Json -Depth 5 | Set-Content "$env:RUNNER_TEMP/sit-break-preview.json" -Encoding utf8
+
+      - name: 构建 Windows 安装包
+        run: npm run tauri build -- --bundles nsis --config "$env:RUNNER_TEMP/sit-break-preview.json" -- --locked
+
+      - name: 整理下载文件
+        shell: pwsh
+        run: |
+          $output = New-Item -ItemType Directory -Path preview-download
+          $installers = @(Get-ChildItem src-tauri/target/release/bundle/nsis -Filter *.exe)
+          if ($installers.Count -ne 1) { throw "预期生成一个 NSIS 安装包" }
+          Copy-Item $installers[0].FullName "$output/Sit-Break-Preview-x64-setup.exe"
+          Copy-Item src-tauri/target/release/sit-break.exe "$output/Sit-Break-Preview-x64-portable.exe"
+          $commit = git rev-parse HEAD
+          @"
+          # Sit Break Windows 测试版
+
+          源码提交：$commit
+          平台：Windows 10/11 x64
+
+          推荐运行 Sit-Break-Preview-x64-setup.exe 安装；也可直接运行 portable.exe。
+          安装前请先退出正在运行的 Sit Break，避免同时出现多份提醒。
+          应用名为 Sit Break Preview，配置保存在 %APPDATA%\com.sitbreak.preview，与正式版分开。
+          启动后点击右下角托盘图标或悬浮计时条，在设置中开启“使用日程”。
+          快速测试可先设置工作 1 分钟、休息 1 分钟。
+
+          本测试版未使用 Windows 代码签名证书；安装程序会按需安装 WebView2，可能需要联网。
+          免安装版本需要电脑已有 WebView2 Runtime。
+          "@ | Set-Content "$output/使用说明.md" -Encoding utf8
+          Get-ChildItem $output -Filter *.exe | ForEach-Object {
+            $hash = Get-FileHash $_.FullName -Algorithm SHA256
+            "$($hash.Hash.ToLowerInvariant())  $($_.Name)"
+          } | Set-Content "$output/SHA256SUMS.txt" -Encoding utf8
+
+      - name: 上传测试版
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sit-Break-Windows-x64-preview
+          path: preview-download/
+          if-no-files-found: error
+          retention-days: 14

@@ -2,72 +2,50 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sit Break</title>
-  <link rel="stylesheet" href="/src/ui.css" />
+  <link rel="stylesheet" href="/src/settings.css" />
 </head>
 <body class="settings-page">
   <div class="scard">
-    <div class="shead">
-      <h3><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span data-i18n="settings">设置</span></h3>
-      <button class="sclose" id="btnClose" title="关闭"><svg class="ic" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-    </div>
-
-    <div class="sbody">
-    <div class="frow">
-      <label data-i18n="interval">提醒间隔</label>
-      <span><input type="number" id="workMin" min="1" max="240" /><span class="unit"><span data-i18n="minutesUnit">分钟</span></span></span>
-    </div>
-    <div class="frow" data-widget-setting>
-      <label data-i18n="ballSize">悬浮球大小</label>
-      <span><input type="number" id="widgetSize" min="40" max="140" /><span class="unit">px</span></span>
-    </div>
-    <div class="frow">
-      <label data-i18n="breakLen">休息时长</label>
-      <span><input type="number" id="breakMin" min="1" max="60" /><span class="unit"><span data-i18n="minutesUnit">分钟</span></span></span>
-    </div>
-    <div class="frow">
-      <label data-i18n="language">语言</label>
-      <span class="selwrap" id="langWrap">
-        <button type="button" class="selbtn" id="langBtn">
-          <span id="langLabel">跟随系统</span>
-          <svg class="ic chev" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-        </button>
-        <span class="selmenu" id="langMenu" hidden>
-          <button type="button" class="selopt" data-value="system" data-i18n="langSys">跟随系统</button>
-          <button type="button" class="selopt" data-value="zh">中文</button>
-          <button type="button" class="selopt" data-value="en">English</button>
-        </span>
-      </span>
-    </div>
-
-    <div class="toggles">
-      <div class="frow">
-        <label data-i18n="sound">提示音</label>
-        <span class="switch" id="swSound"><span class="track"></span><span class="knob"></span></span>
-      </div>
-      <div class="frow" data-widget-setting>
-        <label data-i18n="showWidget">显示悬浮计时条</label>
-        <span class="switch" id="swWidget"><span class="track"></span><span class="knob"></span></span>
-      </div>
-      <div class="frow">
-        <label data-i18n="autostart">开机自启</label>
-        <span class="switch" id="swAuto"><span class="track"></span><span class="knob"></span></span>
-      </div>
-      <div class="frow">
-        <label data-i18n="idleReset">离开自动重置</label>
-        <span class="switch" id="swIdleReset"><span class="track"></span><span class="knob"></span></span>
-      </div>
-    </div>
-
-    <div class="ftips">
-      <label data-i18n="tipsLabel">提醒小字（每行一条，随机展示）</label>
-      <textarea id="tipsList" rows="5" spellcheck="false"></textarea>
-    </div>
-
-    <button class="save" id="btnSave"><span data-i18n="save">保存</span></button>
-    </div>
+    <header class="shead" data-tauri-drag-region>
+      <span class="app-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+      <strong>Sit Break</strong><span class="header-slash">/</span><span class="header-label" data-i18n="settingsTitle">设置</span>
+      <button type="button" id="btnClose" class="close-button" data-i18n-label="closeSettings" aria-label="关闭设置"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></svg></button>
+    </header>
+    <form id="settingsForm" class="sbody">
+      <div class="page-heading"><div><h1 id="pageTitle">简单计时</h1><p id="pageDescription">设定工作与休息时长，到点提醒你。</p></div><button type="button" id="previewSchedule" class="secondary-button preview-trigger" aria-haspopup="dialog" aria-controls="schedulePreview" data-i18n="previewSchedule" hidden>预览日程</button></div>
+      <section id="simpleSettings" class="simple-settings">
+        <div class="durations">
+          <div class="simple-duration"><label for="workMin" data-i18n="workLength">工作时长</label><div class="duration-field"><input id="workMin" type="number" min="1" max="240" step="1" required value="45" /><span data-i18n="minutesUnit">分钟</span></div><div class="duration-presets" data-duration="workMin"><button type="button" data-minutes="15">15</button><button type="button" data-minutes="30">30</button><button type="button" data-minutes="45">45</button><button type="button" data-minutes="60">60</button></div></div>
+          <div class="simple-duration"><label for="breakMin" data-i18n="breakLen">休息时长</label><div class="duration-field"><input id="breakMin" type="number" min="1" max="60" step="1" required value="5" /><span data-i18n="minutesUnit">分钟</span></div><div class="duration-presets" data-duration="breakMin"><button type="button" data-minutes="3">3</button><button type="button" data-minutes="5">5</button><button type="button" data-minutes="10">10</button></div></div>
+        </div>
+        <p id="simpleSummary" class="simple-summary"></p>
+      </section>
+      <div class="mode-row"><div><strong id="useScheduleLabel" data-i18n="useSchedule">使用日程</strong><p id="modeDescription" class="muted"></p></div><button type="button" id="swSchedule" class="switch" role="switch" aria-labelledby="useScheduleLabel" aria-checked="false"></button></div>
+      <section id="scheduleSettings" hidden>
+        <div id="scheduleList"></div>
+        <div id="emptySchedules" class="empty-periods"><h2 data-i18n="emptySchedules">还没有日程</h2><p data-i18n="emptySchedulesDescription">添加一份日程，安排自己的节奏。没有执行时段时保持待机。</p></div>
+        <button type="button" id="addSchedule" class="secondary-button" data-i18n="addSchedule">＋ 添加日程</button>
+      </section>
+      <section class="common-settings">
+        <div class="common-heading"><h2 data-i18n="commonSettings">通用设置</h2><span data-i18n="sharedSettings">两种计时方式共用</span></div>
+        <div class="preference-row"><label for="language" data-i18n="language">语言</label><select id="language"><option value="system" data-i18n="langSys">跟随系统</option><option value="zh">简体中文</option><option value="en">English</option></select></div>
+        <div class="preference-row"><div><strong id="soundLabel" data-i18n="sound">提示音</strong><p data-i18n="soundDescription">提醒时播放轻柔提示音</p></div><button type="button" id="swSound" class="switch" role="switch" aria-labelledby="soundLabel" aria-checked="true"></button></div>
+        <div class="preference-row"><div><strong id="autoLabel" data-i18n="autostart">开机自启</strong><p data-i18n="autostartDescription">登录电脑后自动开始</p></div><button type="button" id="swAuto" class="switch" role="switch" aria-labelledby="autoLabel" aria-checked="false"></button></div>
+        <div class="preference-row"><div><strong id="idleResetLabel" data-i18n="idleReset">离开自动重置</strong><p data-i18n="idleDescription">离开达到休息时长，重新计时</p></div><button type="button" id="swIdleReset" class="switch" role="switch" aria-labelledby="idleResetLabel" aria-checked="true"></button></div>
+        <div class="preference-row" data-widget-setting><strong id="widgetLabel" data-i18n="showWidget">显示悬浮计时条</strong><button type="button" id="swWidget" class="switch" role="switch" aria-labelledby="widgetLabel" aria-checked="true"></button></div>
+        <div class="preference-row" data-widget-setting><label for="widgetSize" data-i18n="ballSize">悬浮计时条大小</label><div class="size-field"><input id="widgetSize" type="number" min="40" max="140" step="1" required value="64" /><span>px</span></div></div>
+        <div class="tips-editor"><label for="tipsList" data-i18n="tipsHeading">提醒小字</label><span data-i18n="tipsHint">每行一条，随机展示</span><textarea id="tipsList" rows="3"></textarea><p data-i18n="tipsDescription">留空时使用默认提示。</p></div>
+      </section>
+      <footer class="bottom-actions"><p id="saveStatus" role="status" aria-live="polite"></p><button type="submit" id="btnSave" class="save-button" data-i18n="saveSettings">保存设置</button></footer>
+    </form>
   </div>
-  <div class="toast" id="toast" data-i18n="saved">已保存 ✓</div>
+  <dialog id="schedulePreview" class="schedule-preview" aria-labelledby="previewTitle" aria-describedby="previewNote">
+    <header class="preview-head" data-tauri-drag-region><div><h2 id="previewTitle" data-i18n="previewTitle">预计日程</h2><p id="previewCaption" data-i18n="previewCaption">查看当前草稿，不会保存或启动计时。</p></div><button type="button" id="closePreview" class="close-button" data-i18n-label="closePreview" aria-label="关闭预览"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
+    <div id="previewBody" class="preview-scroll" tabindex="0" role="region" data-i18n-label="previewContent" aria-label="预计安排"></div>
+    <footer class="preview-footer"><p id="previewNote" data-i18n="previewNote">时间是预计值，会随等待、推迟和实际休息更新。</p></footer>
+  </dialog>
   <script type="module" src="/src/settings.ts"></script>
 </body>
 </html>

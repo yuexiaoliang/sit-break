@@ -175,11 +175,13 @@ body.reminder-page { display: flex; }
 .ring-text {
   position: absolute; inset: 0; display: flex; flex-direction: column;
   align-items: center; justify-content: center;
+  padding: 0 13px;
+  text-align: center;
 }
 .ring-text .time {
   font-size: 30px; font-weight: 700; letter-spacing: 1px; font-variant-numeric: tabular-nums;
 }
-.ring-text .cap { font-size: 11px; color: #8fa098; margin-top: 2px; }
+.ring-text .cap { max-width: 122px; font-size: 11px; line-height: 1.35; letter-spacing: 0; text-align: center; color: #8fa098; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .stretch { font-size: 12.5px; color: #8fa098; text-align: center; margin: 12px 0 4px; }
 .card.dark .btns { margin-top: 14px; }
 .card.dark .btn-ghost { background: rgba(255, 255, 255, .07); color: #aebcb3; }
@@ -227,6 +229,11 @@ body.panel-page { display: flex; padding: 6px; }
   animation: pulse 2.4s ease-in-out infinite;
 }
 .phead .dot.paused { background: #c9b458; box-shadow: 0 0 0 4px rgba(201, 180, 88, .16); animation: none; }
+.phead .dot.idle { background: #8d9c95; box-shadow: 0 0 0 4px rgba(141, 156, 149, .14); animation: none; }
+.idle-status { margin-top: 7px; color: #66757a; font-size: 11px; line-height: 16px; }
+.pcard.idle .psec { margin-top: 6px; }
+.ball.idle .ring-fg { opacity: 0; }
+.ball.idle .num { color: #66757a; letter-spacing: 0; }
 .pmode { flex: 1; font-size: 13px; font-weight: 600; color: #44544a; }
 .ptime {
   font-size: 28px; font-weight: 700; letter-spacing: .5px; color: #24352c;
@@ -277,6 +284,7 @@ body.panel-page { display: flex; padding: 6px; }
     box-shadow: 0 24px 60px -18px rgba(0, 0, 0, .55);
   }
   .pmode { color: #aebcb3; }
+  .idle-status, .ball.idle .num { color: #a6b9b2; }
   .ptime { color: #eef4f0; }
   .plabel { color: #8fa098; }
   .plabel .cur { color: #4fe0a8; }
@@ -464,3 +472,16 @@ body.settings-page { display: flex; padding: 6px; }
   .sbody::-webkit-scrollbar-thumb,
   .ftips textarea::-webkit-scrollbar-thumb { background: rgba(79, 224, 168, .3); }
 }
+
+/* 休息内容按纯文本保留换行；长内容独立滚动，按钮始终保留空间。 */
+.reminder-page .card { min-width: 0; min-height: 0; overflow: hidden; }
+.reminder-page .card > .badge, .reminder-page .card > h2, .reminder-page .card > .sub,
+.reminder-page .btns, .reminder-page .ring-wrap { flex-shrink: 0; }
+.reminder-page .tip { min-height: 0; overflow-y: auto; align-items: flex-start; margin-top: 12px; margin-bottom: 14px; }
+.reminder-page .tip .ic { align-self: flex-start; margin-top: 2px; }
+#tipText, #stretchText { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+#tipText { min-width: 0; }
+#stretchText { flex: 1; min-height: 0; width: 100%; overflow-y: auto; margin: 10px 0; padding: 0 4px; }
+.reminder-page .card.dark .btns { margin-top: 0; }
+.reminder-page .tip::-webkit-scrollbar, #stretchText::-webkit-scrollbar { width: 6px; }
+.reminder-page .tip::-webkit-scrollbar-thumb, #stretchText::-webkit-scrollbar-thumb { background: rgba(127, 150, 138, .4); border-radius: 99px; }

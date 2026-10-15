@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { STR, initLang, fmt } from "./i18n";
+import type { TimerState } from "./timer-state";
 
 interface ReminderPayload {
   breakSeconds: number;
@@ -20,7 +21,6 @@ const ring = document.getElementById("ring") as unknown as SVGCircleElement;
 const btnBreak = document.getElementById("btnBreak") as HTMLButtonElement;
 
 const RING_LEN = 2 * Math.PI * 64;
-let breakTotal = 0;
 let S = STR.zh;
 
 function showRemindCard() {
@@ -58,44 +58,35 @@ function chime() {
   }
 }
 
-listen<ReminderPayload>("reminder", ({ payload }) => {
-  document.getElementById("satText")!.textContent = fmt(S.satFor, {
-    n: payload.satMinutes,
-  });
-  tipText.textContent = payload.tip;
-  btnBreak.textContent = fmt(S.startBreak, {
-    n: Math.round(payload.breakSeconds / 60),
-  });
-  showRemindCard();
-  if (payload.sound) chime();
-});
+function renderState(state: TimerState) {
+  const round = state.round ? `${fmt(S.roundNumber, { n: state.round.number })} · ` : "";
+  if (state.mode === "remind") {
+    document.getElementById("satText")!.textContent = (state.paused ? `${S.paused} · ` : "") + round + fmt(S.satFor, { n: state.work_seconds / 60 });
+    if (tipText.textContent !== (state.tip ?? "")) tipText.textContent = state.tip ?? "";
+    btnBreak.textContent = fmt(S.startBreak, { n: state.break_seconds / 60 });
+    showRemindCard();
+  } else if (state.mode === "break") {
+    breakTimeEl.textContent = fmtTime(state.remaining);
+    ringCap.textContent = round + (state.paused ? S.paused : fmt(S.untilBack, { t: fmtTime(state.remaining) }));
+    if (stretchText.textContent !== (state.tip ?? "")) stretchText.textContent = state.tip ?? "";
+    const progress = state.break_seconds > 0 ? state.remaining / state.break_seconds : 0;
+    ring.style.strokeDashoffset = String(RING_LEN * (1 - progress));
+    showBreakCard();
+  }
+}
 
-listen<{ seconds: number }>("break_started", ({ payload }) => {
-  breakTotal = payload.seconds;
-  breakTimeEl.textContent = fmtTime(breakTotal);
-  ring.style.strokeDashoffset = "0";
-  stretchText.textContent = document.getElementById("tipText")!.textContent;
-  showBreakCard();
-});
-
-listen<{ mode: string; remaining: number }>("tick", ({ payload }) => {
-  if (payload.mode !== "break") return;
-  breakTimeEl.textContent = fmtTime(payload.remaining);
-  ringCap.textContent = fmt(S.untilBack, { t: fmtTime(payload.remaining) });
-  const progress = breakTotal > 0 ? payload.remaining / breakTotal : 0;
-  ring.style.strokeDashoffset = String(RING_LEN * (1 - progress));
-});
-
-listen("work_started", showRemindCard);
+// 内容、进度及首次打开均读取完整后端状态；提醒事件只负责一次性提示音。
+listen<ReminderPayload>("reminder", ({ payload }) => { if (payload.sound) chime(); });
+listen<TimerState>("tick", ({ payload }) => renderState(payload));
 
 btnBreak.addEventListener("click", () => invoke("start_break"));
 document.getElementById("btnPostpone")!.addEventListener("click", () => invoke("postpone"));
 document.getElementById("btnEnd")!.addEventListener("click", () => invoke("end_break"));
 window.addEventListener("contextmenu", (e) => e.preventDefault());
 
-(async () => {
-  S = STR[await initLang()];
-})();
+S = STR[await initLang()];
+renderState(await invoke<TimerState>("timer_info"));
 listen("settings_changed", async () => {
   S = STR[await initLang()];
+  renderState(await invoke<TimerState>("timer_info"));
 });

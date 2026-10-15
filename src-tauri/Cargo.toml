@@ -1,6 +1,6 @@
 [package]
 name = "sit-break"
-version = "0.3.0"
+version = "0.4.0"
 description = "久坐提醒小助手"
 authors = ["fed01"]
 edition = "2021"
@@ -23,19 +23,29 @@ sys-locale = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 fastrand = "2"
+chrono = "0.4"
+
+[dev-dependencies]
+tauri = { version = "2", features = ["test"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6", default-features = false, features = ["std"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = [
     "NSWindow", "NSFont", "NSFontDescriptor", "NSStatusItem", "NSStatusBarButton",
-    "NSControl", "NSButton", "NSView", "NSResponder", "objc2-core-foundation",
+    "NSControl", "NSButton", "NSView", "NSResponder", "NSWorkspace", "objc2-core-foundation",
 ] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std", "NSNotification", "NSOperation", "NSString", "NSObject", "block2",
+] }
+block2 = { version = "0.6", default-features = false, features = ["std"] }
 
 [target."cfg(windows)".dependencies]
 winreg = "0.10"
 windows = { version = "0.62", features = [
     "Win32_System_SystemInformation",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_System_Power",
+    "Win32_UI_WindowsAndMessaging",
 ] }
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
