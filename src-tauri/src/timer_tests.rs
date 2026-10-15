@@ -190,6 +190,106 @@ fn reminder_text_is_displayed_verbatim_and_stays_selected_when_preferences_are_s
 }
 
 #[test]
+fn guidance_only_reminder_can_be_saved_reopened_and_shown_without_added_text() {
+    let path = std::env::temp_dir().join(format!("sit-break-guidance-{}.json", fastrand::u64(..)));
+    let mut app = simple_timer();
+    let mut draft = serde_json::to_value(app.settings()).unwrap();
+    draft["tips"][0]["text"] = "".into();
+    let guidance =
+        serde_json::json!({"kind":"video","source":{"type":"builtin","id":"squat-demo"}});
+    draft["tips"][0]["guidance"] = guidance.clone();
+    let saved = app.dispatch(
+        Action::SaveSettings(serde_json::from_value(draft).unwrap()),
+        Duration::ZERO,
+    );
+    assert!(saved.validation_errors.is_empty());
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let mut reopened = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    assert_eq!(
+        serde_json::to_value(reopened.settings()).unwrap()["tips"][0]["guidance"],
+        guidance
+    );
+    let output = reopened.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        Duration::from_secs(60),
+    );
+    let state = serde_json::to_value(output.state.unwrap()).unwrap();
+    assert_eq!(state["tip"], "");
+    assert_eq!(state["guidance"], guidance);
+    let TimerEvent::Reminder(payload) = &output.events[0] else {
+        panic!("expected reminder");
+    };
+    assert_eq!(serde_json::to_value(payload).unwrap()["guidance"], guidance);
+    reopened.dispatch(Action::StartBreak, Duration::from_secs(60));
+    assert_eq!(
+        serde_json::to_value(reopened.info()).unwrap()["guidance"],
+        guidance
+    );
+    let active = reopened.info();
+    let mut replacement = reopened.settings().clone();
+    replacement.tips[0].text = "下一次的纯文字".into();
+    replacement.tips[0].guidance = None;
+    replacement.language = "en".into();
+    reopened.dispatch(Action::SaveSettings(replacement), Duration::from_secs(60));
+    assert_eq!(
+        reopened.info(),
+        active,
+        "保存其他偏好或替换配置不打断当前休息"
+    );
+    reopened.dispatch(
+        Action::Tick {
+            elapsed_secs: 15,
+            idle_secs: 0,
+        },
+        Duration::from_secs(75),
+    );
+    assert_eq!(reopened.info().remaining, 45);
+    assert_eq!(
+        serde_json::to_value(reopened.info()).unwrap()["guidance"],
+        guidance
+    );
+    reopened.dispatch(Action::EndBreak, Duration::from_secs(75));
+    assert_eq!(reopened.info().mode, Mode::Work);
+    assert!(reopened.info().guidance.is_none());
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn simple_postponed_reminders_rotate_complete_entries_even_when_text_matches() {
+    let mut app = simple_timer();
+    let mut draft = serde_json::to_value(app.settings()).unwrap();
+    draft["tips"] = serde_json::json!([
+        {"id":"video","text":"下蹲","guidance":{"kind":"video","source":{"type":"builtin","id":"squat-demo"}}},
+        {"id":"text","text":"下蹲","guidance":null}
+    ]);
+    app.dispatch(
+        Action::SaveSettings(serde_json::from_value(draft).unwrap()),
+        Duration::ZERO,
+    );
+    let mut previous = None;
+    for n in 1..=12 {
+        let now = Duration::from_secs(n * 60);
+        app.dispatch(
+            Action::Tick {
+                elapsed_secs: 60,
+                idle_secs: 0,
+            },
+            now,
+        );
+        let state = serde_json::to_value(app.info()).unwrap();
+        assert_eq!(state["tip"], "下蹲");
+        if let Some(previous) = previous {
+            assert_ne!(state["guidance"], previous, "推迟后应轮换完整条目");
+        }
+        previous = Some(state["guidance"].clone());
+        app.dispatch(Action::Postpone, now);
+    }
+}
+
+#[test]
 fn empty_schedule_stays_idle_and_mode_switch_keeps_manual_pause() {
     let mut app = simple_timer();
     app.dispatch(Action::TogglePause, Duration::ZERO);

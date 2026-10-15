@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { STR, applyStatic, currentLang, fmt, type Lang } from "./i18n";
 import { initSchedulePreview } from "./schedule-preview";
+import { guidancePicker, type Guidance } from "./guidance";
 
 interface PeriodDraft {
   id: string;
@@ -47,6 +48,7 @@ interface ScheduleDraft {
 interface ReminderEntry {
   id: string;
   text: string;
+  guidance?: Guidance | null;
 }
 
 interface Settings {
@@ -359,11 +361,10 @@ function renderReminderEntries() {
     input.id = `reminder-text-${entry.id}`;
     input.dataset.field = `tips.${index}.text`;
     input.rows = 2;
-    input.required = true;
     input.value = entry.text;
     label.htmlFor = input.id;
     label.textContent = fmt(S.reminderEntry, { n: index + 1 });
-    const validateText = () => input.setCustomValidity(input.value.trim() ? "" : S.validation_reminder_empty);
+    const validateText = () => input.setCustomValidity(input.value.trim() || entry.guidance ? "" : S.validation_reminder_empty);
     validateText();
     input.addEventListener("input", () => {
       entry.text = input.value;
@@ -384,6 +385,13 @@ function renderReminderEntries() {
     });
     head.append(label, remove);
     row.append(head, input);
+    const picker = guidancePicker(entry.guidance, S, (value) => {
+      entry.guidance = value;
+      input.removeAttribute("aria-invalid");
+      validateText();
+    });
+    picker.querySelector("select")!.dataset.field = `tips.${index}.guidance`;
+    row.append(picker);
     tipsList.appendChild(row);
   });
 }

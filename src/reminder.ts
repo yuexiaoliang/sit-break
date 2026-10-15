@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { STR, initLang, fmt } from "./i18n";
 import type { TimerState } from "./timer-state";
+import { createGuidanceView } from "./guidance";
 
 interface ReminderPayload {
   breakSeconds: number;
@@ -19,6 +20,7 @@ const breakTimeEl = document.getElementById("breakTime")!;
 const ringCap = document.getElementById("ringCap")!;
 const ring = document.getElementById("ring") as unknown as SVGCircleElement;
 const btnBreak = document.getElementById("btnBreak") as HTMLButtonElement;
+const guidanceView = createGuidanceView(document.getElementById("guidanceContent")!);
 
 const RING_LEN = 2 * Math.PI * 64;
 let S = STR.zh;
@@ -59,16 +61,22 @@ function chime() {
 }
 
 function renderState(state: TimerState) {
+  if (state.mode !== "break") guidanceView.clear();
   const round = state.round ? `${fmt(S.roundNumber, { n: state.round.number })} · ` : "";
   if (state.mode === "remind") {
     document.getElementById("satText")!.textContent = (state.paused ? `${S.paused} · ` : "") + round + fmt(S.satFor, { n: state.work_seconds / 60 });
     if (tipText.textContent !== (state.tip ?? "")) tipText.textContent = state.tip ?? "";
+    tipText.parentElement!.hidden = !state.tip?.trim();
     btnBreak.textContent = fmt(S.startBreak, { n: state.break_seconds / 60 });
     showRemindCard();
   } else if (state.mode === "break") {
+    cardBreak.querySelector<HTMLElement>('[data-i18n="onBreak"]')!.textContent = state.paused ? `${S.onBreak} · ${S.paused}` : S.onBreak;
     breakTimeEl.textContent = fmtTime(state.remaining);
     ringCap.textContent = round + (state.paused ? S.paused : fmt(S.untilBack, { t: fmtTime(state.remaining) }));
     if (stretchText.textContent !== (state.tip ?? "")) stretchText.textContent = state.tip ?? "";
+    stretchText.hidden = !state.tip?.trim();
+    cardBreak.classList.toggle("has-guidance", Boolean(state.guidance));
+    guidanceView.show(state.guidance, S);
     const progress = state.break_seconds > 0 ? state.remaining / state.break_seconds : 0;
     ring.style.strokeDashoffset = String(RING_LEN * (1 - progress));
     showBreakCard();
@@ -83,6 +91,8 @@ btnBreak.addEventListener("click", () => invoke("start_break"));
 document.getElementById("btnPostpone")!.addEventListener("click", () => invoke("postpone"));
 document.getElementById("btnEnd")!.addEventListener("click", () => invoke("end_break"));
 window.addEventListener("contextmenu", (e) => e.preventDefault());
+window.addEventListener("pagehide", () => guidanceView.clear());
+window.addEventListener("beforeunload", () => guidanceView.clear());
 
 S = STR[await initLang()];
 renderState(await invoke<TimerState>("timer_info"));
