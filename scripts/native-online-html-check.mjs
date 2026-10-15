@@ -129,6 +129,7 @@ export async function checkOnlineHtml(context) {
     await app.reminder.evaluate('window.__failedFrame=document.querySelector("iframe.guidance-frame");document.querySelector(".guidance-retry").click()');
     await waitFor('真实网络恢复后重新加载网页并握手', ready);
     assert.equal(await app.reminder.evaluate('window.__failedFrame.isConnected'), false);
+    assert.equal(await app.reminder.evaluate('!document.querySelector(".guidance-retry").hidden && !document.querySelector(".guidance-external").hidden'), true, '可运行的站点错误页也保留重试和浏览器恢复入口');
     const frame = await inspector.frameInfo();
     await app.reminder.evaluate('window.__nativeOnlineFrame=document.querySelector("iframe.guidance-frame")');
     await inspector.evaluate('document.getElementById("increment").click();document.getElementById("scroll-content").scrollTop=75');
