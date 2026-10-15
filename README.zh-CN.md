@@ -30,7 +30,7 @@
 
 ## 界面预览
 
-以下是 macOS 原生界面，使用示例日程。macOS 在顶部菜单栏显示倒计时；Windows 另有可拖动、可调大小的桌面悬浮计时条。
+以下是 macOS 原生中文界面，使用示例日程。macOS 在顶部菜单栏显示倒计时；Windows 另有可拖动、可调大小的桌面悬浮计时条。
 
 <table>
   <tr>
@@ -142,7 +142,7 @@ npm run tauri build -- --target universal-apple-darwin
 - [Windows 测试版](.github/workflows/windows-preview.yml)：为 PR 生成独立配置的 x64 安装包和免安装程序，下载方式见[测试版说明](docs/windows-preview.md)。
 - [Release](.github/workflows/release.yml)：推送 `v*` 标签后构建并发布 macOS 通用 DMG、Windows NSIS / MSI 和免安装程序。
 
-维护时同步更新完整的中英文 README，保持功能、使用示例、安装说明与截图一致。发布前更新两份 README 与发布说明，确认检查和验收完成。在已同步且工作区干净的 `main` 分支执行：
+维护时同步更新完整的中英文 README，保持功能、使用示例和安装说明一致，各自使用对应语言的界面截图。发布前更新两份 README 与发布说明，确认检查和验收完成。在已同步且工作区干净的 `main` 分支执行：
 
 ```bash
 npm run release -- minor --dry-run  # 试跑，不修改文件或推送

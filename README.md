@@ -30,12 +30,12 @@ The simple timer is the default. Switching schedules on or off preserves the set
 
 ## Screenshots
 
-These screenshots show the native macOS interface in Chinese, using a sample schedule. The app also supports English. macOS displays its countdown in the menu bar; Windows additionally offers a draggable, resizable floating timer.
+These screenshots show the native macOS interface in English, using a sample schedule. macOS displays its countdown in the menu bar; Windows additionally offers a draggable, resizable floating timer.
 
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/settings-simple-macos.png" alt="Simple timer settings: 45 minutes of work and a 5-minute break" width="360" /></td>
-    <td align="center"><img src="docs/screenshots/settings-schedule-macos.png" alt="Schedule settings: weekdays, time periods, and default durations" width="360" /></td>
+    <td align="center"><img src="docs/screenshots/settings-simple-macos-en.png" alt="Simple timer settings: 45 minutes of work and a 5-minute break" width="360" /></td>
+    <td align="center"><img src="docs/screenshots/settings-schedule-macos-en.png" alt="Schedule settings: weekdays, time periods, and default durations" width="360" /></td>
   </tr>
   <tr>
     <td align="center">Simple timer</td>
@@ -44,7 +44,7 @@ These screenshots show the native macOS interface in Chinese, using a sample sch
 </table>
 
 <p align="center">
-  <img src="docs/screenshots/schedule-overview-macos.png" alt="Schedule preview dialog with rounds, break content, and estimated times" width="480" />
+  <img src="docs/screenshots/schedule-overview-macos-en.png" alt="Schedule preview dialog with rounds, break content, and estimated times" width="480" />
 </p>
 
 The preview opens in a separate dialog. Viewing it does not save your draft or start a timer. Settings and previews follow your system's light or dark appearance.
@@ -142,7 +142,7 @@ The project uses **Tauri 2, Rust, TypeScript, and Vite**, with HTML / CSS for th
 - [Windows preview](.github/workflows/windows-preview.yml): Builds x64 installers and portable executables for PRs with separate preview settings. See the [preview guide (Chinese)](docs/windows-preview.md) for downloads.
 - [Release](.github/workflows/release.yml): Pushing a `v*` tag builds and publishes the universal macOS DMG, Windows NSIS / MSI installers, and portable executable.
 
-Keep both full README translations in sync, including features, examples, installation instructions, and screenshots. Before releasing, update both READMEs and release notes, and complete checks and acceptance testing. From an up-to-date `main` branch with a clean working tree, run:
+Keep features, examples, and installation instructions in sync across both full READMEs, and use interface screenshots in each README's language. Before releasing, update both READMEs and release notes, and complete checks and acceptance testing. From an up-to-date `main` branch with a clean working tree, run:
 
 ```bash
 npm run release -- minor --dry-run  # Preview without changing files or pushing
