@@ -437,6 +437,20 @@ function describeSaveError(error: unknown): string {
   return messages.join("\n");
 }
 
+function clearSavedStatus() {
+  if (!saveStatus.classList.contains("error")) saveStatus.textContent = "";
+}
+
+form.addEventListener("input", clearSavedStatus);
+form.addEventListener("change", clearSavedStatus);
+// 自定义开关、快捷时长和增删按钮只发出 click；预览与折叠不属于编辑。
+form.addEventListener("click", (event) => {
+  const button = event.target instanceof Element ? event.target.closest("button") : null;
+  if (button instanceof HTMLButtonElement && button.type === "button" && button.id !== "previewSchedule") {
+    clearSavedStatus();
+  }
+});
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   btnSave.disabled = true;

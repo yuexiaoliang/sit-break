@@ -10,7 +10,7 @@
 
 最终审查修复另增加 1 项启动回归，使用 Tauri `MockRuntime` 和隔离的测试插件，在插件初始化时提交两次打开请求，再创建面板并交付请求，最后再次打开。它验证窗口未就绪时请求保留、就绪后打开入口可用；不启动真实单实例插件或用户应用，也不证明真实窗口的显示和焦点。正常睡眠样例同时通过现有设置校验，星期统一使用 ISO 的周一 `1` 至周日 `7`。
 
-最终代码版本 `6ff2a125ab2aa72dfbf9c1d3e801394c8ba5472b` 的 [两平台 CI](https://github.com/yuexiaoliang/sit-break/actions/runs/38558671883) 已通过。macOS 和 Windows 均实际执行 `npm ci`、`npm run build`、`cargo check --locked`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo fmt --all -- --check`、`cargo test --locked --lib`，各有 116 项通过，0 失败、0 忽略；启动回归在两平台均执行并通过。两平台还实际执行并通过 `cargo build --locked --bin sit-break`，验证普通应用二进制能够链接。本机也完成上述构建与 Rust 检查，以及 `git diff --check`。
+日程主体与启动修复版本 `6ff2a125ab2aa72dfbf9c1d3e801394c8ba5472b` 的 [两平台 CI](https://github.com/yuexiaoliang/sit-break/actions/runs/38558671883) 已通过。macOS 和 Windows 均实际执行 `npm ci`、`npm run build`、`cargo check --locked`、`cargo clippy --locked --all-targets -- -D warnings`、`cargo fmt --all -- --check`、`cargo test --locked --lib`，各有 116 项通过，0 失败、0 忽略；启动回归在两平台均执行并通过。两平台还实际执行并通过 `cargo build --locked --bin sit-break`，验证普通应用二进制能够链接。本机也完成上述构建与 Rust 检查，以及 `git diff --check`。
 
 加入 MockRuntime 后，Windows 曾在进入测试框架前退出 `0xc0000139`。实际加载探针确认测试程序导入 `comctl32.dll` 的 `TaskDialogIndirect` 等 API，却没有资源段或 manifest。按 [Tauri 维护者的方案](https://github.com/tauri-apps/tauri/issues/13419)，MSVC 目标现在显式向全部链接目标嵌入与当前 Tauri 默认内容相同的 Common Controls v6 manifest，覆盖库测试。没有删除或平台跳过测试；临时诊断步骤已移除。修复后的原测试及普通应用构建通过以上最终 CI。
 
@@ -47,6 +47,16 @@ Windows 的同一电源模块通过 `x86_64-pc-windows-msvc` 交叉类型检查�
 预览空档模板修复后，同一生产渲染模块的双语展示检查已通过：中文为「12:00–13:30 不提醒」，英文为「12:00–13:30 · No reminders」，预览正文不含 `{start}` 或 `{end}`。562×785 和 320×568 下，空档行与下午时段标题均没有横向溢出。
 
 展示样例的保存只写展示数据，预览输出来自适配；上述检查不证明 Rust 预计时间、真实 IPC、本地持久化、原生窗口焦点或电源通知。实际命令与持久化的 macOS 证据单独列在上一节。
+
+## 保存反馈回归（2026-10-15）
+
+CUA 浏览器验收曾发现：保存成功后继续修改设置，旧的“已保存 ✓”仍然显示。现在文字、数值、日期和选项编辑，以及自定义开关、快捷时长、星期选择、日程和时段等增删操作都会清除过期成功提示；查看预览、展开单轮内容等只读操作保持提示。
+
+使用生产前端构建和独立展示适配完成 18 项 CUA 回归检查，覆盖原始复现、重新保存、预览与折叠、开关与快捷选择、添加及移除时段、日期与语言选项。注入保存失败响应后，错误提示仍保留；重试成功恢复成功提示，再次编辑也会正确清除。浏览器 error 日志为空，`npm run build` 的 TypeScript 检查与 Vite 构建通过。
+
+这里验证前端反馈与命令接线，保存失败响应由样例适配注入，未将其当作 Rust 或原生持久化验收；此前原生窗口和物理睡眠的验收范围没有扩大。
+
+![CUA 浏览器样例：继续编辑后不再显示过期的已保存提示](screenshots/save-feedback-cua.jpg)
 
 ## 仍待实机验收
 
