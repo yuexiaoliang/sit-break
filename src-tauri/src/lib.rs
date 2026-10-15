@@ -831,6 +831,23 @@ fn run_timer(app: AppHandle, power_events: mpsc::Receiver<power::PowerEvent>) {
 
 // ---------------- app entry ----------------
 
+fn native_check_window<'a, R: tauri::Runtime, M: Manager<R>>(
+    builder: WebviewWindowBuilder<'a, R, M>,
+) -> WebviewWindowBuilder<'a, R, M> {
+    // 提升权限的 Windows CI 可能忽略 WebView2 环境参数；发布构建不包含此入口。
+    #[cfg(all(windows, debug_assertions))]
+    if let Some(port) = std::env::var("SIT_BREAK_NATIVE_CHECK_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|port| *port > 0)
+    {
+        return builder.additional_browser_args(&format!(
+            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-address=127.0.0.1 --remote-debugging-port={port}"
+        ));
+    }
+    builder
+}
+
 #[cfg(not(target_os = "macos"))]
 fn widget_window_size(size: u32) -> f64 {
     let size = size as f64 + 24.0;
@@ -928,30 +945,33 @@ pub fn run() {
 
             // ---- 窗口（在 manage 之后创建，页面加载时状态已就绪）----
             #[cfg(not(target_os = "macos"))]
-            let widget =
-                WebviewWindowBuilder::new(&handle, "widget", WebviewUrl::App("widget.html".into()))
-                    .title("Sit Break")
-                    .inner_size(
-                        widget_window_size(settings.widget_size),
-                        widget_window_size(settings.widget_size),
-                    )
-                    .visible(false)
-                    .decorations(false)
-                    .transparent(true)
-                    .accept_first_mouse(true)
-                    .shadow(false)
-                    .always_on_top(true)
-                    .visible_on_all_workspaces(cfg!(target_os = "macos"))
-                    .skip_taskbar(true)
-                    .resizable(false)
-                    .focused(false)
-                    .build()?;
+            let widget = native_check_window(WebviewWindowBuilder::new(
+                &handle,
+                "widget",
+                WebviewUrl::App("widget.html".into()),
+            ))
+            .title("Sit Break")
+            .inner_size(
+                widget_window_size(settings.widget_size),
+                widget_window_size(settings.widget_size),
+            )
+            .visible(false)
+            .decorations(false)
+            .transparent(true)
+            .accept_first_mouse(true)
+            .shadow(false)
+            .always_on_top(true)
+            .visible_on_all_workspaces(cfg!(target_os = "macos"))
+            .skip_taskbar(true)
+            .resizable(false)
+            .focused(false)
+            .build()?;
             let zh = is_zh(&settings);
-            let reminder = WebviewWindowBuilder::new(
+            let reminder = native_check_window(WebviewWindowBuilder::new(
                 &handle,
                 "reminder",
                 WebviewUrl::App("reminder.html".into()),
-            )
+            ))
             .title(if zh {
                 "Sit Break 提醒"
             } else {
@@ -969,11 +989,11 @@ pub fn run() {
             .resizable(false)
             .focused(false)
             .build()?;
-            let settings_win = WebviewWindowBuilder::new(
+            let settings_win = native_check_window(WebviewWindowBuilder::new(
                 &handle,
                 "settings",
                 WebviewUrl::App("settings.html".into()),
-            )
+            ))
             .title(if zh {
                 "Sit Break 设置"
             } else {
@@ -991,21 +1011,24 @@ pub fn run() {
             .center()
             .focused(false)
             .build()?;
-            let panel =
-                WebviewWindowBuilder::new(&handle, "panel", WebviewUrl::App("panel.html".into()))
-                    .title("Sit Break")
-                    .inner_size(272.0, 340.0)
-                    .visible(false)
-                    .decorations(false)
-                    .transparent(true)
-                    .accept_first_mouse(true)
-                    .shadow(false)
-                    .always_on_top(true)
-                    .visible_on_all_workspaces(cfg!(target_os = "macos"))
-                    .skip_taskbar(true)
-                    .resizable(false)
-                    .focused(false)
-                    .build()?;
+            let panel = native_check_window(WebviewWindowBuilder::new(
+                &handle,
+                "panel",
+                WebviewUrl::App("panel.html".into()),
+            ))
+            .title("Sit Break")
+            .inner_size(272.0, 340.0)
+            .visible(false)
+            .decorations(false)
+            .transparent(true)
+            .accept_first_mouse(true)
+            .shadow(false)
+            .always_on_top(true)
+            .visible_on_all_workspaces(cfg!(target_os = "macos"))
+            .skip_taskbar(true)
+            .resizable(false)
+            .focused(false)
+            .build()?;
 
             #[cfg(target_os = "macos")]
             for window in [&reminder, &panel] {
