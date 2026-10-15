@@ -197,6 +197,7 @@ export async function checkOnlineHtml(context) {
     assert.deepEqual(await app.settings.invoke('get_settings'), baseline);
     const afterAttack = await app.reminder.invoke('timer_info');
     assert.equal(afterAttack.mode, 'break');
+    assert.ok(afterAttack.remaining <= timer.remaining && afterAttack.remaining >= timer.remaining - 15, '攻击期间只按正常墙钟计时');
     for (const key of ['round', 'guidance', 'work_seconds', 'break_seconds', 'paused']) assert.deepEqual(afterAttack[key], timer[key]);
     assert.equal(await app.reminder.evaluate('location.href'), hostUrl);
     await app.reminder.screenshot('online-html-capability-attacks');
