@@ -161,6 +161,8 @@ export function createGuidanceView(container: HTMLElement) {
   let failure: "load" | "autoplay" | "timeout" | null = null;
   let loading = false;
   let openFailed = false;
+  let builtinFetch: AbortController | null = null;
+  let builtinObjectUrl: string | null = null;
   let loadTimer: ReturnType<typeof setTimeout> | undefined;
   let strings: Record<string, string>;
 
@@ -172,6 +174,8 @@ export function createGuidanceView(container: HTMLElement) {
   function clear() {
     key = "";
     stopWaiting();
+    builtinFetch?.abort();
+    builtinFetch = null;
     if (video) {
       const previous = video;
       video = null;
@@ -179,6 +183,8 @@ export function createGuidanceView(container: HTMLElement) {
       previous.removeAttribute("src");
       previous.load();
     }
+    if (builtinObjectUrl) URL.revokeObjectURL(builtinObjectUrl);
+    builtinObjectUrl = null;
     container.replaceChildren();
     container.hidden = true;
     failure = null;
@@ -306,8 +312,7 @@ export function createGuidanceView(container: HTMLElement) {
     const url = source.type === "builtin" && source.id === "squat-demo" ? squatDemoUrl : source.type === "online" && validOnlineUrl(source.url) ? source.url : source.type === "local" && /^local-[a-f0-9]{32}$/i.test(source.id) ? convertFileSrc(source.id, "guidance") : null;
     if (url) {
       waitForPlayback(player);
-      player.src = url;
-      void player.play().catch((error: unknown) => {
+      const play = () => void player.play().catch((error: unknown) => {
         if (video !== player || failure === "load" || failure === "timeout") return;
         // 格式或网络错误由 error/超时处理；仅浏览器拒绝自动播放时要求手动播放。
         if (error instanceof DOMException && error.name === "NotAllowedError") {
@@ -317,6 +322,30 @@ export function createGuidanceView(container: HTMLElement) {
           updateLabels();
         }
       });
+      if (source.type === "builtin") {
+        // 打包的 tauri 资源响应不提供字节 Range；小型内置视频转为 Blob 后可在 WebView2 拖动。
+        const controller = new AbortController();
+        builtinFetch = controller;
+        void fetch(url, { signal: controller.signal }).then(async (response) => {
+          if (!response.ok) throw new Error("Builtin video unavailable");
+          const blob = await response.blob();
+          if (video !== player) return;
+          builtinObjectUrl = URL.createObjectURL(blob);
+          player.src = builtinObjectUrl;
+          play();
+        }).catch(() => {
+          if (video !== player) return;
+          stopWaiting();
+          loading = false;
+          failure = "load";
+          updateLabels();
+        }).finally(() => {
+          if (builtinFetch === controller) builtinFetch = null;
+        });
+      } else {
+        player.src = url;
+        play();
+      }
     } else {
       failure = "load";
       updateLabels();
