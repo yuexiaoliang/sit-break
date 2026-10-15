@@ -130,6 +130,15 @@ impl SavedProgress {
     fn is_valid(&self) -> bool {
         if self.version != 1
             || self
+                .info
+                .guidance
+                .as_ref()
+                .is_some_and(|guidance| !guidance.is_valid())
+            || self
+                .previous_guidance
+                .as_ref()
+                .is_some_and(|guidance| !guidance.is_valid())
+            || self
                 .grace_remaining_secs
                 .is_some_and(|seconds| seconds > 3600)
             || self.saved_local.as_ref().is_some_and(|local| {
@@ -160,11 +169,12 @@ impl SavedProgress {
                 && round.number > 0
                 && crate::schedule::valid_date(&round.date)
                 && self.saved_local.is_some()
-                && self
+                && (self
                     .info
                     .tip
                     .as_ref()
                     .is_some_and(|tip| !tip.trim().is_empty())
+                    || self.info.guidance.as_ref().is_some_and(Guidance::is_valid))
         });
         valid_lengths && valid_remaining && valid_round
     }
@@ -508,7 +518,9 @@ impl TimerApp {
                             }
                             if self.info.remaining == 0 {
                                 self.info.mode = Mode::Remind;
-                                if !self.settings.use_schedule || self.info.tip.is_none() {
+                                if !self.settings.use_schedule
+                                    || (self.info.tip.is_none() && self.info.guidance.is_none())
+                                {
                                     self.select_reminder_entry();
                                 }
                                 output.events.push(TimerEvent::Reminder(ReminderPayload {
