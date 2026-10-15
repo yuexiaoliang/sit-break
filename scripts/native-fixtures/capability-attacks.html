@@ -12,39 +12,48 @@ pre { white-space:pre-wrap; overflow-wrap:anywhere; }
 <output id="attack-status">idle</output><pre id="results">{}</pre>
 <script>
 const results = {};
+const fixtureBaseUrl = __FIXTURE_BASE_URL_JSON__;
+const knownFileUrl = __KNOWN_FILE_URL_JSON__;
+const validAssetUrl = __VALID_ASSET_URL_JSON__;
+const validGuidanceUrl = __VALID_GUIDANCE_URL_JSON__;
+const attackSettings = __ATTACK_SETTINGS_JSON__;
 const record = (name, value) => { results[name] = value; document.getElementById('results').textContent = JSON.stringify(results); };
 const attempt = async (name, action) => {
   try { record(name, await action()); } catch(error) { record(name, { error:error.name }); }
+};
+const ownInvoke = (command, payload) => {
+  if (typeof window.__TAURI_INTERNALS__?.invoke !== 'function') return 'unavailable';
+  return Promise.race([
+    window.__TAURI_INTERNALS__.invoke(command, payload).then(() => 'resolved'),
+    new Promise((done) => setTimeout(() => done('pending'), 800)),
+  ]);
 };
 document.getElementById('run-attacks').addEventListener('click', async () => {
   document.getElementById('attack-status').textContent = 'running';
   await attempt('parentDom', () => parent.document.documentElement.tagName);
   await attempt('parentNativeCommand', () => parent.__TAURI_INTERNALS__.invoke('end_break'));
-  await attempt('ownNativeCommand', async () => {
-    if (typeof window.__TAURI_INTERNALS__?.invoke !== 'function') return 'unavailable';
-    return Promise.race([
-      window.__TAURI_INTERNALS__.invoke('end_break').then(() => 'resolved'),
-      new Promise((done) => setTimeout(() => done('pending'), 800)),
-    ]);
-  });
+  await attempt('ownNativeCommand', () => ownInvoke('end_break'));
+  await attempt('ownReadSettings', () => ownInvoke('get_settings'));
+  await attempt('ownSaveSettings', () => ownInvoke('save_settings', { settings:attackSettings }));
   for (const [name, url] of [
     ['fetchIpc', 'http://ipc.localhost/end_break'],
-    ['fetchFile', 'file:///C:/Windows/win.ini'],
-    ['fetchAsset', 'http://asset.localhost/C%3A%5CWindows%5Cwin.ini'],
+    ['fetchFile', knownFileUrl],
+    ['fetchAsset', validAssetUrl],
+    ...(validGuidanceUrl ? [['fetchLocalVideo', validGuidanceUrl]] : []),
   ]) await attempt(name, async () => {
     const response = await fetch(url);
     return { ok:response.ok, status:response.status };
   });
   await attempt('nestedFrame', () => {
     const frame = document.createElement('iframe'); frame.id = 'nested-attempt';
-    frame.src = '__FIXTURE_BASE_URL__/nested-attempt'; document.body.append(frame); return 'inserted';
+    frame.src = fixtureBaseUrl + '/nested-attempt'; document.body.append(frame); return 'inserted';
   });
   await attempt('topNavigation', () => { top.location.href = 'about:blank#sandbox-escape'; return 'attempted'; });
   await attempt('topLink', () => {
     const link = document.createElement('a'); link.href = 'about:blank#sandbox-link'; link.target = '_top';
     link.textContent = '隔离链接'; document.body.append(link); link.click(); return 'attempted';
   });
-  await attempt('popupFile', () => window.open('file:///C:/Windows/win.ini') === null ? 'blocked' : 'opened');
+  await attempt('popupFile', () => window.open(knownFileUrl) === null ? 'blocked' : 'opened');
   parent.postMessage({ source:'sit-break-guidance', session:window.name, type:'invoke', command:'end_break' }, '*');
   document.getElementById('attack-status').textContent = 'done';
 });

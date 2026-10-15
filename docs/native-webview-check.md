@@ -23,6 +23,14 @@
 
 [运行 38694976591](https://github.com/yuexiaoliang/sit-break/actions/runs/38694976591)（`7686e0f`）随后实际通过保留的原生 seek 断言，内置视频在 light/dark 下保留同一元素及 1.2 秒暂停位置，循环和释放通过；在线视频 503／挂起超时／重试恢复亦通过。该轮没有本地 fixture 或 HTML 检查；新增模块仍须等待对应源提交的实际运行结果。
 
+[运行 38697578332](https://github.com/yuexiaoliang/sit-break/actions/runs/38697578332)（`586e3ae`）实际通过九项检查，包括上述内置与在线视频，以及新增本地副本路径：真实 `guidance.localhost` 播放 640×360 视频、HEAD 200／244280 字节、Range 206／32 字节、seek 至 1.5 秒、保存替换时保留当前播放器、退出恢复旧副本、下一轮采用新副本和结束释放。该轮仍未操作 Windows 文件选择器，也未执行 HTML 场景。
+
+## HTML 验收准备
+
+`native-frame-context.mjs` 与 `native-fixtures/` 是待 HTML 实现合入后接线的工具；存在这些文件不表示已执行 HTML 验收。能力样例必须先由 `renderCapabilityFixture` 填入当前平台实际存在的文件 URL、宿主已成功读取的应用资源 URL、受控 HTTP 地址和合法完整设置。设置载荷从公开 `get_settings` 取得，仅反转 `sound`，用于真实尝试 `save_settings`；样例还尝试 `get_settings` 与 `end_break`，各等待至多 800ms，且不输出返回的设置或文件内容。
+
+运行后必须从宿主公开接口核对设置完全不变、当前轮与休息状态保持、剩余时间只按墙钟下降，并确认宿主未导航。拒绝、未决或全局对象不存在均不能单独证明权限隔离。文件由测试先实际创建，应用资源由宿主先成功读取，避免把不存在的路径误判成安全结果。合法外链实际打开留给 CUA 验收，能力样例不自动打开外部 HTTP 浏览器。
+
 ## 本机运行
 
 需要 Node 22、WebView2 Runtime、Windows 图形会话和干净的测试用户。先按工作流创建独立标识的配置，执行：
