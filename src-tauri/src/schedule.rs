@@ -167,6 +167,20 @@ impl crate::Settings {
         if !(1..=60).contains(&self.break_minutes) {
             report(None, None, "break_minutes", "break_range");
         }
+        let mut reminder_ids = std::collections::HashSet::new();
+        for (index, entry) in self.tips.iter().enumerate() {
+            if entry.id.trim().is_empty() || !reminder_ids.insert(&entry.id) {
+                report(
+                    None,
+                    None,
+                    &format!("tips.{index}.text"),
+                    "reminder_identity",
+                );
+            }
+            if entry.text.trim().is_empty() {
+                report(None, None, &format!("tips.{index}.text"), "reminder_empty");
+            }
+        }
         let mut schedule_ids = std::collections::HashSet::new();
         for schedule in &self.schedules {
             let sid = Some(schedule.id.as_str());

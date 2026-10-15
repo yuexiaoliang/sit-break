@@ -280,8 +280,9 @@ fn preview_updates_after_postpone_reset_and_ending_a_break_without_consuming_a_r
 
 #[test]
 fn repeated_preview_does_not_change_future_random_tips_or_the_saved_configuration() {
-    let mut inspected = TimerApp::new_at(arrangement(), fastrand::Rng::with_seed(42), at(9, 0));
-    let mut untouched = TimerApp::new_at(arrangement(), fastrand::Rng::with_seed(42), at(9, 0));
+    let settings = arrangement();
+    let mut inspected = TimerApp::new_at(settings.clone(), fastrand::Rng::with_seed(42), at(9, 0));
+    let mut untouched = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(9, 0));
     for _ in 0..3 {
         inspected.preview(inspected.settings(), at(9, 0)).unwrap();
     }

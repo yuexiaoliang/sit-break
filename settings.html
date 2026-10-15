@@ -36,7 +36,7 @@
         <div class="preference-row"><div><strong id="idleResetLabel" data-i18n="idleReset">离开自动重置</strong><p data-i18n="idleDescription">离开达到休息时长，重新计时</p></div><button type="button" id="swIdleReset" class="switch" role="switch" aria-labelledby="idleResetLabel" aria-checked="true"></button></div>
         <div class="preference-row" data-widget-setting><strong id="widgetLabel" data-i18n="showWidget">显示悬浮计时条</strong><button type="button" id="swWidget" class="switch" role="switch" aria-labelledby="widgetLabel" aria-checked="true"></button></div>
         <div class="preference-row" data-widget-setting><label for="widgetSize" data-i18n="ballSize">悬浮计时条大小</label><div class="size-field"><input id="widgetSize" type="number" min="40" max="140" step="1" required value="64" /><span>px</span></div></div>
-        <div class="tips-editor"><label for="tipsList" data-i18n="tipsHeading">提醒小字</label><span data-i18n="tipsHint">每行一条，随机展示</span><textarea id="tipsList" rows="3"></textarea><p data-i18n="tipsDescription">留空时使用默认提示。</p></div>
+        <div class="tips-editor"><h3 id="tipsHeading" data-i18n="tipsHeading">提醒小字</h3><span data-i18n="tipsHint">逐条设置，随机展示</span><div id="tipsList" role="group" aria-labelledby="tipsHeading"></div><button type="button" id="addReminder" class="secondary-button" data-i18n="addReminder">＋ 添加提醒</button><p data-i18n="tipsDescription">删除全部条目后使用默认提示。</p></div>
       </section>
       <footer class="bottom-actions"><p id="saveStatus" role="status" aria-live="polite"></p><button type="submit" id="btnSave" class="save-button" data-i18n="saveSettings">保存设置</button></footer>
     </form>

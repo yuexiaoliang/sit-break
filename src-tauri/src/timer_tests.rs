@@ -42,8 +42,151 @@ fn upgrading_old_settings_keeps_simple_timer_and_all_shared_preferences() {
     assert_eq!(settings["idle_reset"], false);
     assert_eq!(settings["language"], "en");
     assert_eq!(settings["widget_size"], 96);
-    assert_eq!(settings["tips"], serde_json::json!(["Walk"]));
+    assert_eq!(settings["tips"][0]["text"], "Walk");
     std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn migrated_reminder_entries_can_be_edited_and_removed_independently_after_reload() {
+    let path = std::env::temp_dir().join(format!(
+        "sit-break-reminder-entries-{}.json",
+        fastrand::u64(..)
+    ));
+    let mut old = serde_json::to_value(scheduled_settings("12:00")).unwrap();
+    old["tips"] = serde_json::json!(["相同文字", "相同文字", "<b>伸展</b>"]);
+    old["sound"] = false.into();
+    std::fs::write(&path, serde_json::to_string(&old).unwrap()).unwrap();
+    let mut app = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    let mut draft = serde_json::to_value(app.settings()).unwrap();
+    assert_eq!(draft["tips"][0]["text"], "相同文字");
+    let first_id = draft["tips"][0]["id"].as_str().unwrap().to_owned();
+    let second_id = draft["tips"][1]["id"].as_str().unwrap().to_owned();
+    assert!(!first_id.is_empty());
+    assert_ne!(first_id, second_id);
+    draft["tips"][1]["text"] = "只修改第二条".into();
+    draft["tips"].as_array_mut().unwrap().remove(0);
+    let saved = app.dispatch(
+        Action::SaveSettings(serde_json::from_value(draft).unwrap()),
+        Duration::ZERO,
+    );
+    assert!(saved.validation_errors.is_empty());
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let mut reopened = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    let settings = serde_json::to_value(reopened.settings()).unwrap();
+    assert_eq!(settings["tips"][0]["id"], second_id);
+    assert_eq!(settings["tips"][0]["text"], "只修改第二条");
+    assert_eq!(settings["tips"][1]["text"], "<b>伸展</b>");
+    assert_eq!(settings["tips"].as_array().unwrap().len(), 2);
+    assert_eq!(settings["schedules"], old["schedules"]);
+    assert_eq!(settings["sound"], false);
+    assert!(settings["use_schedule"].as_bool().unwrap());
+    let mut other_preferences = reopened.settings().clone();
+    other_preferences.language = "en".into();
+    reopened.dispatch(Action::SaveSettings(other_preferences), Duration::ZERO);
+    assert_eq!(
+        serde_json::to_value(reopened.settings()).unwrap()["tips"],
+        settings["tips"]
+    );
+    let mut cleared = reopened.settings().clone();
+    cleared.tips.clear();
+    cleared.use_schedule = false;
+    let saved = reopened.dispatch(Action::SaveSettings(cleared), Duration::ZERO);
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let mut fallback = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    fallback.dispatch(
+        Action::Tick {
+            elapsed_secs: 2700,
+            idle_secs: 0,
+        },
+        Duration::from_secs(2700),
+    );
+    assert!(crate::TIPS_EN.contains(&fallback.info().tip.as_deref().unwrap()));
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn empty_reminder_text_cannot_replace_saved_entries_or_reset_the_current_timer() {
+    let path = std::env::temp_dir().join(format!(
+        "sit-break-empty-reminder-{}.json",
+        fastrand::u64(..)
+    ));
+    let mut app = simple_timer();
+    app.settings().save_to(&path).unwrap();
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 12,
+            idle_secs: 0,
+        },
+        Duration::from_secs(12),
+    );
+    let before = app.info();
+    let mut draft = app.settings().clone();
+    draft.tips[0].text = " \n ".into();
+    let saved = app.dispatch(Action::SaveSettings(draft.clone()), Duration::from_secs(12));
+    assert!(saved
+        .validation_errors
+        .iter()
+        .any(|error| { error.field == "tips.0.text" && error.code == "reminder_empty" }));
+    assert!(saved.persist_settings.is_none());
+    assert_eq!(app.info(), before);
+    assert!(draft.save_to(&path).is_err());
+    let reopened = TimerApp::load_from(&path, fastrand::Rng::with_seed(42));
+    assert_eq!(reopened.settings().tips[0].text, "走动一下");
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn saving_reminder_entries_rejects_missing_or_duplicate_identities() {
+    let mut app = simple_timer();
+    for missing in [false, true] {
+        let mut draft = app.settings().clone();
+        if missing {
+            draft.tips[0].id.clear();
+        } else {
+            draft.tips.push(draft.tips[0].clone());
+        }
+        let saved = app.dispatch(Action::SaveSettings(draft), Duration::ZERO);
+        assert!(saved
+            .validation_errors
+            .iter()
+            .any(|error| error.code == "reminder_identity"));
+        assert!(saved.persist_settings.is_none());
+        assert_eq!(app.settings().tips.len(), 1);
+    }
+}
+
+#[test]
+fn reminder_text_is_displayed_verbatim_and_stays_selected_when_preferences_are_saved() {
+    let mut app = simple_timer();
+    let mut draft = app.settings().clone();
+    draft.tips[0].text = "  <b>用户自己的提示</b>\n第二行  ".into();
+    app.dispatch(Action::SaveSettings(draft), Duration::ZERO);
+    let reminder = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        Duration::from_secs(60),
+    );
+    assert!(reminder.events.iter().any(|event| matches!(event,
+        TimerEvent::Reminder(payload) if payload.tip == "  <b>用户自己的提示</b>\n第二行  "
+    )));
+    app.dispatch(Action::StartBreak, Duration::from_secs(60));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 15,
+            idle_secs: 0,
+        },
+        Duration::from_secs(75),
+    );
+    let before = app.info();
+    let mut draft = app.settings().clone();
+    draft.language = "en".into();
+    draft.sound = !draft.sound;
+    draft.tips[0].text = "下一次提醒".into();
+    app.dispatch(Action::SaveSettings(draft), Duration::from_secs(75));
+    assert_eq!(app.info(), before);
+    assert_eq!(app.info().remaining, 45);
 }
 
 #[test]
