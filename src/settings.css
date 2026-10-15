@@ -87,6 +87,22 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .guidance-picker > label { display: flex; align-items: center; gap: 12px; }
 .guidance-url { width: 100%; min-width: 0; padding: 7px; border: 1px solid var(--border); border-radius: 7px; font: inherit; background: var(--field); color: inherit; }
 .guidance-hint { margin: 0; line-height: 1.45; color: var(--muted); }
+.guidance-authoring-trigger { align-self: start; color: var(--green-ink); padding-left: 0; }
+.guidance-authoring { width: min(510px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 40px); margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--ink); overflow: hidden; }
+.guidance-authoring[open] { display: flex; flex-direction: column; }
+.guidance-authoring::backdrop { background: #10241b70; }
+.guidance-authoring-scroll { min-height: 0; padding: 18px 22px; overflow-y: auto; overscroll-behavior: contain; }
+.guidance-authoring p { margin: 0 0 12px; font-size: 13px; line-height: 1.65; }
+.authoring-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.guidance-authoring .authoring-status { min-height: 1.65em; color: var(--green-ink); margin: 9px 0; }
+.guidance-authoring details { padding: 11px 0; border-top: 1px solid var(--divider); }
+.guidance-authoring summary { cursor: pointer; font-weight: 600; font-size: 13px; margin-bottom: 8px; }
+.guidance-authoring summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.guidance-authoring textarea { display: block; width: 100%; min-height: 170px; resize: vertical; margin-bottom: 9px; font: 12px/1.5 ui-monospace, monospace; }
+.authoring-table-scroll { overflow-x: auto; }
+.guidance-authoring table { border-collapse: collapse; font-size: 11px; text-align: left; }
+.guidance-authoring th, .guidance-authoring td { padding: 7px 8px; border-bottom: 1px solid var(--divider); vertical-align: top; }
+.guidance-authoring th { color: var(--muted); }
 .guidance-picker select { flex: 1; min-width: 0; padding: 7px; border: 1px solid var(--border); border-radius: 7px; font: inherit; background: var(--field); color: inherit; }
 .tips-editor p { color: var(--muted); font-size: 11px; margin-top: 7px; }
 .bottom-actions { display: flex; flex-direction: column; gap: 7px; padding: 12px 0 16px; }
