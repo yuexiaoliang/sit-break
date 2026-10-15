@@ -98,6 +98,12 @@ For example, if a break is estimated for 09:50 but you start at 09:55, a 10-minu
 
 At a period's end, unfinished work stops and reminders for breaks that have not started close. A break already in progress can finish. Lunch gaps do not catch up on missed rounds or start new reminders.
 
+## 动作指引（开发分支）
+
+视频、网页动作指引与 HTML 制作材料正在 [PR #26](https://github.com/yuexiaoliang/sit-break/pull/26) 集成验收，尚未包含在 v0.4.0 正式版中。开发分支支持按提醒条目或日程单轮选择内置示范、导入本地视频与单文件 HTML、配置在线地址，并提供失败重试、当前轮保留和进度恢复。
+
+使用方式见 [动作指引说明](README.zh-CN.md#动作指引开发分支)、[HTML 制作说明](docs/html-authoring.md)与[原生验收记录](docs/native-webview-check.md)。
+
 ## More Features
 
 - **Pause and reset:** A manual pause lasts until you resume. Reset restarts work in the current round; ending a break early advances to the next round.
