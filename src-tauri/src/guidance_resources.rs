@@ -126,9 +126,7 @@ impl GuidanceResources {
     }
 
     fn file(&self, guidance: &Guidance) -> Result<File, String> {
-        let GuidanceSource::Local { id } = &guidance.source else {
-            return Err("resource-unavailable".into());
-        };
+        let GuidanceSource::Local { id } = &guidance.source;
         if !valid_id(id) {
             return Err("resource-unavailable".into());
         }
@@ -188,9 +186,7 @@ impl GuidanceResources {
     pub fn validate_settings(&self, settings: &crate::Settings) -> Result<(), String> {
         let guidance = settings_guidance(settings);
         for guidance in guidance {
-            if matches!(guidance.source, GuidanceSource::Local { .. }) {
-                self.file(guidance)?;
-            }
+            self.file(guidance)?;
         }
         Ok(())
     }
@@ -204,9 +200,8 @@ impl GuidanceResources {
     ) -> Result<(), String> {
         let mut keep = std::collections::HashSet::new();
         let mut remember = |guidance: &Guidance| {
-            if let GuidanceSource::Local { id } = &guidance.source {
-                keep.insert(id.clone());
-            }
+            let GuidanceSource::Local { id } = &guidance.source;
+            keep.insert(id.clone());
         };
         for guidance in settings_guidance(settings) {
             remember(guidance);

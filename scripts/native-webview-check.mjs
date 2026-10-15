@@ -6,11 +6,10 @@ import { createServer } from 'node:net';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { checkOnlineVideo } from './native-online-video-check.mjs';
 import { checkLocalVideo } from './native-local-video-check.mjs';
 import { checkHtml } from './native-html-check.mjs';
-import { checkBuiltinHtml } from './native-builtin-html-check.mjs';
-import { checkOnlineHtml } from './native-online-html-check.mjs';
+import { checkAuthoring } from './native-authoring-check.mjs';
+import { preimportedVideo } from './native-resource-fixture.mjs';
 
 const usage = 'node scripts/native-webview-check.mjs <debug-exe> <output-directory>';
 if (process.argv.includes('--help')) {
@@ -26,7 +25,7 @@ const dataDirectory = join(process.env.APPDATA, identifier);
 const nativeProbe = fileURLToPath(new URL('./native-window.ps1', import.meta.url));
 const runFile = promisify(execFile);
 const delay = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
-const report = { startedAt: new Date().toISOString(), executable, identifier, runs: [], checks: [], video: { status: 'not_started' }, onlineVideo: { status: 'not_started' }, localVideo: { status: 'not_started', fixtureMode: 'preimported-copy' }, html: { status: 'not_started', fixtureMode: 'preimported-copy' }, builtinHtml: { status: 'not_started' }, onlineHtml: { status: 'not_started' }, notCovered: ['Windows 原生文件选择器、导入命令及导入 UI 尚未执行；本地场景只使用明确的已导入副本 fixture', '系统浏览器实际打开仍需单独验收；脚本只检查打开入口和非法 scheme 拒绝', '作者材料实际导出和系统剪贴板写入尚未执行'] };
+const report = { startedAt: new Date().toISOString(), executable, identifier, runs: [], checks: [], video: { status: 'not_started' }, localVideo: { status: 'not_started', fixtureMode: 'preimported-copy' }, html: { status: 'not_started', fixtureMode: 'preimported-copy' }, authoring: { status: 'not_started' }, notCovered: ['Windows 原生文件选择器、导入命令及导入 UI 尚未执行；本地场景只使用明确的已导入副本 fixture', '作者材料实际导出和系统剪贴板写入尚未执行'] };
 const connections = [];
 let application;
 let originalTheme;
@@ -213,9 +212,10 @@ async function videoSample(connection, objectId, diagnostic = report.video) {
   return result.result.value;
 }
 
-async function checkBuiltinVideo(app) {
-  report.video = { status: 'running', stage: '保存真实内置视频配置' };
-  const guidance = { kind: 'video', source: { type: 'builtin', id: 'squat-demo' } };
+async function checkSimpleLocalVideo(app) {
+  report.video = { status: 'running', stage: '保存真实本地视频副本配置' };
+  const guidance = await preimportedVideo(dataDirectory, await readFile(new URL('../src/assets/guidance/squat-demo.mp4', import.meta.url)));
+  report.video.fixtureMode = 'preimported-copy';
   const current = await app.settings.invoke('get_settings');
   await app.settings.invoke('save_settings', { settings: { ...current,
     use_schedule: false, work_minutes: 1, break_minutes: 2,
@@ -234,14 +234,14 @@ async function checkBuiltinVideo(app) {
   await app.reminder.screenshot('04-video-reminder');
   await app.reminder.evaluate('document.getElementById("btnBreak").click()');
   report.video.stage = '原生视频解码与自动播放';
-  await waitFor('内置视频取得原生解码画面', () => app.reminder.evaluate(`(() => { const v=document.querySelector('#guidanceContent video'); return !!v && v.readyState >= 2 && v.videoWidth > 0 && v.duration > 0 && Number.isFinite(v.duration); })()`));
+  await waitFor('本地视频副本取得原生解码画面', () => app.reminder.evaluate(`(() => { const v=document.querySelector('#guidanceContent video'); return !!v && v.readyState >= 2 && v.videoWidth > 0 && v.duration > 0 && Number.isFinite(v.duration); })()`));
   const remote = await app.reminder.call('Runtime.evaluate', { expression: 'document.querySelector("#guidanceContent video")', returnByValue: false });
   const objectId = remote.result.objectId;
   assert.ok(objectId, '必须持有真实 video 元素引用');
   try {
     const initial = await videoSample(app.reminder, objectId);
     report.video.initial = initial;
-    assert.ok(initial.muted && initial.defaultMuted && initial.loop && initial.controls && !initial.paused, '内置视频自动静音循环并带播放控制');
+    assert.ok(initial.muted && initial.defaultMuted && initial.loop && initial.controls && !initial.paused, '本地视频副本自动静音循环并带播放控制');
     assert.ok(initial.width > 0 && initial.height > 0 && initial.readyState >= 2);
     assert.ok(initial.rect.x >= 0 && initial.rect.y >= 0 && initial.rect.bottom <= initial.endButtonTop, '视频内容不能遮挡结束按钮');
     assert.equal(await app.reminder.evaluate('document.getElementById("stretchText").hidden'), true, '仅指引休息省略文字区域');
@@ -297,7 +297,7 @@ async function checkBuiltinVideo(app) {
     });
     assert.equal(await app.reminder.evaluate('document.querySelectorAll("#guidanceContent video").length'), 0);
     assert.equal((await app.reminder.invoke('timer_info')).mode, 'work');
-    report.checks.push({ name: '真实内置视频：静音循环、控制、计时独立、主题保留与结束释放', reminded, initial, playing,
+    report.checks.push({ name: '真实本地视频副本：静音循环、控制、计时独立、主题保留与结束释放', reminded, initial, playing,
       beforePause, afterPause, paused, stillPaused, afterSeek, themes, looped, released });
     report.video.status = 'passed';
   } finally {
@@ -384,26 +384,19 @@ try {
     return state.mode === 'work' && state.round.number === 2;
   });
   report.checks.push({ name: '真实退出重开及提前结束操作', saved, restored });
-  await checkBuiltinVideo(app);
-  report.onlineVideo.status = 'running';
-  app = await checkOnlineVideo({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, onApp: (next) => { app = next; } });
-  report.onlineVideo.status = 'passed';
+  await checkSimpleLocalVideo(app);
   app = await checkLocalVideo({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, videoSample, delay, onApp: (next) => { app = next; } });
   app = await checkHtml({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, delay,
     setTheme: (value) => powershell('Theme', value), onApp: (next) => { app = next; } });
-  app = await checkBuiltinHtml({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, delay,
-    setTheme: (value) => powershell('Theme', value), onApp: (next) => { app = next; } });
-  app = await checkOnlineHtml({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, delay,
+  app = await checkAuthoring({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, delay,
     setTheme: (value) => powershell('Theme', value), onApp: (next) => { app = next; } });
   report.status = 'passed';
 } catch (error) {
   report.status = 'failed';
   if (report.video.status === 'running') report.video.status = 'failed';
-  if (report.onlineVideo.status === 'running') report.onlineVideo.status = 'failed';
   if (report.localVideo.status === 'running') report.localVideo.status = 'failed';
   if (report.html.status === 'running') report.html.status = 'failed';
-  if (report.builtinHtml.status === 'running') report.builtinHtml.status = 'failed';
-  if (report.onlineHtml.status === 'running') report.onlineHtml.status = 'failed';
+  if (report.authoring.status === 'running') report.authoring.status = 'failed';
   report.error = error.stack;
   for (const connection of connections) {
     try { if (connection.socket.readyState === WebSocket.OPEN) await connection.screenshot(`failure-${connection.label}`); }

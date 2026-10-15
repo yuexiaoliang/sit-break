@@ -100,9 +100,9 @@ At a period's end, unfinished work stops and reminders for breaks that have not 
 
 ## 动作指引（开发分支）
 
-视频、网页动作指引与 HTML 制作材料正在 [PR #26](https://github.com/yuexiaoliang/sit-break/pull/26) 集成验收，尚未包含在 v0.4.0 正式版中。开发分支支持按提醒条目或日程单轮选择内置示范、导入本地视频与单文件 HTML、配置在线地址，并提供失败重试、当前轮保留和进度恢复。
+[PR #26](https://github.com/yuexiaoliang/sit-break/pull/26) 正在集成本地文件指引，尚未包含在 v0.4.0 正式版中。仅通过系统文件选择器导入 MP4 视频或单文件 HTML；不接受在线地址、HTML 源码输入或直接选择内置指引。HTML 按完整离线文件展示。
 
-使用方式见 [动作指引说明](README.zh-CN.md#动作指引开发分支)、[HTML 制作说明](docs/html-authoring.md)与[原生验收记录](docs/native-webview-check.md)。
+使用方式见[动作指引说明](README.zh-CN.md#动作指引开发分支)、[HTML 制作说明](docs/html-authoring.md)与[原生验收记录](docs/native-webview-check.md)。
 
 ## More Features
 

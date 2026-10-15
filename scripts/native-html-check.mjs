@@ -16,7 +16,7 @@ export async function checkHtml(context) {
   report.html = { status: 'running', stage: '准备单文件副本', fixtureMode: 'preimported-copy',
     notCovered: '未操作 Windows 文件选择器、导入命令或外部浏览器。' };
   const previousSettings = await app.settings.invoke('get_settings');
-  const requests = { image: 0, nested: 0 };
+  const requests = { image: 0, nested: 0, navigation: 0 };
   const server = createServer((request, response) => {
     if (request.url === '/pixel.svg') {
       requests.image += 1;
@@ -24,6 +24,7 @@ export async function checkHtml(context) {
       response.end('<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"><rect width="18" height="18" fill="#1d7a56"/></svg>');
     } else {
       if (request.url === '/nested-attempt') requests.nested += 1;
+      else requests.navigation += 1;
       response.writeHead(404); response.end();
     }
   });
@@ -77,11 +78,16 @@ export async function checkHtml(context) {
     const interactive = await preimportedHtml(context.dataDirectory, source.replaceAll('__FIXTURE_BASE_URL__', baseUrl));
     const attributes = await begin(interactive, 'native-html-interactive');
     report.html.stage = '交互、图片、动画与计时独立';
-    await waitFor('单文件内嵌图和真实在线图片加载', async () => {
-      const state = await sample(); return state.embedded === 18 && state.online === 18;
+    await waitFor('单文件内嵌图加载且远程图片被阻止', async () => {
+      const state = await sample(); return state.embedded === 18 && state.online === 0;
     });
-    assert.ok(requests.image > 0, '在线图片必须产生真实服务器请求');
+    assert.equal(requests.image, 0, '本地指引不能发起远程图片请求');
     const frame = await inspector.frameInfo();
+    await inspector.evaluate(`document.getElementById('external-link').click();window.open('${baseUrl}/external-popup');`);
+    await delay(400);
+    assert.equal((await inspector.frameInfo()).frameId, frame.frameId);
+    assert.equal(await inspector.evaluate('location.href'), 'about:srcdoc');
+    assert.equal(requests.navigation, 0, '外链和弹窗均不发起外部导航');
     await app.reminder.evaluate('window.__nativeHtmlFrame=document.querySelector("iframe.guidance-frame")');
     await inspector.evaluate('document.getElementById("increment").click(); document.getElementById("scroll-content").scrollTop=80');
     const first = await sample();
@@ -110,7 +116,7 @@ export async function checkHtml(context) {
       themes.push({ theme, state, bounds, ...layout });
     }
     assert.notEqual(themes[0].state.background, themes[1].state.background);
-    report.checks.push({ name: '已导入 HTML fixture：真实脚本、CSS 动画、内嵌与在线图、滚动、倒计时和主题保留',
+    report.checks.push({ name: '已导入 HTML fixture：真实脚本、CSS 动画、内嵌图、远程资源阻止、滚动、倒计时和主题保留',
       fixtureMode: 'preimported-copy', interactive, attributes, first, second, before, after, themes });
 
     report.html.stage = '正常退出恢复与结束销毁';

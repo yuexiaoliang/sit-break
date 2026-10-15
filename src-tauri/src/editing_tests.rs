@@ -22,7 +22,7 @@ fn settings() -> Settings {
             "id":"schedule", "name":"工作日", "enabled":true,
             "repeat":{"kind":"weekly","weekdays":[1,2,3,4,5]},
             "periods":[{"id":"morning", "start":"09:00","end":"12:00","work_minutes":55,"break_minutes":5,"overrides":[
-                {"round":1,"work_minutes":50,"break_minutes":10,"content":"爬楼","guidance":{"kind":"video","source":{"type":"builtin","id":"squat-demo"}}},
+                {"round":1,"work_minutes":50,"break_minutes":10,"content":"爬楼","guidance":{"kind":"video","source":{"type":"local","id":"local-00000000000000000000000000000001"}}},
                 {"round":2,"work_minutes":20,"break_minutes":3,"content":"深蹲"}
             ]}]
         }])).unwrap(),
@@ -57,7 +57,7 @@ fn invalid_round_guidance_save_leaves_the_current_round_and_settings_intact() {
     let original = serde_json::to_value(app.settings()).unwrap();
     let mut changed = original.clone();
     changed["schedules"][0]["periods"][0]["overrides"][0]["guidance"] =
-        serde_json::json!({"kind":"video","source":{"type":"builtin","id":"missing"}});
+        serde_json::json!({"kind":"video","source":{"type":"local","id":"missing"}});
     let saved = app.dispatch(
         Action::SaveSettings(serde_json::from_value(changed).unwrap()),
         at(9, 1),

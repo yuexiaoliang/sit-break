@@ -1,29 +1,31 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { createFrameInspector } from './native-frame-context.mjs';
-import { restartWorkForBreak } from './native-resource-fixture.mjs';
+import { preimportedHtml, restartWorkForBreak } from './native-resource-fixture.mjs';
 
-/** 随包内置 HTML 与作者材料；不点击原生保存对话框或写入系统剪贴板。 */
-export async function checkBuiltinHtml(context) {
+/** 导入的示范 HTML 与作者材料；不点击原生保存对话框或写入系统剪贴板。 */
+export async function checkAuthoring(context) {
   let app = context.app;
   let inspector;
   const { report, waitFor, delay, inspectLayout } = context;
-  report.builtinHtml = { status: 'running', stage: '真实表单选择和作者材料',
+  report.authoring = { status: 'running', stage: '本地文件入口和作者材料',
     notCovered: '作者材料保存对话框、实际导出文件与系统剪贴板写入未操作。' };
   const previous = await app.settings.invoke('get_settings');
+  const guidance = await preimportedHtml(context.dataDirectory, await readFile(new URL('../src/assets/guidance/stretch-demo.html', import.meta.url), 'utf8'));
+  report.authoring.fixtureMode = 'preimported-copy';
   await app.settings.invoke('save_settings', { settings: { ...previous, use_schedule: false,
     work_minutes: 1, break_minutes: 2, language: 'en', sound: false, idle_reset: false,
-    tips: [{ id: 'native-builtin-html', text: '', guidance: { kind: 'video', source: { type: 'builtin', id: 'squat-demo' } } }],
-    schedules: [{ id: 'native-builtin-html-schedule', name: '内置 HTML 原生验证', enabled: true,
+    tips: [{ id: 'native-local-authoring', text: '', guidance }],
+    schedules: [{ id: 'native-local-authoring-schedule', name: '导入的示范 HTML 原生验证', enabled: true,
       repeat: { kind: 'weekly', weekdays: [1, 2, 3, 4, 5, 6, 7] },
-      periods: [{ id: 'native-builtin-html-period', start: '00:00', end: '24:00', work_minutes: 1, break_minutes: 2, overrides: [] }] }],
+      periods: [{ id: 'native-local-authoring-period', start: '00:00', end: '24:00', work_minutes: 1, break_minutes: 2, overrides: [] }] }],
   } });
   await app.settings.invoke('open_settings');
-  const row = '.reminder-entry[data-reminder-id=native-builtin-html]';
-  await waitFor('真实设置载入内置 HTML 选择入口', () => app.settings.evaluate(`document.querySelector('${row} .guidance-picker select')?.value==='squat-demo'`));
-  await app.settings.evaluate(`(() => { const select=document.querySelector('${row} .guidance-picker select');
-    select.value='stretch-demo'; select.dispatchEvent(new Event('change',{bubbles:true})); document.getElementById('btnSave').click(); })()`);
-  await waitFor('真实表单保存内置 HTML 选择', async () => (await app.settings.invoke('get_settings')).tips[0].guidance?.source.id === 'stretch-demo');
-  await waitFor('保存后作者材料按钮可用', () => app.settings.evaluate(`document.querySelector('${row} .guidance-picker select')?.value==='stretch-demo' && !document.getElementById('btnSave').disabled`));
+  const row = '.reminder-entry[data-reminder-id=native-local-authoring]';
+  await waitFor('本地 HTML 设置入口载入', () => app.settings.evaluate(`document.querySelector('${row} .guidance-picker select')?.value==='local-html'`));
+  const sourceControls = await app.settings.evaluate(`(() => {const picker=document.querySelector('${row} .guidance-picker');return {options:Array.from(picker.querySelector('select').options).map(x=>x.value),inputs:picker.querySelectorAll('input,textarea').length};})()`);
+  assert.deepEqual(sourceControls.options, ['', 'local-video', 'local-html']);
+  assert.equal(sourceControls.inputs, 0, '指引仅从文件选择器导入，不提供网址或 HTML 源码输入框');
   await app.settings.evaluate(`document.querySelector('${row} .guidance-authoring-trigger').click()`);
   const authoring = await app.settings.evaluate(`(() => {
     const dialog=document.getElementById('guidanceAuthoring'), prompt=document.getElementById('guidancePrompt');
@@ -47,7 +49,7 @@ export async function checkBuiltinHtml(context) {
   // 不将完整材料重复写入运行报告；原文已由随包 textarea 实际取得并验证。
   report.checks.push({ name: '真实作者材料入口：完整提示词与模板、亮暗配色表和手动全选',
     ...authoring, prompt: undefined, promptLength: authoring.prompt.length, selection,
-    notCovered: report.builtinHtml.notCovered });
+    notCovered: report.authoring.notCovered });
   await app.settings.evaluate('document.querySelector("#guidanceAuthoring .close-button").click()');
   await waitFor('作者材料关闭并移除弹窗', () => app.settings.evaluate('!document.getElementById("guidanceAuthoring")'));
   const selected = await app.settings.invoke('get_settings');
@@ -56,14 +58,14 @@ export async function checkBuiltinHtml(context) {
   await app.settings.invoke('reset_timer');
   app = await restartWorkForBreak(context);
   try {
-    report.builtinHtml.stage = '内置 HTML 真实渲染和系统主题';
+    report.authoring.stage = '导入的示范 HTML 真实渲染和系统主题';
     inspector = await createFrameInspector(app.reminder);
-    await waitFor('内置 HTML 的真实 srcdoc 页面就绪', () => app.reminder.evaluate('document.querySelector("iframe.guidance-frame")?.dataset.state === "ready"'));
-    await waitFor('内置 HTML 随包脚本和正文实际载入', () => inspector.evaluate('document.querySelector("h1")?.textContent === "站起来，舒展一下" && !!document.getElementById("read")'));
-    assert.deepEqual((await app.reminder.invoke('timer_info')).guidance, { kind: 'html', source: { type: 'builtin', id: 'stretch-demo' } });
-    assert.ok(await app.reminder.evaluate('document.getElementById("stretchText").hidden'), '仅内置 HTML 不补通用休息文字');
+    await waitFor('导入的示范 HTML 的真实 srcdoc 页面就绪', () => app.reminder.evaluate('document.querySelector("iframe.guidance-frame")?.dataset.state === "ready"'));
+    await waitFor('导入的示范 HTML 随包脚本和正文实际载入', () => inspector.evaluate('document.querySelector("h1")?.textContent === "站起来，舒展一下" && !!document.getElementById("read")'));
+    assert.deepEqual((await app.reminder.invoke('timer_info')).guidance, guidance);
+    assert.ok(await app.reminder.evaluate('document.getElementById("stretchText").hidden'), '仅导入的示范 HTML 不补通用休息文字');
     const frame = await inspector.frameInfo();
-    await app.reminder.screenshot('html-builtin-initial');
+    await app.reminder.screenshot('html-local-demo-initial');
     await inspector.evaluate('document.getElementById("read").scrollIntoView({block:"center"}); document.getElementById("read").click()');
     const before = await app.reminder.invoke('timer_info');
     await delay(1200);
@@ -71,7 +73,7 @@ export async function checkBuiltinHtml(context) {
     const themes = [];
     for (const [theme, value] of [['light', 1], ['dark', 0]]) {
       await context.setTheme(value);
-      await waitFor(`内置 HTML 系统 ${theme} 配色`, () => inspector.evaluate(`matchMedia('(prefers-color-scheme: dark)').matches===${value === 0}`));
+      await waitFor(`导入的示范 HTML 系统 ${theme} 配色`, () => inspector.evaluate(`matchMedia('(prefers-color-scheme: dark)').matches===${value === 0}`));
       const state = await inspector.evaluate(`({pressed:document.getElementById('read').getAttribute('aria-pressed'),
         confirmation:document.getElementById('confirmation').textContent,
         background:getComputedStyle(document.documentElement).backgroundColor,
@@ -80,16 +82,16 @@ export async function checkBuiltinHtml(context) {
       assert.deepEqual(state.externalSources, [], '随包示范不用本地旁文件或在线资源');
       assert.equal((await inspector.frameInfo()).frameId, frame.frameId);
       const layout = await inspectLayout(app.reminder, 'btnEnd');
-      await app.reminder.screenshot(`html-builtin-${theme}`);
+      await app.reminder.screenshot(`html-local-demo-${theme}`);
       themes.push({ theme, state, ...layout });
     }
     assert.notEqual(themes[0].state.background, themes[1].state.background);
     await app.reminder.evaluate('document.getElementById("btnEnd").click()');
-    await waitFor('结束内置 HTML 销毁 frame', async () => !(await inspector.frameInfo()));
-    report.checks.push({ name: '真实表单选定内置 HTML：脚本交互、无外部资源、计时独立、主题保留和结束销毁', themes });
+    await waitFor('结束导入的示范 HTML 销毁 frame', async () => !(await inspector.frameInfo()));
+    report.checks.push({ name: '本地副本配置导入的示范 HTML：脚本交互、无外部资源、计时独立、主题保留和结束销毁', themes });
     await app.settings.invoke('save_settings', { settings: previous });
     await app.settings.invoke('reset_timer');
-    report.builtinHtml.status = 'passed';
+    report.authoring.status = 'passed';
     return app;
   } finally {
     try { await inspector?.dispose(); } catch { /* 保留原生失败。 */ }

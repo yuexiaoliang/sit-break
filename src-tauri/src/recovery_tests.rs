@@ -91,7 +91,7 @@ fn expired_paused_progress_is_discarded_but_manual_pause_survives_lunch_afternoo
     configured.schedules[0].periods[0].overrides[0].content = None;
     configured.schedules[0].periods[0].overrides[0].guidance = Some(
         serde_json::from_value(serde_json::json!({
-            "kind":"video", "source":{"type":"builtin", "id":"squat-demo"}
+            "kind":"video", "source":{"type":"local","id":"local-00000000000000000000000000000001"}
         }))
         .unwrap(),
     );
@@ -193,7 +193,7 @@ fn damaged_guidance_in_saved_progress_does_not_restore_the_old_round_or_pause() 
     let mut configured = settings();
     configured.schedules[0].periods[0].overrides[0].guidance = Some(
         serde_json::from_value(serde_json::json!({
-            "kind":"video", "source":{"type":"builtin", "id":"squat-demo"}
+            "kind":"video", "source":{"type":"local","id":"local-00000000000000000000000000000001"}
         }))
         .unwrap(),
     );
@@ -237,7 +237,7 @@ fn restored_guidance_without_an_optional_text_field_keeps_its_pair_when_work_fin
     round.work_minutes = Some(1);
     round.guidance = Some(
         serde_json::from_value(serde_json::json!({
-            "kind":"video", "source":{"type":"builtin", "id":"squat-demo"}
+            "kind":"video", "source":{"type":"local","id":"local-00000000000000000000000000000001"}
         }))
         .unwrap(),
     );
@@ -398,7 +398,7 @@ fn restoring_an_already_started_break_keeps_latest_mode_selection_and_pending_re
         let mut configured = settings();
         configured.schedules[0].periods[0].overrides[0].guidance = Some(
             serde_json::from_value(serde_json::json!({
-                "kind":"video", "source":{"type":"builtin", "id":"squat-demo"}
+                "kind":"video", "source":{"type":"local","id":"local-00000000000000000000000000000001"}
             }))
             .unwrap(),
         );
@@ -471,9 +471,8 @@ fn restoring_an_already_started_break_keeps_latest_mode_selection_and_pending_re
 #[test]
 fn all_current_phases_restore_their_old_snapshot_and_future_rounds_use_saved_edits() {
     for guidance in [
-        serde_json::json!({"kind":"video", "source":{"type":"builtin", "id":"squat-demo"}}),
-        serde_json::json!({"kind":"video", "source":{"type":"online", "url":"https://example.com/exercise.mp4"}}),
-        serde_json::json!({"kind":"video", "source":{"type":"local", "id":"local-0123456789abcdef0123456789abcdef"}}),
+        serde_json::json!({"kind":"video", "source":{"type":"local","id":"local-00000000000000000000000000000001"}}),
+        serde_json::json!({"kind":"html", "source":{"type":"local", "id":"local-0123456789abcdef0123456789abcdef"}}),
     ] {
         for phase in [Mode::Work, Mode::Remind, Mode::Break] {
             for paused in [false, true] {

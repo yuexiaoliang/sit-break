@@ -67,8 +67,7 @@ fn preview_reads_unsaved_draft_periods_gaps_and_rounds_without_applying_it() {
 fn preview_distinguishes_guidance_only_rounds_from_random_reminders_without_selecting_them() {
     let app = TimerApp::new_at(arrangement(), fastrand::Rng::with_seed(42), at(8, 0));
     let mut draft = serde_json::to_value(app.settings()).unwrap();
-    let guidance =
-        serde_json::json!({"kind":"video","source":{"type":"builtin","id":"squat-demo"}});
+    let guidance = serde_json::json!({"kind":"video","source":{"type":"local","id":"local-00000000000000000000000000000001"}});
     draft["schedules"][0]["periods"][0]["overrides"] = serde_json::json!([
         {"round":1,"guidance":guidance},
         {"round":2}

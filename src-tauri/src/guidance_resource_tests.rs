@@ -24,9 +24,7 @@ fn imported_html_is_an_independent_readable_copy_and_never_a_video_protocol_page
         reopened.read(&next).unwrap().bytes,
         "<h1>更新后的内容</h1>".as_bytes()
     );
-    let crate::GuidanceSource::Local { id } = &guide.source else {
-        panic!()
-    };
+    let crate::GuidanceSource::Local { id } = &guide.source;
     assert_eq!(
         reopened
             .video_response(
@@ -49,10 +47,7 @@ fn imported_video_survives_source_deletion_and_resource_store_reopening() {
     std::fs::write(&source, expected).unwrap();
     let resources = GuidanceResources::open(dir.join("imports")).unwrap();
     let guidance = resources.import_video(&source).unwrap();
-    let id = match &guidance.source {
-        crate::GuidanceSource::Local { id } => id,
-        _ => panic!("import must return an opaque local reference"),
-    };
+    let crate::GuidanceSource::Local { id } = &guidance.source;
     assert!(!id.contains("自制"));
     std::fs::remove_file(&source).unwrap();
     drop(resources);
@@ -80,9 +75,7 @@ fn imported_video_does_not_grant_opaque_or_remote_pages_permission_to_read_the_c
     .unwrap();
     let resources = GuidanceResources::open(dir.join("imports")).unwrap();
     let guide = resources.import_video(&source).unwrap();
-    let crate::GuidanceSource::Local { id } = guide.source else {
-        unreachable!()
-    };
+    let crate::GuidanceSource::Local { id } = guide.source;
     for origin in ["null", "https://example.com"] {
         let response = resources.video_response(
             Request::get(format!("guidance://localhost/{id}"))
@@ -206,9 +199,7 @@ fn imported_video_supports_native_range_and_head_requests_without_a_path_read_es
     std::fs::write(&source, content).unwrap();
     let resources = GuidanceResources::open(dir.join("imports")).unwrap();
     let guidance = resources.import_video(&source).unwrap();
-    let crate::GuidanceSource::Local { id } = &guidance.source else {
-        panic!()
-    };
+    let crate::GuidanceSource::Local { id } = &guidance.source;
     let url = format!("http://guidance.localhost/{id}");
     for (range, expected) in [
         ("bytes=4-7", b"ftyp".as_slice()),

@@ -110,7 +110,7 @@ fn scheduled_timer(idle_reset: bool, hour: u32, minute: u32) -> TimerApp {
             "repeat":{"kind":"weekly","weekdays":[1,2,3,4,5,6,7]},
             "periods":[
                 {"id":"am","start":"09:00","end":"12:00","work_minutes":50,"break_minutes":10,
-                 "overrides":[{"round":1,"content":"爬楼","guidance":{"kind":"video","source":{"type":"builtin","id":"squat-demo"}}}]},
+                 "overrides":[{"round":1,"content":"爬楼","guidance":{"kind":"video","source":{"type":"local","id":"local-00000000000000000000000000000001"}}}]},
                 {"id":"pm","start":"13:30","end":"18:00","work_minutes":60,"break_minutes":5}
             ]
         }]))

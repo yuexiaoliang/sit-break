@@ -85,14 +85,13 @@ pub enum GuidanceKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum GuidanceSource {
-    Builtin { id: String },
-    Online { url: String },
     Local { id: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Guidance {
     pub kind: GuidanceKind,
     pub source: GuidanceSource,
@@ -100,58 +99,9 @@ pub struct Guidance {
 
 impl Guidance {
     pub fn is_valid(&self) -> bool {
-        match (&self.kind, &self.source) {
-            (GuidanceKind::Video, GuidanceSource::Builtin { id }) => id == "squat-demo",
-            (GuidanceKind::Html, GuidanceSource::Builtin { id }) => id == "stretch-demo",
-            (GuidanceKind::Video, GuidanceSource::Online { url }) => valid_guidance_url(url),
-            (GuidanceKind::Html, GuidanceSource::Online { url }) => {
-                guidance_webview::valid_online_document(url)
-            }
-            (_, GuidanceSource::Local { id }) => guidance_resources::valid_id(id),
-        }
+        let GuidanceSource::Local { id } = &self.source;
+        guidance_resources::valid_id(id)
     }
-}
-
-fn valid_guidance_url(value: &str) -> bool {
-    let lower = value.to_ascii_lowercase();
-    if !(lower.starts_with("http://") || lower.starts_with("https://"))
-        || value
-            .chars()
-            .any(|c| c.is_control() || c.is_whitespace() || c == '\\')
-    {
-        return false;
-    }
-    let bytes = value.as_bytes();
-    for (index, byte) in bytes.iter().enumerate() {
-        if *byte == b'%' {
-            let Some(pair) = bytes.get(index + 1..index + 3) else {
-                return false;
-            };
-            let Ok(pair) = std::str::from_utf8(pair) else {
-                return false;
-            };
-            let Ok(decoded) = u8::from_str_radix(pair, 16) else {
-                return false;
-            };
-            if decoded <= 0x1f || decoded == 0x7f {
-                return false;
-            }
-        }
-    }
-    tauri::Url::parse(value).is_ok_and(|url| {
-        matches!(url.scheme(), "http" | "https")
-            && url.host_str().is_some_and(|host| !host.is_empty())
-            && url.username().is_empty()
-            && url.password().is_none()
-            && !value
-                .split("://")
-                .nth(1)
-                .unwrap_or("")
-                .split(['/', '?', '#'])
-                .next()
-                .unwrap_or("")
-                .contains('@')
-    })
 }
 
 impl From<String> for ReminderEntry {
@@ -228,7 +178,52 @@ impl Settings {
     pub fn load_from(path: &std::path::Path) -> Self {
         std::fs::read_to_string(path)
             .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
+            .and_then(|text| {
+                let mut stored: serde_json::Value = serde_json::from_str(&text).ok()?;
+                // 开发测试版曾保存其他来源；只移除这些指引，保留文字、日程和偏好。
+                let remove_unsupported = |entry: &mut serde_json::Value| {
+                    if entry.get("guidance").is_some_and(|guide| {
+                        !guide.is_null() && guide["source"]["type"].as_str() != Some("local")
+                    }) {
+                        entry
+                            .as_object_mut()
+                            .map(|fields| fields.remove("guidance"));
+                        return true;
+                    }
+                    false
+                };
+                if let Some(tips) = stored.get_mut("tips").and_then(|tips| tips.as_array_mut()) {
+                    tips.retain_mut(|entry| {
+                        !remove_unsupported(entry)
+                            || entry["text"]
+                                .as_str()
+                                .is_some_and(|text| !text.trim().is_empty())
+                    });
+                }
+                if let Some(schedules) = stored
+                    .get_mut("schedules")
+                    .and_then(|schedules| schedules.as_array_mut())
+                {
+                    for schedule in schedules {
+                        if let Some(periods) = schedule
+                            .get_mut("periods")
+                            .and_then(|periods| periods.as_array_mut())
+                        {
+                            for period in periods {
+                                if let Some(overrides) = period
+                                    .get_mut("overrides")
+                                    .and_then(|overrides| overrides.as_array_mut())
+                                {
+                                    for adjustment in overrides {
+                                        remove_unsupported(adjustment);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                serde_json::from_value(stored).ok()
+            })
             .unwrap_or_default()
     }
 
@@ -784,53 +779,6 @@ fn apply_break(app: AppHandle, minutes: u32) {
 // ---------------- Tauri commands ----------------
 
 #[tauri::command]
-async fn open_guidance_url(url: String) -> Result<(), String> {
-    if !valid_guidance_url(&url) {
-        return Err("invalid guidance URL".into());
-    }
-    tauri::async_runtime::spawn_blocking(move || {
-        // 将 URL 作为一个原生参数传递；用户内容永远不进入命令解释器。
-        #[cfg(target_os = "macos")]
-        let result = std::process::Command::new("/usr/bin/open")
-            .arg("--")
-            .arg(&url)
-            .status()
-            .map_err(|error| error.to_string())?
-            .success();
-        #[cfg(windows)]
-        let result = {
-            use windows::core::{w, PCWSTR};
-            use windows::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
-            let wide: Vec<u16> = url.encode_utf16().chain(Some(0)).collect();
-            let instance = unsafe {
-                ShellExecuteW(
-                    None,
-                    w!("open"),
-                    PCWSTR(wide.as_ptr()),
-                    PCWSTR::null(),
-                    PCWSTR::null(),
-                    SW_SHOWNORMAL,
-                )
-            };
-            instance.0 as isize > 32
-        };
-        #[cfg(not(any(target_os = "macos", windows)))]
-        let result = std::process::Command::new("xdg-open")
-            .arg(&url)
-            .status()
-            .map_err(|error| error.to_string())?
-            .success();
-        if result {
-            Ok(())
-        } else {
-            Err("unable to open guidance URL".into())
-        }
-    })
-    .await
-    .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
 async fn import_guidance_video(app: AppHandle) -> Result<Option<Guidance>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let resources = app.state::<GuidanceResourceState>();
@@ -898,9 +846,6 @@ async fn read_guidance_html(
     tauri::async_runtime::spawn_blocking(move || {
         app.state::<guidance_webview::GuidanceIsolation>()
             .wait_until_ready(&session)?;
-        if matches!(&guidance.source, GuidanceSource::Builtin { id } if id == "stretch-demo") {
-            return Ok(include_str!("../../src/assets/guidance/stretch-demo.html").to_owned());
-        }
         let resources = app.state::<GuidanceResourceState>();
         let content = resources
             .0
@@ -963,49 +908,6 @@ async fn save_guidance_authoring_file(
 }
 
 #[tauri::command]
-async fn prepare_online_guidance(
-    app: AppHandle,
-    guidance: Guidance,
-    session: String,
-) -> Result<(), String> {
-    let GuidanceSource::Online { ref url } = guidance.source else {
-        return Err("html-isolation-unavailable".into());
-    };
-    if guidance.kind != GuidanceKind::Html || !guidance_webview::valid_online_document(url) {
-        return Err("html-isolation-unavailable".into());
-    }
-    let info = app.state::<Mutex<TimerApp>>().lock().unwrap().info();
-    if info.mode != Mode::Break || info.guidance.as_ref() != Some(&guidance) {
-        return Err("html-isolation-unavailable".into());
-    }
-    tauri::async_runtime::spawn_blocking(move || {
-        let GuidanceSource::Online { url } = guidance.source else {
-            unreachable!()
-        };
-        app.state::<guidance_webview::GuidanceIsolation>()
-            .prepare_online(&session, &url)
-    })
-    .await
-    .map_err(|_| "html-isolation-unavailable".to_string())?
-}
-
-#[tauri::command]
-fn confirm_online_guidance(
-    app: AppHandle,
-    session: String,
-    document_url: String,
-) -> Result<(), String> {
-    app.state::<guidance_webview::GuidanceIsolation>()
-        .confirm_online(&session, &document_url)
-}
-
-#[tauri::command]
-fn release_guidance_html(app: AppHandle, session: String) {
-    app.state::<guidance_webview::GuidanceIsolation>()
-        .release(&session);
-}
-
-#[tauri::command]
 fn get_platform() -> &'static str {
     std::env::consts::OS
 }
@@ -1044,7 +946,8 @@ fn save_settings(app: AppHandle, settings: Settings) -> Result<(), serde_json::V
         return Err(json!({ "kind": "validation", "errors": errors }));
     }
     if guidance_resources::settings_guidance(&settings)
-        .any(|guidance| matches!(guidance.source, GuidanceSource::Local { .. }))
+        .next()
+        .is_some()
     {
         let state = app.state::<GuidanceResourceState>();
         let resources = state.0.as_ref().ok_or_else(|| json!({"kind":"resource"}))?;
@@ -1296,13 +1199,9 @@ pub fn run() {
         ))
         .invoke_handler(tauri::generate_handler![
             get_platform,
-            open_guidance_url,
             import_guidance_video,
             import_guidance_html,
             read_guidance_html,
-            prepare_online_guidance,
-            confirm_online_guidance,
-            release_guidance_html,
             save_guidance_authoring_file,
             get_settings,
             timer_info,

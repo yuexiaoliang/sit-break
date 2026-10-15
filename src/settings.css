@@ -85,7 +85,6 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .reminder-entry textarea { display: block; width: 100%; min-height: 60px; margin-top: 5px; padding: 7px 10px; font-size: 13px; line-height: 20px; resize: vertical; }
 .guidance-picker { display: flex; flex-direction: column; gap: 7px; margin-top: 9px; font-size: 12px; }
 .guidance-picker > label { display: flex; align-items: center; gap: 12px; }
-.guidance-url { width: 100%; min-width: 0; padding: 7px; border: 1px solid var(--border); border-radius: 7px; font: inherit; background: var(--field); color: inherit; }
 .guidance-hint { margin: 0; line-height: 1.45; color: var(--muted); }
 .guidance-authoring-trigger { align-self: start; color: var(--green-ink); padding-left: 0; }
 .guidance-authoring { width: min(510px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 40px); margin: auto; padding: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--ink); overflow: hidden; }
