@@ -17,6 +17,7 @@ mod editing_tests;
 #[cfg(test)]
 mod guidance_resource_tests;
 pub mod guidance_resources;
+mod guidance_webview;
 mod platform;
 mod power;
 pub mod preview;
@@ -80,6 +81,7 @@ pub struct ReminderEntry {
 #[serde(rename_all = "lowercase")]
 pub enum GuidanceKind {
     Video,
+    Html,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,7 +103,8 @@ impl Guidance {
         match (&self.kind, &self.source) {
             (GuidanceKind::Video, GuidanceSource::Builtin { id }) => id == "squat-demo",
             (GuidanceKind::Video, GuidanceSource::Online { url }) => valid_guidance_url(url),
-            (GuidanceKind::Video, GuidanceSource::Local { id }) => guidance_resources::valid_id(id),
+            (_, GuidanceSource::Local { id }) => guidance_resources::valid_id(id),
+            (GuidanceKind::Html, _) => false,
         }
     }
 }
@@ -853,6 +856,58 @@ async fn import_guidance_video(app: AppHandle) -> Result<Option<Guidance>, Strin
 }
 
 #[tauri::command]
+async fn import_guidance_html(app: AppHandle) -> Result<Option<Guidance>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resources = app.state::<GuidanceResourceState>();
+        let resources = resources.0.as_ref().ok_or("resource-unavailable")?;
+        let title = if is_zh(app.state::<Mutex<TimerApp>>().lock().unwrap().settings()) {
+            "导入单文件 HTML"
+        } else {
+            "Import single-file HTML"
+        };
+        let mut dialog = app
+            .dialog()
+            .file()
+            .set_title(title)
+            .add_filter("HTML", &["html", "htm"]);
+        if let Some(window) = app.get_webview_window("settings") {
+            dialog = dialog.set_parent(&window);
+        }
+        let Some(file) = dialog.blocking_pick_file() else {
+            return Ok(None);
+        };
+        let path = file.into_path().map_err(|_| "import-failed")?;
+        resources.import_html(&path).map(Some)
+    })
+    .await
+    .map_err(|_| "import-failed".to_string())?
+}
+
+#[tauri::command]
+async fn read_guidance_html(
+    app: AppHandle,
+    guidance: Guidance,
+    session: String,
+) -> Result<String, String> {
+    if guidance.kind != GuidanceKind::Html || !guidance.is_valid() {
+        return Err("resource-unavailable".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<guidance_webview::GuidanceIsolation>()
+            .wait_until_ready(&session)?;
+        let resources = app.state::<GuidanceResourceState>();
+        let content = resources
+            .0
+            .as_ref()
+            .ok_or("resource-unavailable")?
+            .read(&guidance)?;
+        String::from_utf8(content.bytes).map_err(|_| "resource-unavailable".into())
+    })
+    .await
+    .map_err(|_| "resource-unavailable".to_string())?
+}
+
+#[tauri::command]
 fn get_platform() -> &'static str {
     std::env::consts::OS
 }
@@ -1115,6 +1170,8 @@ pub fn run() {
             get_platform,
             open_guidance_url,
             import_guidance_video,
+            import_guidance_html,
+            read_guidance_html,
             get_settings,
             timer_info,
             preview_schedule,
@@ -1153,6 +1210,7 @@ pub fn run() {
                 }
             }
             handle.manage(GuidanceResourceState(resources));
+            handle.manage(guidance_webview::GuidanceIsolation::default());
             handle.manage(Mutex::new(timer));
 
             // ---- 窗口（在 manage 之后创建，页面加载时状态已就绪）----
@@ -1179,11 +1237,14 @@ pub fn run() {
             .focused(false)
             .build()?;
             let zh = is_zh(&settings);
-            let reminder = native_check_window(WebviewWindowBuilder::new(
+            let reminder = guidance_webview::builder(
+                native_check_window(WebviewWindowBuilder::new(
+                    &handle,
+                    "reminder",
+                    WebviewUrl::App("reminder.html".into()),
+                )),
                 &handle,
-                "reminder",
-                WebviewUrl::App("reminder.html".into()),
-            ))
+            )
             .title(if zh {
                 "Sit Break 提醒"
             } else {
@@ -1201,6 +1262,7 @@ pub fn run() {
             .resizable(false)
             .focused(false)
             .build()?;
+            guidance_webview::install_frame_hooks(&reminder)?;
             let settings_win = native_check_window(WebviewWindowBuilder::new(
                 &handle,
                 "settings",

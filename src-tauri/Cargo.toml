@@ -41,6 +41,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
 block2 = { version = "0.6", default-features = false, features = ["std"] }
 
 [target."cfg(windows)".dependencies]
+webview2-com = "=0.38.2"
+windows-core-61 = { package = "windows-core", version = "0.61" }
 winreg = "0.10"
 windows = { version = "0.62", features = [
     "Win32_System_SystemInformation",
