@@ -376,6 +376,50 @@ fn online_html_only_reminder_is_saved_reopened_and_kept_when_its_address_is_repl
 }
 
 #[test]
+fn builtin_html_can_be_selected_for_a_reminder_and_a_scheduled_round_after_reopening() {
+    let path =
+        std::env::temp_dir().join(format!("sit-break-builtin-html-{}.json", fastrand::u64(..)));
+    let guide = serde_json::json!({"kind":"html", "source":{"type":"builtin","id":"stretch-demo"}});
+    let mut app = simple_timer();
+    let mut draft = serde_json::to_value(app.settings()).unwrap();
+    draft["tips"] = serde_json::json!([{"id":"builtin-html-entry","text":"","guidance":guide}]);
+    let saved = app.dispatch(
+        Action::SaveSettings(serde_json::from_value(draft).unwrap()),
+        Duration::ZERO,
+    );
+    assert!(saved.validation_errors.is_empty());
+    saved.persist_settings.unwrap().save_to(&path).unwrap();
+    let mut reopened = TimerApp::load_from(&path, fastrand::Rng::with_seed(1));
+    reopened.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        Duration::from_secs(60),
+    );
+    reopened.dispatch(Action::StartBreak, Duration::from_secs(60));
+    assert_eq!(reopened.info().tip.as_deref(), Some(""));
+    assert_eq!(
+        serde_json::to_value(reopened.info()).unwrap()["guidance"],
+        guide
+    );
+
+    let mut scheduled = serde_json::to_value(scheduled_settings("12:00")).unwrap();
+    scheduled["schedules"][0]["periods"][0]["overrides"] =
+        serde_json::json!([{"round":1,"guidance":guide}]);
+    let configured: Settings = serde_json::from_value(scheduled).unwrap();
+    configured.save_to(&path).unwrap();
+    let app = TimerApp::new_at(
+        Settings::load_from(&path),
+        fastrand::Rng::with_seed(1),
+        at(9, 0),
+    );
+    assert_eq!(serde_json::to_value(app.info()).unwrap()["guidance"], guide);
+    assert!(app.info().tip.as_deref().unwrap_or_default().is_empty());
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn html_only_reminder_keeps_its_guide_after_save_reopen_and_starting_a_break() {
     let path = std::env::temp_dir().join(format!("sit-break-html-{}.json", fastrand::u64(..)));
     let mut draft = serde_json::to_value(Settings::default()).unwrap();

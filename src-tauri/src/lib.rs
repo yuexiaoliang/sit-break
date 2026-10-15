@@ -102,12 +102,12 @@ impl Guidance {
     pub fn is_valid(&self) -> bool {
         match (&self.kind, &self.source) {
             (GuidanceKind::Video, GuidanceSource::Builtin { id }) => id == "squat-demo",
+            (GuidanceKind::Html, GuidanceSource::Builtin { id }) => id == "stretch-demo",
             (GuidanceKind::Video, GuidanceSource::Online { url }) => valid_guidance_url(url),
             (GuidanceKind::Html, GuidanceSource::Online { url }) => {
                 guidance_webview::valid_online_document(url)
             }
             (_, GuidanceSource::Local { id }) => guidance_resources::valid_id(id),
-            (GuidanceKind::Html, _) => false,
         }
     }
 }
@@ -898,6 +898,9 @@ async fn read_guidance_html(
     tauri::async_runtime::spawn_blocking(move || {
         app.state::<guidance_webview::GuidanceIsolation>()
             .wait_until_ready(&session)?;
+        if matches!(&guidance.source, GuidanceSource::Builtin { id } if id == "stretch-demo") {
+            return Ok(include_str!("../../src/assets/guidance/stretch-demo.html").to_owned());
+        }
         let resources = app.state::<GuidanceResourceState>();
         let content = resources
             .0
@@ -908,6 +911,55 @@ async fn read_guidance_html(
     })
     .await
     .map_err(|_| "resource-unavailable".to_string())?
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum GuidanceAuthoringFile {
+    Demo,
+    Template,
+}
+
+/// 只能导出随包的固定作者材料，目标路径由原生保存对话框取得。
+#[tauri::command]
+async fn save_guidance_authoring_file(
+    app: AppHandle,
+    material: GuidanceAuthoringFile,
+) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (name, content) = match material {
+            GuidanceAuthoringFile::Demo => (
+                "sit-break-demo.html",
+                include_str!("../../src/assets/guidance/stretch-demo.html"),
+            ),
+            GuidanceAuthoringFile::Template => (
+                "sit-break-template.html",
+                include_str!("../../src/assets/guidance/guidance-template.html"),
+            ),
+        };
+        let title = if is_zh(app.state::<Mutex<TimerApp>>().lock().unwrap().settings()) {
+            "保存 HTML 制作材料"
+        } else {
+            "Save HTML authoring file"
+        };
+        let mut dialog = app
+            .dialog()
+            .file()
+            .set_title(title)
+            .set_file_name(name)
+            .add_filter("HTML", &["html"]);
+        if let Some(window) = app.get_webview_window("settings") {
+            dialog = dialog.set_parent(&window);
+        }
+        let Some(file) = dialog.blocking_save_file() else {
+            return Ok(false);
+        };
+        let path = file.into_path().map_err(|_| "export-failed")?;
+        std::fs::write(path, content).map_err(|_| "export-failed".to_string())?;
+        Ok(true)
+    })
+    .await
+    .map_err(|_| "export-failed".to_string())?
 }
 
 #[tauri::command]
@@ -1251,6 +1303,7 @@ pub fn run() {
             prepare_online_guidance,
             confirm_online_guidance,
             release_guidance_html,
+            save_guidance_authoring_file,
             get_settings,
             timer_info,
             preview_schedule,
