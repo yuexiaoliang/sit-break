@@ -175,11 +175,20 @@ async function inspectLayout(connection, buttonId, checkText = true) {
     return { width:innerWidth, height:innerHeight, ratio:devicePixelRatio,
       dark:matchMedia('(prefers-color-scheme: dark)').matches,
       background:getComputedStyle(document.documentElement).getPropertyValue('--sb-background').trim(),
-      controls:ids.map((id) => { const e = document.getElementById(id); return { id, visible:!!e && !!e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden', ...(e ? rect(e) : {}) }; }) };
+      controls:ids.map((id) => {
+        const e = document.getElementById(id);
+        // 长文字本身允许超出可见高度；检查它的滚动视口及实际可滚动性。
+        const viewport = id === 'tipText' ? e?.parentElement : e;
+        return { id, visible:!!viewport && !!viewport.getClientRects().length && getComputedStyle(viewport).visibility !== 'hidden',
+          ...(viewport ? {...rect(viewport),scrollHeight:viewport.scrollHeight,clientHeight:viewport.clientHeight,overflowY:getComputedStyle(viewport).overflowY} : {}) };
+      }) };
   })()`);
   for (const element of layout.controls) {
     assert.ok(element.visible && element.width > 0 && element.height > 0, `${element.id} 必须在真实页面可见`);
     assert.ok(element.x >= 0 && element.y >= 0 && element.right <= layout.width + 1 && element.bottom <= layout.height + 1, `${element.id} 不能被内容挤出视口`);
+    if (element.id === 'tipText' && element.scrollHeight > element.clientHeight) {
+      assert.ok(['auto', 'scroll'].includes(element.overflowY), '长提醒文字必须能在可见区域内滚动阅读');
+    }
   }
   const native = await powershell();
   const window = native.windows.find((item) => item.visible && /Reminder|提醒/.test(item.title));
