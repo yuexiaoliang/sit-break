@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>原生 HTML 能力隔离样例</title>
+<style>
+body { margin:12px; font:12px/1.5 system-ui; color:#1f2a24; background:#fff; }
+button { padding:7px; font:inherit; }
+pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+</style>
+<button id="run-attacks" type="button">运行能力隔离检查</button>
+<output id="attack-status">idle</output><pre id="results">{}</pre>
+<script>
+const results = {};
+const record = (name, value) => { results[name] = value; document.getElementById('results').textContent = JSON.stringify(results); };
+const attempt = async (name, action) => {
+  try { record(name, await action()); } catch(error) { record(name, { error:error.name }); }
+};
+document.getElementById('run-attacks').addEventListener('click', async () => {
+  document.getElementById('attack-status').textContent = 'running';
+  await attempt('parentDom', () => parent.document.documentElement.tagName);
+  await attempt('parentNativeCommand', () => parent.__TAURI_INTERNALS__.invoke('end_break'));
+  await attempt('ownNativeCommand', async () => {
+    if (typeof window.__TAURI_INTERNALS__?.invoke !== 'function') return 'unavailable';
+    return Promise.race([
+      window.__TAURI_INTERNALS__.invoke('end_break').then(() => 'resolved'),
+      new Promise((done) => setTimeout(() => done('pending'), 800)),
+    ]);
+  });
+  for (const [name, url] of [
+    ['fetchIpc', 'http://ipc.localhost/end_break'],
+    ['fetchFile', 'file:///C:/Windows/win.ini'],
+    ['fetchAsset', 'http://asset.localhost/C%3A%5CWindows%5Cwin.ini'],
+  ]) await attempt(name, async () => {
+    const response = await fetch(url);
+    return { ok:response.ok, status:response.status };
+  });
+  await attempt('nestedFrame', () => {
+    const frame = document.createElement('iframe'); frame.id = 'nested-attempt';
+    frame.src = '__FIXTURE_BASE_URL__/nested-attempt'; document.body.append(frame); return 'inserted';
+  });
+  await attempt('topNavigation', () => { top.location.href = 'about:blank#sandbox-escape'; return 'attempted'; });
+  await attempt('topLink', () => {
+    const link = document.createElement('a'); link.href = 'about:blank#sandbox-link'; link.target = '_top';
+    link.textContent = '隔离链接'; document.body.append(link); link.click(); return 'attempted';
+  });
+  await attempt('popupFile', () => window.open('file:///C:/Windows/win.ini') === null ? 'blocked' : 'opened');
+  parent.postMessage({ source:'sit-break-guidance', session:window.name, type:'invoke', command:'end_break' }, '*');
+  document.getElementById('attack-status').textContent = 'done';
+});
+</script>
+</html>

@@ -55,8 +55,10 @@ class CDP {
     this.socket = socket;
     this.nextId = 1;
     this.pending = new Map();
+    this.listeners = new Map();
     socket.addEventListener('message', ({ data }) => {
       const message = JSON.parse(data);
+      for (const listener of this.listeners.get(message.method) ?? []) listener(message.params, message.sessionId);
       const request = this.pending.get(message.id);
       if (!request) return;
       clearTimeout(request.timer);
@@ -83,12 +85,17 @@ class CDP {
     connections.push(connection);
     return connection;
   }
-  call(method, params = {}) {
+  on(method, listener) {
+    if (!this.listeners.has(method)) this.listeners.set(method, new Set());
+    this.listeners.get(method).add(listener);
+    return () => this.listeners.get(method)?.delete(listener);
+  }
+  call(method, params = {}, sessionId) {
     const id = this.nextId++;
     return new Promise((resolveRequest, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`CDP ${method} 超时`)); }, 10_000);
       this.pending.set(id, { resolve: resolveRequest, reject, timer });
-      this.socket.send(JSON.stringify({ id, method, params }));
+      this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   }
   async evaluate(expression) {

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>原生 HTML 交互样例</title>
+<style>
+:root { color-scheme:light dark; --sb-background:#fff; --sb-text:#1f2a24; --sb-surface:#f0f8f4; --sb-accent:#1d7a56; }
+@media(prefers-color-scheme:dark) { :root { --sb-background:#181d1b; --sb-text:#eef4f0; --sb-surface:#202b25; --sb-accent:#4fe0a8; } }
+* { box-sizing:border-box; }
+body { margin:0; padding:12px; background:var(--sb-background); color:var(--sb-text); font:14px/1.5 system-ui; }
+h1 { margin:0 0 8px; font-size:17px; }
+button { padding:7px 12px; border:1px solid var(--sb-accent); border-radius:8px; background:var(--sb-surface); color:inherit; font:inherit; }
+#motion { width:12px; height:12px; margin:10px 0; border-radius:50%; background:var(--sb-accent); animation:move 1s linear infinite alternate; }
+@keyframes move { to { transform:translateX(24px); } }
+#scroll-content { height:110px; overflow:auto; border:1px solid var(--sb-accent); padding:8px; border-radius:8px; }
+#scroll-content p { margin:0 0 18px; }
+.images { display:flex; gap:8px; margin:10px 0; }
+.images img { width:18px; height:18px; }
+</style>
+<h1>小浮窗 HTML 交互验证</h1>
+<button id="increment" type="button">记录一次伸展</button> <output id="count">0</output>
+<div id="motion" aria-label="循环动画"></div>
+<div class="images">
+  <img id="embedded-image" alt="内嵌图片" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18'%3E%3Crect width='18' height='18' fill='%231d7a56'/%3E%3C/svg%3E">
+  <img id="online-image" alt="在线图片" src="__FIXTURE_BASE_URL__/pixel.svg">
+</div>
+<div id="scroll-content" tabindex="0">
+  <p>这是单文件 HTML 中的第一段。</p><p>内容可以在自己的区域内滚动。</p>
+  <p>倒计时和结束按钮由外部浮窗保留。</p><p>这一段用于检查长内容。</p>
+  <p>切换主题应保留按钮记录和滚动位置。</p><p id="last-line">最后一段仍位于内容区域。</p>
+</div>
+<script>
+document.getElementById('increment').addEventListener('click', () => {
+  const count = document.getElementById('count');
+  count.textContent = String(Number(count.textContent) + 1);
+});
+document.documentElement.dataset.ready = 'true';
+</script>
+</html>
