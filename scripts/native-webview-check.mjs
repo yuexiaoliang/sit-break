@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { checkOnlineVideo } from './native-online-video-check.mjs';
 import { checkLocalVideo } from './native-local-video-check.mjs';
 import { checkHtml } from './native-html-check.mjs';
+import { checkBuiltinHtml } from './native-builtin-html-check.mjs';
 
 const usage = 'node scripts/native-webview-check.mjs <debug-exe> <output-directory>';
 if (process.argv.includes('--help')) {
@@ -24,7 +25,7 @@ const dataDirectory = join(process.env.APPDATA, identifier);
 const nativeProbe = fileURLToPath(new URL('./native-window.ps1', import.meta.url));
 const runFile = promisify(execFile);
 const delay = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
-const report = { startedAt: new Date().toISOString(), executable, identifier, runs: [], checks: [], video: { status: 'not_started' }, onlineVideo: { status: 'not_started' }, localVideo: { status: 'not_started', fixtureMode: 'preimported-copy' }, html: { status: 'not_started', fixtureMode: 'preimported-copy' }, notCovered: ['Windows 原生文件选择器、导入命令及导入 UI 尚未执行；本地场景只使用明确的已导入副本 fixture', '系统浏览器实际打开仍需单独验收；脚本只检查打开入口和非法 scheme 拒绝'] };
+const report = { startedAt: new Date().toISOString(), executable, identifier, runs: [], checks: [], video: { status: 'not_started' }, onlineVideo: { status: 'not_started' }, localVideo: { status: 'not_started', fixtureMode: 'preimported-copy' }, html: { status: 'not_started', fixtureMode: 'preimported-copy' }, builtinHtml: { status: 'not_started' }, notCovered: ['Windows 原生文件选择器、导入命令及导入 UI 尚未执行；本地场景只使用明确的已导入副本 fixture', '系统浏览器实际打开仍需单独验收；脚本只检查打开入口和非法 scheme 拒绝', '作者材料实际导出和系统剪贴板写入尚未执行'] };
 const connections = [];
 let application;
 let originalTheme;
@@ -389,6 +390,8 @@ try {
   app = await checkLocalVideo({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, videoSample, delay, onApp: (next) => { app = next; } });
   app = await checkHtml({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, delay,
     setTheme: (value) => powershell('Theme', value), onApp: (next) => { app = next; } });
+  app = await checkBuiltinHtml({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, delay,
+    setTheme: (value) => powershell('Theme', value), onApp: (next) => { app = next; } });
   report.status = 'passed';
 } catch (error) {
   report.status = 'failed';
@@ -396,6 +399,7 @@ try {
   if (report.onlineVideo.status === 'running') report.onlineVideo.status = 'failed';
   if (report.localVideo.status === 'running') report.localVideo.status = 'failed';
   if (report.html.status === 'running') report.html.status = 'failed';
+  if (report.builtinHtml.status === 'running') report.builtinHtml.status = 'failed';
   report.error = error.stack;
   for (const connection of connections) {
     try { if (connection.socket.readyState === WebSocket.OPEN) await connection.screenshot(`failure-${connection.label}`); }
