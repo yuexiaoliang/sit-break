@@ -86,7 +86,8 @@ export async function checkOnlineHtml(context) {
     app = await restartWorkForBreak(context);
     inspector = await createFrameInspector(app.reminder);
     assert.deepEqual((await app.reminder.invoke('timer_info')).guidance, guideFor(url));
-    assert.equal((await app.reminder.invoke('timer_info')).tip, null);
+    assert.equal((await app.reminder.invoke('timer_info')).tip, '');
+    assert.ok(await app.reminder.evaluate('document.getElementById("stretchText").hidden'), '仅在线网页不补通用休息文字');
     assert.equal(await app.reminder.evaluate('document.querySelector("iframe.guidance-frame").getAttribute("sandbox")'), 'allow-scripts');
   }
   async function end() {
