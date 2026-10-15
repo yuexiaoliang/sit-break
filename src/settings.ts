@@ -19,6 +19,7 @@ interface RoundDraft {
   work_minutes?: number;
   break_minutes?: number;
   content?: string;
+  guidance?: Guidance | null;
 }
 
 interface ValidationError {
@@ -252,6 +253,12 @@ function renderRoundAdjustments(period: PeriodDraft, periodCard: HTMLElement) {
       if (content.value === "") delete adjustment.content;
       else adjustment.content = content.value;
     });
+    const picker = guidancePicker(adjustment.guidance, S, (value) => {
+      if (value) adjustment.guidance = value;
+      else delete adjustment.guidance;
+    });
+    picker.querySelector("select")!.dataset.field = `overrides.${index}.guidance`;
+    row.append(picker);
     row.querySelector<HTMLButtonElement>(".remove-adjustment")!.addEventListener("click", () => {
       overrides.splice(index, 1);
       if (details.open) expandedAdjustments.add(period.id);

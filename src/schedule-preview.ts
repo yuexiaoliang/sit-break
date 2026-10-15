@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { fmt } from "./i18n";
 import type { TimerState } from "./timer-state";
+import type { Guidance } from "./guidance";
 
 interface PreviewRound {
   number: number;
@@ -11,6 +12,7 @@ interface PreviewRound {
   work_seconds: number;
   break_seconds: number;
   content: string | null;
+  guidance: Guidance | null;
 }
 interface PreviewData {
   local_date: string;
@@ -62,7 +64,9 @@ export function initSchedulePreview(getDraft: () => unknown, getStrings: () => R
         : current.break_start === null ? S.previewNoBreakBeforeEnd : fmt(S.previewBreakTimes, { start: clock(current.break_start), end: clock(current.break_end) });
       active.append(element("p", times, "preview-time"));
       if (current.state.mode === "remind") active.append(element("p", S.previewWaiting, "muted"));
-      active.append(element("p", current.state.tip ?? S.previewRandomTip, "preview-content-text"));
+      if (current.state.tip) active.append(element("p", current.state.tip, "preview-content-text"));
+      if (current.state.guidance) active.append(element("p", S.guidance, "muted"));
+      if (!current.state.tip && !current.state.guidance) active.append(element("p", S.previewRandomTip, "preview-content-text"));
       content.append(active);
     }
     if (!data.schedules.length) content.append(element("p", S.emptySchedulesDescription, "preview-empty"));
@@ -92,7 +96,9 @@ export function initSchedulePreview(getDraft: () => unknown, getStrings: () => R
           row.append(element("h5", fmt(S.roundNumber, { n: round.number })));
           row.append(element("p", `${S.previewWorkStarts} ${clock(round.work_start)} · ${rhythm(round.work_seconds, round.break_seconds)}`, "muted"));
           row.append(element("p", round.break_start === null ? S.previewNoBreakBeforeEnd : fmt(S.previewBreakTimes, { start: clock(round.break_start), end: clock(round.break_end) }), "preview-time"));
-          row.append(element("p", round.content ?? S.previewRandomTip, "preview-content-text"));
+          if (round.content) row.append(element("p", round.content, "preview-content-text"));
+          if (round.guidance) row.append(element("p", S.guidance, "muted"));
+          if (!round.content && !round.guidance) row.append(element("p", S.previewRandomTip, "preview-content-text"));
           card.append(row);
         }
         section.append(card);

@@ -509,46 +509,7 @@ impl TimerApp {
                             if self.info.remaining == 0 {
                                 self.info.mode = Mode::Remind;
                                 if !self.settings.use_schedule || self.info.tip.is_none() {
-                                    let entries: Vec<_> = self
-                                        .settings
-                                        .tips
-                                        .iter()
-                                        .filter(|entry| {
-                                            !entry.text.trim().is_empty()
-                                                || entry.guidance.is_some()
-                                        })
-                                        .collect();
-                                    if entries.is_empty() {
-                                        let tip = choose_tip(
-                                            &self.settings,
-                                            self.previous_tip.as_deref(),
-                                            &mut self.tip_rng,
-                                        );
-                                        self.previous_tip = Some(tip.clone());
-                                        self.info.tip = Some(tip);
-                                        self.info.guidance = None;
-                                    } else {
-                                        let alternatives: Vec<_> = entries
-                                            .iter()
-                                            .copied()
-                                            .filter(|entry| {
-                                                Some(entry.text.as_str())
-                                                    != self.previous_tip.as_deref()
-                                                    || entry.guidance != self.previous_guidance
-                                            })
-                                            .collect();
-                                        let candidates = if alternatives.is_empty() {
-                                            &entries
-                                        } else {
-                                            &alternatives
-                                        };
-                                        let entry =
-                                            candidates[self.tip_rng.usize(..candidates.len())];
-                                        self.previous_tip = Some(entry.text.clone());
-                                        self.info.tip = Some(entry.text.clone());
-                                        self.info.guidance = entry.guidance.clone();
-                                    }
-                                    self.previous_guidance = self.info.guidance.clone();
+                                    self.select_reminder_entry();
                                 }
                                 output.events.push(TimerEvent::Reminder(ReminderPayload {
                                     break_seconds: self.info.break_seconds,
@@ -828,23 +789,57 @@ impl TimerApp {
         self.info.work_seconds = definition.work_seconds;
         self.info.break_seconds = definition.break_seconds;
         self.info.remaining = self.info.work_seconds;
-        let tip = definition.content.unwrap_or_else(|| {
-            choose_tip(
-                &self.settings,
-                self.previous_tip.as_deref(),
-                &mut self.tip_rng,
-            )
-        });
-        self.previous_tip = Some(tip.clone());
-        self.previous_guidance = None;
-        self.info.tip = Some(tip);
-        self.info.guidance = None;
+        if definition.content.is_some() || definition.guidance.is_some() {
+            let tip = definition.content.unwrap_or_default();
+            self.previous_tip = Some(tip.clone());
+            self.previous_guidance = definition.guidance.clone();
+            self.info.tip = Some(tip);
+            self.info.guidance = definition.guidance;
+        } else {
+            self.select_reminder_entry();
+        }
         self.info.round = Some(RoundInfo {
             schedule_id: schedule.id.clone(),
             period_id: period.id.clone(),
             date: date.into(),
             number,
         });
+    }
+
+    fn select_reminder_entry(&mut self) {
+        let entries: Vec<_> = self
+            .settings
+            .tips
+            .iter()
+            .filter(|entry| !entry.text.trim().is_empty() || entry.guidance.is_some())
+            .collect();
+        if entries.is_empty() {
+            self.info.tip = Some(choose_tip(
+                &self.settings,
+                self.previous_tip.as_deref(),
+                &mut self.tip_rng,
+            ));
+            self.info.guidance = None;
+        } else {
+            let alternatives: Vec<_> = entries
+                .iter()
+                .copied()
+                .filter(|entry| {
+                    Some(entry.text.as_str()) != self.previous_tip.as_deref()
+                        || entry.guidance != self.previous_guidance
+                })
+                .collect();
+            let candidates = if alternatives.is_empty() {
+                &entries
+            } else {
+                &alternatives
+            };
+            let entry = candidates[self.tip_rng.usize(..candidates.len())];
+            self.info.tip = Some(entry.text.clone());
+            self.info.guidance = entry.guidance.clone();
+        }
+        self.previous_tip = self.info.tip.clone();
+        self.previous_guidance = self.info.guidance.clone();
     }
 
     fn set_idle(&mut self) {
