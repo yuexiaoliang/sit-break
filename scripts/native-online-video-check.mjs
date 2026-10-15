@@ -46,7 +46,7 @@ export async function checkOnlineVideo(context) {
   try {
     async function startRest() {
       const settings = await app.settings.invoke('get_settings');
-      await app.settings.invoke('save_settings', { settings: { ...settings, language: 'en', idle_reset: false, sound: false, use_schedule: true,
+      await app.settings.invoke('save_settings', { settings: { ...settings, language: 'en', idle_reset: false, sound: false, use_schedule: false,
         tips: [{ id: 'native-online-video', text: 'Online video native check', guidance: { kind: 'video', source: { type: 'builtin', id: 'squat-demo' } } }],
         schedules: [{ id: 'native-online-schedule', name: '在线视频原生验收', enabled: true,
           repeat: { kind: 'weekly', weekdays: [1, 2, 3, 4, 5, 6, 7] },
@@ -70,6 +70,8 @@ export async function checkOnlineVideo(context) {
       assert.equal(await app.settings.evaluate('document.querySelector(".reminder-entry .guidance-picker input[type=url]").checkValidity()'), false);
       assert.deepEqual(await app.settings.invoke('get_settings'), valid, '无效草稿不能替换已保存地址');
       await app.settings.invoke('hide_settings');
+      // 在配置完成后启动新日程，避免运行中编辑按约定保留先前的内置指引。
+      await app.settings.invoke('save_settings', { settings: { ...valid, use_schedule: true } });
       await app.settings.invoke('reset_timer');
       await quit(app.settings);
       const path = join(dataDirectory, 'progress.json');
