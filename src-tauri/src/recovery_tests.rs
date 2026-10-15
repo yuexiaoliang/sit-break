@@ -470,101 +470,104 @@ fn restoring_an_already_started_break_keeps_latest_mode_selection_and_pending_re
 
 #[test]
 fn all_current_phases_restore_their_old_snapshot_and_future_rounds_use_saved_edits() {
-    for phase in [Mode::Work, Mode::Remind, Mode::Break] {
-        for paused in [false, true] {
-            let (settings_path, progress_path, dir) = paths();
-            let mut configured = settings();
-            configured.schedules[0].periods[0].overrides[0].content = None;
-            let guidance = serde_json::from_value(serde_json::json!({
-                "kind":"video", "source":{"type":"builtin", "id":"squat-demo"}
-            }))
-            .unwrap();
-            configured.schedules[0].periods[0].overrides[0].guidance = Some(guidance);
-            let mut app = TimerApp::new_at(configured, fastrand::Rng::with_seed(42), time(9, 0, 0));
-            app.dispatch(
-                Action::Tick {
-                    elapsed_secs: if phase == Mode::Work { 60 } else { 3000 },
-                    idle_secs: 0,
-                },
-                time(9, 50, 3000),
-            );
-            if phase == Mode::Break {
-                app.dispatch(Action::StartBreak, time(9, 55, 3300));
+    for guidance in [
+        serde_json::json!({"kind":"video", "source":{"type":"builtin", "id":"squat-demo"}}),
+        serde_json::json!({"kind":"video", "source":{"type":"online", "url":"https://example.com/exercise.mp4"}}),
+    ] {
+        for phase in [Mode::Work, Mode::Remind, Mode::Break] {
+            for paused in [false, true] {
+                let (settings_path, progress_path, dir) = paths();
+                let mut configured = settings();
+                configured.schedules[0].periods[0].overrides[0].content = None;
+                configured.schedules[0].periods[0].overrides[0].guidance =
+                    Some(serde_json::from_value(guidance.clone()).unwrap());
+                let mut app =
+                    TimerApp::new_at(configured, fastrand::Rng::with_seed(42), time(9, 0, 0));
                 app.dispatch(
                     Action::Tick {
-                        elapsed_secs: 60,
+                        elapsed_secs: if phase == Mode::Work { 60 } else { 3000 },
                         idle_secs: 0,
                     },
-                    time(9, 56, 3360),
+                    time(9, 50, 3000),
                 );
-            }
-            if paused {
-                app.dispatch(Action::TogglePause, time(9, 56, 3360));
-            }
-            let before = app.info();
-            assert_eq!(before.tip.as_deref(), Some(""));
-            assert!(before.guidance.is_some());
-            let mut edited = app.settings().clone();
-            let period = &mut edited.schedules[0].periods[0];
-            period.work_minutes = 60;
-            period.break_minutes = 7;
-            period.overrides[0].work_minutes = Some(40);
-            period.overrides[0].break_minutes = Some(4);
-            period.overrides[0].content = Some("下一次的爬楼".into());
-            period.overrides[0].guidance = None;
-            period.overrides[1].work_minutes = Some(30);
-            period.overrides[1].break_minutes = Some(8);
-            period.overrides[1].content = Some("新深蹲\n再喝水".into());
-            edited.sound = false;
-            app.dispatch(Action::SaveSettings(edited), time(9, 56, 3360));
-            app.settings().save_to(&settings_path).unwrap();
-            app.save_progress_to(&progress_path, time(9, 56, 3360))
-                .unwrap();
-            let mut reopened = TimerApp::restore_from(
-                Settings::load_from(&settings_path),
-                &progress_path,
-                fastrand::Rng::with_seed(42),
-                time(10, 30, 0),
-            );
-            assert_eq!(reopened.info(), before);
-            assert_eq!(reopened.info().tip.as_deref(), Some(""));
-            assert!(reopened.settings().schedules[0].periods[0].overrides[0]
-                .guidance
-                .is_none());
-            if paused {
-                reopened.dispatch(Action::TogglePause, time(10, 30, 0));
-            }
-            if phase == Mode::Work {
+                if phase == Mode::Break {
+                    app.dispatch(Action::StartBreak, time(9, 55, 3300));
+                    app.dispatch(
+                        Action::Tick {
+                            elapsed_secs: 60,
+                            idle_secs: 0,
+                        },
+                        time(9, 56, 3360),
+                    );
+                }
+                if paused {
+                    app.dispatch(Action::TogglePause, time(9, 56, 3360));
+                }
+                let before = app.info();
+                assert_eq!(before.tip.as_deref(), Some(""));
+                assert!(before.guidance.is_some());
+                let mut edited = app.settings().clone();
+                let period = &mut edited.schedules[0].periods[0];
+                period.work_minutes = 60;
+                period.break_minutes = 7;
+                period.overrides[0].work_minutes = Some(40);
+                period.overrides[0].break_minutes = Some(4);
+                period.overrides[0].content = Some("下一次的爬楼".into());
+                period.overrides[0].guidance = None;
+                period.overrides[1].work_minutes = Some(30);
+                period.overrides[1].break_minutes = Some(8);
+                period.overrides[1].content = Some("新深蹲\n再喝水".into());
+                edited.sound = false;
+                app.dispatch(Action::SaveSettings(edited), time(9, 56, 3360));
+                app.settings().save_to(&settings_path).unwrap();
+                app.save_progress_to(&progress_path, time(9, 56, 3360))
+                    .unwrap();
+                let mut reopened = TimerApp::restore_from(
+                    Settings::load_from(&settings_path),
+                    &progress_path,
+                    fastrand::Rng::with_seed(42),
+                    time(10, 30, 0),
+                );
+                assert_eq!(reopened.info(), before);
+                assert_eq!(reopened.info().tip.as_deref(), Some(""));
+                assert!(reopened.settings().schedules[0].periods[0].overrides[0]
+                    .guidance
+                    .is_none());
+                if paused {
+                    reopened.dispatch(Action::TogglePause, time(10, 30, 0));
+                }
+                if phase == Mode::Work {
+                    reopened.dispatch(
+                        Action::Tick {
+                            elapsed_secs: before.remaining,
+                            idle_secs: 0,
+                        },
+                        time(10, 35, 300),
+                    );
+                }
+                if phase != Mode::Break {
+                    reopened.dispatch(Action::StartBreak, time(10, 35, 300));
+                }
+                let remaining = reopened.info().remaining;
                 reopened.dispatch(
                     Action::Tick {
-                        elapsed_secs: before.remaining,
+                        elapsed_secs: remaining,
                         idle_secs: 0,
                     },
-                    time(10, 35, 300),
+                    time(10, 45, 900),
                 );
+                assert_eq!(reopened.info().round.unwrap().number, 2);
+                assert!(reopened.info().guidance.is_none());
+                assert_eq!(
+                    (
+                        reopened.info().work_seconds,
+                        reopened.info().break_seconds,
+                        reopened.info().tip.as_deref()
+                    ),
+                    (1800, 480, Some("新深蹲\n再喝水"))
+                );
+                std::fs::remove_dir_all(dir).unwrap();
             }
-            if phase != Mode::Break {
-                reopened.dispatch(Action::StartBreak, time(10, 35, 300));
-            }
-            let remaining = reopened.info().remaining;
-            reopened.dispatch(
-                Action::Tick {
-                    elapsed_secs: remaining,
-                    idle_secs: 0,
-                },
-                time(10, 45, 900),
-            );
-            assert_eq!(reopened.info().round.unwrap().number, 2);
-            assert!(reopened.info().guidance.is_none());
-            assert_eq!(
-                (
-                    reopened.info().work_seconds,
-                    reopened.info().break_seconds,
-                    reopened.info().tip.as_deref()
-                ),
-                (1800, 480, Some("新深蹲\n再喝水"))
-            );
-            std::fs::remove_dir_all(dir).unwrap();
         }
     }
 }
