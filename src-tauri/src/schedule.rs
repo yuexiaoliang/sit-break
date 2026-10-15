@@ -177,8 +177,20 @@ impl crate::Settings {
                     "reminder_identity",
                 );
             }
-            if entry.text.trim().is_empty() {
+            if entry.text.trim().is_empty() && entry.guidance.is_none() {
                 report(None, None, &format!("tips.{index}.text"), "reminder_empty");
+            }
+            if entry
+                .guidance
+                .as_ref()
+                .is_some_and(|guidance| !guidance.is_valid())
+            {
+                report(
+                    None,
+                    None,
+                    &format!("tips.{index}.guidance"),
+                    "guidance_invalid",
+                );
             }
         }
         let mut schedule_ids = std::collections::HashSet::new();

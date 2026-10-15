@@ -460,3 +460,15 @@ body.settings-page { display: flex; padding: 6px; }
 .reminder-page .card.break-card .btns { margin-top: 0; }
 .reminder-page .tip::-webkit-scrollbar, #stretchText::-webkit-scrollbar { width: 6px; }
 .reminder-page .tip::-webkit-scrollbar-thumb, #stretchText::-webkit-scrollbar-thumb { background: rgba(127, 150, 138, .4); border-radius: 99px; }
+
+/* 媒体始终留在内容区域，倒计时和结束按钮不参与滚动。 */
+.card.break-card.has-guidance { padding: 16px; gap: 8px; }
+.has-guidance .ring-wrap { width: 100%; height: 34px; margin: 0; }
+.has-guidance .ring-wrap > svg, .has-guidance .ring-text .cap { display: none; }
+.has-guidance .ring-text { padding: 0; }
+.has-guidance .ring-text .time { font-size: 26px; }
+.has-guidance #stretchText { flex: 0 1 auto; max-height: min(64px, 12vh); margin: 0; }
+.guidance-content { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 6px; overflow: hidden; }
+.guidance-content video { flex: 1; min-height: 0; width: 100%; object-fit: contain; border-radius: 10px; background: #101b16; }
+.guidance-status { flex-shrink: 0; max-height: 3.5em; overflow-y: auto; font-size: 12px; line-height: 1.4; color: var(--sb-text-secondary); text-align: center; }
+.guidance-retry { flex-shrink: 0; border: 1px solid var(--sb-border); border-radius: 7px; padding: 5px 14px; font: inherit; font-size: 12px; background: var(--sb-control-background); color: var(--sb-text); cursor: pointer; }

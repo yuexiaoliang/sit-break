@@ -69,6 +69,31 @@ const TIPS_EN: &[&str] = &[
 pub struct ReminderEntry {
     pub id: String,
     pub text: String,
+    pub guidance: Option<Guidance>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GuidanceKind {
+    Video,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum GuidanceSource {
+    Builtin { id: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Guidance {
+    pub kind: GuidanceKind,
+    pub source: GuidanceSource,
+}
+
+impl Guidance {
+    pub fn is_valid(&self) -> bool {
+        matches!((&self.kind, &self.source), (GuidanceKind::Video, GuidanceSource::Builtin { id }) if id == "squat-demo")
+    }
 }
 
 impl From<String> for ReminderEntry {
@@ -76,6 +101,7 @@ impl From<String> for ReminderEntry {
         Self {
             id: format!("reminder-{:032x}", fastrand::u128(..)),
             text,
+            guidance: None,
         }
     }
 }
@@ -92,11 +118,16 @@ impl<'de> Deserialize<'de> for ReminderEntry {
         #[serde(untagged)]
         enum StoredEntry {
             Legacy(String),
-            Entry { id: String, text: String },
+            Entry {
+                id: String,
+                text: String,
+                #[serde(default)]
+                guidance: Option<Guidance>,
+            },
         }
         Ok(match StoredEntry::deserialize(deserializer)? {
             StoredEntry::Legacy(text) => text.into(),
-            StoredEntry::Entry { id, text } => Self { id, text },
+            StoredEntry::Entry { id, text, guidance } => Self { id, text, guidance },
         })
     }
 }
@@ -478,7 +509,8 @@ fn position_near_tray<R: tauri::Runtime>(window: &WebviewWindow<R>, cursor: Phys
 fn update_windows(app: &AppHandle) {
     let state = app.state::<Mutex<TimerApp>>();
     let st = state.lock().unwrap();
-    let mode = st.info().mode;
+    let info = st.info();
+    let mode = info.mode;
     let show_widget = st.settings().show_widget;
     drop(st);
 
@@ -502,6 +534,26 @@ fn update_windows(app: &AppHandle) {
                 let _ = w.hide();
             }
             if let Some(r) = &reminder {
+                let media = mode == Mode::Break && info.guidance.is_some();
+                let (mut width, mut height): (f64, f64) = if media {
+                    (420.0, 460.0)
+                } else {
+                    (380.0, 368.0)
+                };
+                if let Some(monitor) = r
+                    .current_monitor()
+                    .ok()
+                    .flatten()
+                    .or_else(|| r.primary_monitor().ok().flatten())
+                {
+                    let area = monitor.work_area();
+                    width = width
+                        .min((f64::from(area.size.width) / monitor.scale_factor() - 24.0).max(1.0));
+                    height = height.min(
+                        (f64::from(area.size.height) / monitor.scale_factor() - 24.0).max(1.0),
+                    );
+                }
+                let _ = r.set_size(tauri::LogicalSize::new(width, height));
                 position_bottom_right(r);
                 let _ = r.show();
             }
@@ -1043,9 +1095,15 @@ pub fn run() {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         let _ = rw.hide();
-                        // Alt+F4 关掉提醒视同「再等等」
+                        // 关闭待开始的提醒视同「再等等」；关闭已开始的休息先结束，
+                        // 防止隐藏的浮窗继续播放用户已经打开声音的视频。
                         let app = rw.app_handle();
-                        postpone(app.clone());
+                        let mode = app.state::<Mutex<TimerApp>>().lock().unwrap().info().mode;
+                        if mode == Mode::Break {
+                            end_break(app.clone());
+                        } else {
+                            postpone(app.clone());
+                        }
                     }
                 }
             });
