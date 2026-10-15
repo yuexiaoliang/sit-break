@@ -304,6 +304,9 @@ async function checkSimpleLocalVideo(app) {
     try { await app.reminder.call('Runtime.releaseObject', { objectId }); }
     catch { /* 崩溃或关闭连接时保留前面的实际失败原因。 */ }
   }
+  // 返回纯文字基线，避免后续场景重启回收本场景已不再引用的测试副本后又恢复旧引用。
+  await app.settings.invoke('save_settings', { settings: current });
+  await app.settings.invoke('reset_timer');
 }
 
 try {
