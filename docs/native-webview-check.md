@@ -11,8 +11,11 @@
 - 采样实际休息倒计时，确认它推进；切换 Windows 当前用户的亮暗应用主题并广播系统通知，检查真实 WebView 的主题、颜色、计时和操作区域。
 - 用 Win32 API 获取真实提醒窗口、客户区、DPI 和显示器工作区域，确认浮窗紧凑，倒计时和按钮位于视口内。
 - 休息中正常退出并重开，确认当前轮、文字和剩余时间保留，再点击真实提前结束按钮进入下一轮。
+- 保存仅含内置示范视频的简单计时提醒，实际等待一分钟进入提醒后点击开始休息，验证视频真实解码、静音自动播放、播放时间前进和循环；暂停和拖动不改变休息计时，tick 和系统主题切换保留同一个播放器与暂停位置，结束休息后清空媒体来源并移除元素。
 
-截图、各次应用输出和 `report.json` 保存到工作流 artifact。报告的 `status` 才表示这次运行结果；脚本或构建存在不表示验收通过。当前基础脚本不选择视频或 HTML，报告明确标注媒体场景未运行；后续媒体任务可在同一个真实设置和休息路径增补检查。
+截图、各次应用输出和 `report.json` 保存到工作流 artifact。报告的 `status` 才表示这次运行结果；脚本或构建存在不表示验收通过。视频有单独的执行状态和失败阶段，只有完整执行后才记为通过。HTML、导入副本和在线来源尚未接入本脚本，后续任务可在同一个真实设置和休息路径增补检查。
+
+首轮基础路径在 [Windows 原生验收运行 38691851022](https://github.com/yuexiaoliang/sit-break/actions/runs/38691851022) 实际通过，源提交为 `f494262`：三次真实 exe 启动、公开命令与设置／进度保存、380×368 的可见提醒 HWND、系统亮暗、60→58 秒倒计时、51 秒退出恢复以及提前结束均有 JSON 和截图证据。该次运行明确未执行视频；不能据此声称新增的视频检查已通过。
 
 ## 本机运行
 
@@ -31,4 +34,4 @@ node scripts/native-webview-check.mjs src-tauri/target/debug/sit-break.exe .scra
 
 参考：[Microsoft WebView2 调试说明](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/debug-visual-studio-code)、[WebView2 browser flags](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/webview-features-flags)、[Windows 图形会话 CI](https://learn.microsoft.com/en-us/windows/apps/develop/ai-assisted/testing#run-tests-in-ci)。
 
-这套检查不覆盖物理睡眠、所有显示缩放组合、原生视频格式或任意第三方网页。macOS 使用独立的真实 WKWebView 验收，不把 Windows 结果推广到其他平台。
+这套检查不覆盖物理睡眠、所有显示缩放组合、任意视频编码或任意第三方网页。macOS 使用独立的真实 WKWebView 验收，不把 Windows 结果推广到其他平台。

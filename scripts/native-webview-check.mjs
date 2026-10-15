@@ -21,7 +21,7 @@ const dataDirectory = join(process.env.APPDATA, identifier);
 const nativeProbe = fileURLToPath(new URL('./native-window.ps1', import.meta.url));
 const runFile = promisify(execFile);
 const delay = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
-const report = { startedAt: new Date().toISOString(), executable, identifier, runs: [], checks: [], media: '未运行：本脚本目前覆盖纯文字基础路径，媒体场景由后续任务补充' };
+const report = { startedAt: new Date().toISOString(), executable, identifier, runs: [], checks: [], video: { status: 'not_started' }, notCovered: ['HTML、导入副本、在线来源与外链场景尚未执行'] };
 const connections = [];
 let application;
 let originalTheme;
@@ -150,15 +150,18 @@ async function launch() {
 }
 
 async function quit(connection) {
-  const exiting = new Promise((done) => application.once('exit', done));
+  const exiting = new Promise((done, reject) => {
+    const timer = setTimeout(() => reject(new Error('真实应用正常退出超时')), 10_000);
+    application.once('exit', () => { clearTimeout(timer); done(); });
+  });
   await connection.invoke('quit_app').catch(() => {});
-  await Promise.race([exiting, delay(10_000).then(() => { throw new Error('真实应用正常退出超时'); })]);
+  await exiting;
   for (const connection of connections.splice(0)) connection.socket.close();
 }
 
-async function inspectLayout(connection, buttonId) {
+async function inspectLayout(connection, buttonId, checkText = true) {
   const layout = await connection.evaluate(`(() => {
-    const ids = [${JSON.stringify(buttonId)}, ${JSON.stringify(buttonId === 'btnBreak' ? 'tipText' : 'breakTime')}];
+    const ids = ${JSON.stringify([buttonId, ...(checkText ? [buttonId === 'btnBreak' ? 'tipText' : 'breakTime'] : [])])};
     const rect = (element) => { const r = element.getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:r.height, right:r.right, bottom:r.bottom }; };
     return { width:innerWidth, height:innerHeight, ratio:devicePixelRatio,
       dark:matchMedia('(prefers-color-scheme: dark)').matches,
@@ -177,6 +180,114 @@ async function inspectLayout(connection, buttonId) {
   assert.ok(Math.abs(window.client.width - layout.width * layout.ratio) <= 4, 'Win32 客户区与真实 WebView 宽度一致');
   assert.ok(Math.abs(window.client.height - layout.height * layout.ratio) <= 4, 'Win32 客户区与真实 WebView 高度一致');
   return { layout, window };
+}
+
+async function videoSample(connection, objectId) {
+  const result = await connection.call('Runtime.callFunctionOn', { objectId, returnByValue: true,
+    functionDeclaration: `function() {
+      const r = this.getBoundingClientRect();
+      return { connected:this.isConnected, same:this === document.querySelector('#guidanceContent video'),
+        readyState:this.readyState, width:this.videoWidth, height:this.videoHeight, currentTime:this.currentTime,
+        duration:this.duration, muted:this.muted, defaultMuted:this.defaultMuted, loop:this.loop, controls:this.controls, paused:this.paused,
+        source:this.getAttribute('src'), currentSrc:this.currentSrc,
+        rect:{x:r.x,y:r.y,right:r.right,bottom:r.bottom},
+        endButtonTop:document.getElementById('btnEnd').getBoundingClientRect().top };
+    }` });
+  assert.ok(!result.exceptionDetails, JSON.stringify(result.exceptionDetails));
+  return result.result.value;
+}
+
+async function checkBuiltinVideo(app) {
+  report.video = { status: 'running', stage: '保存真实内置视频配置' };
+  const guidance = { kind: 'video', source: { type: 'builtin', id: 'squat-demo' } };
+  const current = await app.settings.invoke('get_settings');
+  await app.settings.invoke('save_settings', { settings: { ...current,
+    use_schedule: false, work_minutes: 1, break_minutes: 2,
+    tips: [{ id: 'native-check-video-only', text: '', guidance }],
+  } });
+  await app.settings.invoke('reset_timer');
+  assert.equal((await app.settings.invoke('timer_info')).mode, 'work');
+  // 简单计时走真实一分钟；不注入计时器，也不改写工作状态。
+  report.video.stage = '简单计时实际等待一分钟';
+  await waitFor('简单计时自然到达视频提醒（一分钟）', async () => (await app.reminder.invoke('timer_info')).mode === 'remind', 80_000);
+  const reminded = await app.reminder.invoke('timer_info');
+  assert.equal(reminded.tip, '');
+  assert.deepEqual(reminded.guidance, guidance);
+  await waitFor('仅指引提醒页隐藏空文字且尚未创建播放器', () => app.reminder.evaluate(`!document.getElementById('cardRemind').hidden && document.getElementById('tipText').parentElement.hidden && !document.querySelector('video')`));
+  await inspectLayout(app.reminder, 'btnBreak', false);
+  await app.reminder.screenshot('04-video-reminder');
+  await app.reminder.evaluate('document.getElementById("btnBreak").click()');
+  report.video.stage = '原生视频解码与自动播放';
+  await waitFor('内置视频取得原生解码画面', () => app.reminder.evaluate(`(() => { const v=document.querySelector('#guidanceContent video'); return !!v && v.readyState >= 2 && v.videoWidth > 0 && v.duration > 0 && Number.isFinite(v.duration); })()`));
+  const remote = await app.reminder.call('Runtime.evaluate', { expression: 'document.querySelector("#guidanceContent video")', returnByValue: false });
+  const objectId = remote.result.objectId;
+  assert.ok(objectId, '必须持有真实 video 元素引用');
+  try {
+    const initial = await videoSample(app.reminder, objectId);
+    report.video.initial = initial;
+    assert.ok(initial.muted && initial.defaultMuted && initial.loop && initial.controls && !initial.paused, '内置视频自动静音循环并带播放控制');
+    assert.ok(initial.width > 0 && initial.height > 0 && initial.readyState >= 2);
+    assert.ok(initial.rect.x >= 0 && initial.rect.y >= 0 && initial.rect.bottom <= initial.endButtonTop, '视频内容不能遮挡结束按钮');
+    assert.equal(await app.reminder.evaluate('document.getElementById("stretchText").hidden'), true, '仅指引休息省略文字区域');
+    await delay(1100);
+    const playing = await videoSample(app.reminder, objectId);
+    const advanced = (playing.currentTime - initial.currentTime + initial.duration) % initial.duration;
+    assert.ok(advanced > 0.3 && advanced < 2.5, '真实 WebView2 视频时间必须前进');
+    assert.ok(playing.same, '计时 tick 不得重建播放器');
+    report.video.stage = '真实暂停和拖动进度';
+    await app.reminder.evaluate('document.querySelector("#guidanceContent video").pause()');
+    const beforePause = await app.reminder.invoke('timer_info');
+    const paused = await videoSample(app.reminder, objectId);
+    await delay(2200);
+    const afterPause = await app.reminder.invoke('timer_info');
+    const stillPaused = await videoSample(app.reminder, objectId);
+    assert.equal(afterPause.mode, 'break');
+    assert.ok(afterPause.remaining < beforePause.remaining && afterPause.remaining >= beforePause.remaining - 4, '暂停视频后真实休息计时仍按实际经过时间推进');
+    assert.ok(stillPaused.same && stillPaused.paused && Math.abs(stillPaused.currentTime - paused.currentTime) < 0.1, 'tick 保留同一视频与暂停位置');
+    const seekTo = initial.duration / 5;
+    await app.reminder.evaluate(`document.querySelector('#guidanceContent video').currentTime = ${seekTo}`);
+    await waitFor('视频拖动进度生效', async () => Math.abs((await videoSample(app.reminder, objectId)).currentTime - seekTo) < 0.15);
+    const afterSeek = await app.reminder.invoke('timer_info');
+    assert.ok(afterSeek.remaining <= afterPause.remaining && afterSeek.remaining >= afterPause.remaining - 3 && afterSeek.remaining > 0, '拖动视频不跳转休息计时');
+    report.video.stage = '真实系统主题切换与播放器保留';
+    const themes = [];
+    for (const [theme, value] of [['light', 1], ['dark', 0]]) {
+      await powershell('Theme', value);
+      await waitFor(`视频浮窗系统 ${theme} 主题`, () => app.reminder.evaluate(`matchMedia('(prefers-color-scheme: dark)').matches === ${value === 0}`));
+      const video = await videoSample(app.reminder, objectId);
+      assert.ok(video.same && video.paused && Math.abs(video.currentTime - seekTo) < 0.15, '真实主题切换保留播放器和已选择的暂停进度');
+      const state = await app.reminder.invoke('timer_info');
+      assert.equal(state.mode, 'break');
+      assert.ok(state.remaining <= afterSeek.remaining && state.remaining > 0, '主题切换不重置视频休息倒计时');
+      const layout = await inspectLayout(app.reminder, 'btnEnd');
+      await app.reminder.screenshot(`05-video-${theme}`);
+      themes.push({ theme, video, state, ...layout });
+    }
+    await app.reminder.evaluate('document.querySelector("#guidanceContent video").play()');
+    report.video.stage = '真实循环播放';
+    let previousTime = (await videoSample(app.reminder, objectId)).currentTime;
+    const looped = await waitFor('原生视频播完后实际循环', async () => {
+      const sample = await videoSample(app.reminder, objectId);
+      assert.ok(sample.same && !sample.paused, '实际循环仍使用同一播放器');
+      if (sample.currentTime < previousTime - 0.5) return sample;
+      previousTime = sample.currentTime;
+      return false;
+    }, 15_000);
+    report.video.stage = '结束休息释放播放器';
+    await app.reminder.evaluate('document.getElementById("btnEnd").click()');
+    const released = await waitFor('结束休息后停止并释放视频', async () => {
+      const sample = await videoSample(app.reminder, objectId);
+      return !sample.connected && sample.paused && sample.source === null && sample.readyState === 0 && sample;
+    });
+    assert.equal(await app.reminder.evaluate('document.querySelectorAll("#guidanceContent video").length'), 0);
+    assert.equal((await app.reminder.invoke('timer_info')).mode, 'work');
+    report.checks.push({ name: '真实内置视频：静音循环、控制、计时独立、主题保留与结束释放', reminded, initial, playing,
+      beforePause, afterPause, paused, stillPaused, afterSeek, themes, looped, released });
+    report.video.status = 'passed';
+  } finally {
+    try { await app.reminder.call('Runtime.releaseObject', { objectId }); }
+    catch { /* 崩溃或关闭连接时保留前面的实际失败原因。 */ }
+  }
 }
 
 try {
@@ -257,9 +368,11 @@ try {
     return state.mode === 'work' && state.round.number === 2;
   });
   report.checks.push({ name: '真实退出重开及提前结束操作', saved, restored });
+  await checkBuiltinVideo(app);
   report.status = 'passed';
 } catch (error) {
   report.status = 'failed';
+  if (report.video.status === 'running') report.video.status = 'failed';
   report.error = error.stack;
   for (const connection of connections) {
     try { if (connection.socket.readyState === WebSocket.OPEN) await connection.screenshot(`failure-${connection.label}`); }
