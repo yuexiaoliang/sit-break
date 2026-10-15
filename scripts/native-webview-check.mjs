@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { checkOnlineVideo } from './native-online-video-check.mjs';
+import { checkLocalVideo } from './native-local-video-check.mjs';
 
 const usage = 'node scripts/native-webview-check.mjs <debug-exe> <output-directory>';
 if (process.argv.includes('--help')) {
@@ -22,7 +23,7 @@ const dataDirectory = join(process.env.APPDATA, identifier);
 const nativeProbe = fileURLToPath(new URL('./native-window.ps1', import.meta.url));
 const runFile = promisify(execFile);
 const delay = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
-const report = { startedAt: new Date().toISOString(), executable, identifier, runs: [], checks: [], video: { status: 'not_started' }, onlineVideo: { status: 'not_started' }, notCovered: ['HTML、导入副本场景尚未执行', '系统浏览器实际打开仍需单独验收；脚本只检查打开入口和非法 scheme 拒绝'] };
+const report = { startedAt: new Date().toISOString(), executable, identifier, runs: [], checks: [], video: { status: 'not_started' }, onlineVideo: { status: 'not_started' }, localVideo: { status: 'not_started', fixtureMode: 'preimported-copy' }, notCovered: ['Windows 原生文件选择器、导入命令及导入 UI 尚未执行；本地场景只使用明确的已导入副本 fixture', 'HTML 场景尚未执行', '系统浏览器实际打开仍需单独验收；脚本只检查打开入口和非法 scheme 拒绝'] };
 const connections = [];
 let application;
 let originalTheme;
@@ -55,8 +56,10 @@ class CDP {
     this.socket = socket;
     this.nextId = 1;
     this.pending = new Map();
+    this.listeners = new Map();
     socket.addEventListener('message', ({ data }) => {
       const message = JSON.parse(data);
+      for (const listener of this.listeners.get(message.method) ?? []) listener(message.params, message.sessionId);
       const request = this.pending.get(message.id);
       if (!request) return;
       clearTimeout(request.timer);
@@ -83,12 +86,17 @@ class CDP {
     connections.push(connection);
     return connection;
   }
-  call(method, params = {}) {
+  on(method, listener) {
+    if (!this.listeners.has(method)) this.listeners.set(method, new Set());
+    this.listeners.get(method).add(listener);
+    return () => this.listeners.get(method)?.delete(listener);
+  }
+  call(method, params = {}, sessionId) {
     const id = this.nextId++;
     return new Promise((resolveRequest, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`CDP ${method} 超时`)); }, 10_000);
       this.pending.set(id, { resolve: resolveRequest, reject, timer });
-      this.socket.send(JSON.stringify({ id, method, params }));
+      this.socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   }
   async evaluate(expression) {
@@ -183,7 +191,7 @@ async function inspectLayout(connection, buttonId, checkText = true) {
   return { layout, window };
 }
 
-async function videoSample(connection, objectId) {
+async function videoSample(connection, objectId, diagnostic = report.video) {
   const result = await connection.call('Runtime.callFunctionOn', { objectId, returnByValue: true,
     functionDeclaration: `function() {
       const r = this.getBoundingClientRect();
@@ -198,7 +206,7 @@ async function videoSample(connection, objectId) {
         endButtonTop:document.getElementById('btnEnd').getBoundingClientRect().top };
     }` });
   assert.ok(!result.exceptionDetails, JSON.stringify(result.exceptionDetails));
-  report.video.lastSample = result.result.value;
+  diagnostic.lastSample = result.result.value;
   return result.result.value;
 }
 
@@ -377,11 +385,13 @@ try {
   report.onlineVideo.status = 'running';
   app = await checkOnlineVideo({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, onApp: (next) => { app = next; } });
   report.onlineVideo.status = 'passed';
+  app = await checkLocalVideo({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, videoSample, delay, onApp: (next) => { app = next; } });
   report.status = 'passed';
 } catch (error) {
   report.status = 'failed';
   if (report.video.status === 'running') report.video.status = 'failed';
   if (report.onlineVideo.status === 'running') report.onlineVideo.status = 'failed';
+  if (report.localVideo.status === 'running') report.localVideo.status = 'failed';
   report.error = error.stack;
   for (const connection of connections) {
     try { if (connection.socket.readyState === WebSocket.OPEN) await connection.screenshot(`failure-${connection.label}`); }
