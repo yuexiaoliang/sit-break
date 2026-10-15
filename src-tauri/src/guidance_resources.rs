@@ -7,13 +7,11 @@ use std::{
 };
 use tauri::http::{Request, Response, StatusCode};
 
-// 单文件页面主要承载轻量指引，也为内嵌图片保留足够空间。
-const MAX_HTML_BYTES: u64 = 8 * 1024 * 1024;
-
 pub struct GuidanceResources {
     directory: PathBuf,
 }
 
+#[cfg(test)]
 pub struct ImportedContent {
     pub mime: &'static str,
     pub bytes: Vec<u8>,
@@ -81,85 +79,23 @@ impl GuidanceResources {
         })
     }
 
-    pub fn import_html(&self, source: &Path) -> Result<Guidance, String> {
-        if !source
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| {
-                ["html", "htm"].contains(&extension.to_ascii_lowercase().as_str())
-            })
-        {
-            return Err("unsupported-html".into());
-        }
-        let input = File::open(source).map_err(|_| "import-failed")?;
-        if !input.metadata().is_ok_and(|metadata| metadata.is_file()) {
-            return Err("import-failed".into());
-        }
-        let mut bytes = Vec::new();
-        input
-            .take(MAX_HTML_BYTES + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|_| "import-failed")?;
-        if !valid_html(&bytes) {
-            return Err("unsupported-html".into());
-        }
-        let id = format!("local-{:032x}", fastrand::u128(..));
-        let temporary = self.directory.join(format!("{id}.tmp"));
-        let destination = self.directory.join(format!("{id}.html"));
-        let result = (|| -> std::io::Result<()> {
-            let mut output = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temporary)?;
-            output.write_all(&bytes)?;
-            output.sync_all()?;
-            fs::rename(&temporary, &destination)
-        })();
-        if result.is_err() {
-            let _ = fs::remove_file(temporary);
-            return Err("import-failed".into());
-        }
-        Ok(Guidance {
-            kind: GuidanceKind::Html,
-            source: GuidanceSource::Local { id },
-        })
-    }
-
     fn file(&self, guidance: &Guidance) -> Result<File, String> {
         let GuidanceSource::Local { id } = &guidance.source;
         if !valid_id(id) {
             return Err("resource-unavailable".into());
         }
-        let extension = match guidance.kind {
-            GuidanceKind::Video => "mp4",
-            GuidanceKind::Html => "html",
-        };
-        let path = self.directory.join(format!("{id}.{extension}"));
+        let path = self.directory.join(format!("{id}.mp4"));
         if !fs::symlink_metadata(&path)
             .is_ok_and(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
         {
             return Err("resource-unavailable".into());
         }
         let mut file = File::open(&path).map_err(|_| "resource-unavailable")?;
-        match guidance.kind {
-            GuidanceKind::Video => {
-                let mut header = [0; 12];
-                file.read_exact(&mut header)
-                    .map_err(|_| "resource-unavailable")?;
-                if &header[4..8] != b"ftyp" {
-                    return Err("resource-unavailable".into());
-                }
-            }
-            GuidanceKind::Html => {
-                let mut bytes = Vec::new();
-                (&mut file)
-                    .take(MAX_HTML_BYTES + 1)
-                    .read_to_end(&mut bytes)
-                    .map_err(|_| "resource-unavailable")?;
-                if !valid_html(&bytes) {
-                    return Err("resource-unavailable".into());
-                }
-            }
+        let mut header = [0; 12];
+        file.read_exact(&mut header)
+            .map_err(|_| "resource-unavailable")?;
+        if &header[4..8] != b"ftyp" {
+            return Err("resource-unavailable".into());
         }
         use std::io::{Seek, SeekFrom};
         file.seek(SeekFrom::Start(0))
@@ -167,17 +103,15 @@ impl GuidanceResources {
         Ok(file)
     }
 
-    /// 按已登记来源读取副本，后续 HTML 沿用此入口，不赋予用户页面原生协议权限。
+    /// 测试中读取完整副本，实际播放使用支持区间读取的视频协议。
+    #[cfg(test)]
     pub fn read(&self, guidance: &Guidance) -> Result<ImportedContent, String> {
         let mut bytes = Vec::new();
         self.file(guidance)?
             .read_to_end(&mut bytes)
             .map_err(|_| "resource-unavailable")?;
         Ok(ImportedContent {
-            mime: match guidance.kind {
-                GuidanceKind::Video => "video/mp4",
-                GuidanceKind::Html => "text/html; charset=utf-8",
-            },
+            mime: "video/mp4",
             bytes,
         })
     }
@@ -216,6 +150,7 @@ impl GuidanceResources {
             let Some((id, extension)) = name.rsplit_once('.') else {
                 continue;
             };
+            // 同时清理旧测试版遗留的 HTML 副本。
             if valid_id(id) && ["mp4", "html", "tmp"].contains(&extension) && !keep.contains(id) {
                 fs::remove_file(entry.path()).map_err(|_| "resource-unavailable")?;
             }
@@ -320,10 +255,4 @@ impl GuidanceResources {
         }
         builder.body(bytes).unwrap()
     }
-}
-
-fn valid_html(bytes: &[u8]) -> bool {
-    bytes.len() <= MAX_HTML_BYTES as usize
-        && !bytes.contains(&0)
-        && std::str::from_utf8(bytes).is_ok_and(|text| !text.trim().is_empty())
 }

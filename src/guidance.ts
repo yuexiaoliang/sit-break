@@ -1,10 +1,8 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { createHtmlGuidanceView } from "./html-guidance";
-import { openGuidanceAuthoring } from "./guidance-authoring";
 
-/** 指引只保存应用导入副本的引用；不接收网址、文件路径或 HTML 源码。 */
+/** 指引只保存应用导入副本的引用；不接收网址、文件路径或页面源码。 */
 export interface Guidance {
-  kind: "video" | "html";
+  kind: "video";
   source: { type: "local"; id: string };
 }
 
@@ -39,7 +37,7 @@ export function guidancePicker(value: Guidance | null | undefined, strings: Reco
   const caption = document.createElement("span");
   caption.textContent = strings.guidance;
   const select = document.createElement("select");
-  for (const [id, name] of [["", strings.noGuidance], ["local-video", strings.localVideo], ["local-html", strings.localHtml]]) {
+  for (const [id, name] of [["", strings.noGuidance], ["local-video", strings.localVideo]]) {
     const option = document.createElement("option");
     option.value = id;
     option.textContent = name;
@@ -55,30 +53,28 @@ export function guidancePicker(value: Guidance | null | undefined, strings: Reco
   status.setAttribute("role", "status");
   status.hidden = true;
   function render() {
-    const html = select.value === "local-html";
     hint.hidden = choose.hidden = !select.value;
-    hint.textContent = html ? strings.localHtmlHint : strings.localVideoHint;
-    choose.textContent = html ? strings.chooseLocalHtml : strings.chooseLocalVideo;
+    hint.textContent = strings.localVideoHint;
+    choose.textContent = strings.chooseLocalVideo;
   }
   async function importFile() {
     if (importing) return;
-    const html = select.value === "local-html";
     importing = true;
     importingSelection = select.value;
     choose.disabled = true;
-    select.setCustomValidity(html ? strings.importingHtml : strings.importingVideo);
+    select.setCustomValidity(strings.importingVideo);
     status.hidden = false;
-    status.textContent = html ? strings.importingHtml : strings.importingVideo;
+    status.textContent = strings.importingVideo;
     try {
-      const imported = await invoke<Guidance | null>(html ? "import_guidance_html" : "import_guidance_video");
+      const imported = await invoke<Guidance | null>("import_guidance_video");
       if (imported) {
-        if (!html) await checkImportedVideo(imported);
+        await checkImportedVideo(imported);
         current = imported;
         onChange(imported);
       }
       status.hidden = true;
     } catch (error) {
-      status.textContent = html ? error === "unsupported-html" ? strings.unsupportedHtml : strings.importHtmlFailed : error === "unsupported-video" ? strings.unsupportedVideo : strings.importVideoFailed;
+      status.textContent = error === "unsupported-video" ? strings.unsupportedVideo : strings.importVideoFailed;
     } finally {
       importing = false;
       choose.disabled = false;
@@ -97,20 +93,13 @@ export function guidancePicker(value: Guidance | null | undefined, strings: Reco
   });
   choose.addEventListener("click", () => { void importFile(); });
   label.append(caption, select);
-  const authoring = document.createElement("button");
-  authoring.type = "button";
-  authoring.className = "text-button guidance-authoring-trigger";
-  authoring.textContent = strings.htmlAuthoring;
-  authoring.setAttribute("aria-haspopup", "dialog");
-  authoring.addEventListener("click", () => openGuidanceAuthoring(strings, authoring));
-  group.append(label, hint, choose, status, authoring);
+  group.append(label, hint, choose, status);
   render();
   return group;
 }
 
 /** tick 仅更新文案；切换、重试或结束休息时才替换播放器。 */
 export function createGuidanceView(container: HTMLElement) {
-  const htmlView = createHtmlGuidanceView(container);
   let key = "";
   let video: HTMLVideoElement | null = null;
   let status: HTMLParagraphElement | null = null;
@@ -121,7 +110,6 @@ export function createGuidanceView(container: HTMLElement) {
   let strings: Record<string, string>;
   function stopWaiting() { clearTimeout(loadTimer); loadTimer = undefined; }
   function clear() {
-    htmlView.clear();
     key = "";
     stopWaiting();
     if (video) {
@@ -162,12 +150,6 @@ export function createGuidanceView(container: HTMLElement) {
   function show(guidance: Guidance | null | undefined, labels: Record<string, string>) {
     strings = labels;
     if (!guidance) { clear(); return; }
-    if (guidance.kind === "html") {
-      if (key) clear();
-      htmlView.show(guidance, labels);
-      return;
-    }
-    htmlView.clear();
     const nextKey = JSON.stringify(guidance);
     if (key === nextKey) { updateLabels(); return; }
     clear();

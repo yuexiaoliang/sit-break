@@ -2,43 +2,6 @@ use crate::guidance_resources::GuidanceResources;
 use tauri::http::{Request, StatusCode};
 
 #[test]
-fn imported_html_is_an_independent_readable_copy_and_never_a_video_protocol_page() {
-    let dir = std::env::temp_dir().join(format!("sit-break-html-copy-{}", fastrand::u64(..)));
-    std::fs::create_dir_all(&dir).unwrap();
-    let source = dir.join("动作.html");
-    let original = "<!doctype html><style>body{color:green}</style><button onclick='this.textContent=2'>一步</button>";
-    std::fs::write(&source, original).unwrap();
-    let resources = GuidanceResources::open(dir.join("imports")).unwrap();
-    let guide = resources.import_html(&source).unwrap();
-    assert_eq!(serde_json::to_value(&guide).unwrap()["kind"], "html");
-    std::fs::write(&source, "<h1>更新后的内容</h1>").unwrap();
-    let next = resources.import_html(&source).unwrap();
-    assert_ne!(guide, next);
-    std::fs::remove_file(source).unwrap();
-    drop(resources);
-    let reopened = GuidanceResources::open(dir.join("imports")).unwrap();
-    let read = reopened.read(&guide).unwrap();
-    assert_eq!(read.mime, "text/html; charset=utf-8");
-    assert_eq!(read.bytes, original.as_bytes());
-    assert_eq!(
-        reopened.read(&next).unwrap().bytes,
-        "<h1>更新后的内容</h1>".as_bytes()
-    );
-    let crate::GuidanceSource::Local { id } = &guide.source;
-    assert_eq!(
-        reopened
-            .video_response(
-                Request::get(format!("guidance://localhost/{id}"))
-                    .body(Vec::new())
-                    .unwrap()
-            )
-            .status(),
-        StatusCode::NOT_FOUND
-    );
-    std::fs::remove_dir_all(dir).unwrap();
-}
-
-#[test]
 fn imported_video_survives_source_deletion_and_resource_store_reopening() {
     let dir = std::env::temp_dir().join(format!("sit-break-resources-{}", fastrand::u64(..)));
     std::fs::create_dir_all(&dir).unwrap();

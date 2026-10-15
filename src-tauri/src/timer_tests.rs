@@ -190,7 +190,7 @@ fn reminder_text_is_displayed_verbatim_and_stays_selected_when_preferences_are_s
 }
 
 #[test]
-fn guidance_accepts_only_imported_file_references() {
+fn guidance_accepts_only_imported_video_references() {
     for source in [
         serde_json::json!({"type":"online","url":"https://example.com/video.mp4"}),
         serde_json::json!({"type":"online","url":"https://example.com/guide.html"}),
@@ -199,9 +199,15 @@ fn guidance_accepts_only_imported_file_references() {
         serde_json::json!({"type":"local","id":"local-00000000000000000000000000000001","html":"<h1>源码</h1>"}),
     ] {
         let mut draft = serde_json::to_value(simple_timer().settings()).unwrap();
-        draft["tips"][0]["guidance"] = serde_json::json!({"kind":"html","source":source});
+        draft["tips"][0]["guidance"] = serde_json::json!({"kind":"video","source":source});
         assert!(serde_json::from_value::<Settings>(draft).is_err());
     }
+    let local = serde_json::json!({"type":"local","id":"local-00000000000000000000000000000001"});
+    let mut draft = serde_json::to_value(simple_timer().settings()).unwrap();
+    draft["tips"][0]["guidance"] = serde_json::json!({"kind":"video","source":local});
+    assert!(serde_json::from_value::<Settings>(draft.clone()).is_ok());
+    draft["tips"][0]["guidance"]["kind"] = "html".into();
+    assert!(serde_json::from_value::<Settings>(draft).is_err());
 }
 
 #[test]
@@ -214,12 +220,13 @@ fn loading_preview_settings_removes_unsupported_guidance_without_losing_other_co
     old["sound"] = false.into();
     old["language"] = "en".into();
     old["tips"] = serde_json::json!([
-        {"id":"keep-text","text":"保留原文","guidance":{"kind":"html","source":{"type":"online","url":"https://example.com"}}},
+        {"id":"keep-text","text":"保留原文","guidance":{"kind":"html","source":{"type":"local","id":"local-00000000000000000000000000000002"}}},
+        {"id":"empty-html","text":"","guidance":{"kind":"html","source":{"type":"local","id":"local-00000000000000000000000000000003"}}},
         {"id":"empty-preview","text":"","guidance":{"kind":"video","source":{"type":"builtin","id":"squat-demo"}}},
         {"id":"keep-local","text":"","guidance":{"kind":"video","source":{"type":"local","id":"local-00000000000000000000000000000001"}}}
     ]);
     old["schedules"][0]["periods"][0]["overrides"] = serde_json::json!([
-        {"round":1,"content":"仍然爬楼","guidance":{"kind":"html","source":{"type":"online","url":"https://example.com"}}}
+        {"round":1,"content":"仍然爬楼","guidance":{"kind":"html","source":{"type":"local","id":"local-00000000000000000000000000000002"}}}
     ]);
     std::fs::write(&path, serde_json::to_vec(&old).unwrap()).unwrap();
     let loaded = Settings::load_from(&path);
@@ -247,13 +254,13 @@ fn loading_preview_settings_removes_unsupported_guidance_without_losing_other_co
 }
 
 #[test]
-fn local_html_can_be_selected_for_a_reminder_and_a_scheduled_round_after_reopening() {
+fn local_video_can_be_selected_for_a_reminder_and_a_scheduled_round_after_reopening() {
     let path =
-        std::env::temp_dir().join(format!("sit-break-local-html-{}.json", fastrand::u64(..)));
-    let guide = serde_json::json!({"kind":"html", "source":{"type":"local","id":"local-00000000000000000000000000000002"}});
+        std::env::temp_dir().join(format!("sit-break-local-video-{}.json", fastrand::u64(..)));
+    let guide = serde_json::json!({"kind":"video", "source":{"type":"local","id":"local-00000000000000000000000000000002"}});
     let mut app = simple_timer();
     let mut draft = serde_json::to_value(app.settings()).unwrap();
-    draft["tips"] = serde_json::json!([{"id":"local-html-entry","text":"","guidance":guide}]);
+    draft["tips"] = serde_json::json!([{"id":"local-video-entry","text":"","guidance":guide}]);
     let saved = app.dispatch(
         Action::SaveSettings(serde_json::from_value(draft).unwrap()),
         Duration::ZERO,
@@ -287,31 +294,6 @@ fn local_html_can_be_selected_for_a_reminder_and_a_scheduled_round_after_reopeni
     );
     assert_eq!(serde_json::to_value(app.info()).unwrap()["guidance"], guide);
     assert!(app.info().tip.as_deref().unwrap_or_default().is_empty());
-    std::fs::remove_file(path).unwrap();
-}
-
-#[test]
-fn html_only_reminder_keeps_its_guide_after_save_reopen_and_starting_a_break() {
-    let path = std::env::temp_dir().join(format!("sit-break-html-{}.json", fastrand::u64(..)));
-    let mut draft = serde_json::to_value(Settings::default()).unwrap();
-    let guide = serde_json::json!({"kind":"html", "source":{"type":"local","id":"local-0123456789abcdef0123456789abcdef"}});
-    draft["tips"] = serde_json::json!([{"id":"html-entry","text":"","guidance":guide}]);
-    draft["work_minutes"] = serde_json::json!(1);
-    draft["idle_reset"] = serde_json::json!(false);
-    let configured: Settings = serde_json::from_value(draft).unwrap();
-    configured.save_to(&path).unwrap();
-    let mut app = TimerApp::new(Settings::load_from(&path), fastrand::Rng::with_seed(1));
-    app.dispatch(
-        Action::Tick {
-            elapsed_secs: 60,
-            idle_secs: 0,
-        },
-        Duration::from_secs(60),
-    );
-    app.dispatch(Action::StartBreak, Duration::from_secs(60));
-    assert_eq!(app.info().mode, Mode::Break);
-    assert_eq!(app.info().tip.as_deref(), Some(""));
-    assert_eq!(serde_json::to_value(app.info()).unwrap()["guidance"], guide);
     std::fs::remove_file(path).unwrap();
 }
 

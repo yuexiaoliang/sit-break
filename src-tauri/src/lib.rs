@@ -17,7 +17,6 @@ mod editing_tests;
 #[cfg(test)]
 mod guidance_resource_tests;
 pub mod guidance_resources;
-mod guidance_webview;
 mod platform;
 mod power;
 pub mod preview;
@@ -81,7 +80,6 @@ pub struct ReminderEntry {
 #[serde(rename_all = "lowercase")]
 pub enum GuidanceKind {
     Video,
-    Html,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -180,10 +178,12 @@ impl Settings {
             .ok()
             .and_then(|text| {
                 let mut stored: serde_json::Value = serde_json::from_str(&text).ok()?;
-                // 开发测试版曾保存其他来源；只移除这些指引，保留文字、日程和偏好。
+                // 清理开发测试版的 HTML 和其他来源，保留文字、日程和偏好。
                 let remove_unsupported = |entry: &mut serde_json::Value| {
                     if entry.get("guidance").is_some_and(|guide| {
-                        !guide.is_null() && guide["source"]["type"].as_str() != Some("local")
+                        !guide.is_null()
+                            && (guide["source"]["type"].as_str() != Some("local")
+                                || guide["kind"].as_str() != Some("video"))
                     }) {
                         entry
                             .as_object_mut()
@@ -807,107 +807,6 @@ async fn import_guidance_video(app: AppHandle) -> Result<Option<Guidance>, Strin
 }
 
 #[tauri::command]
-async fn import_guidance_html(app: AppHandle) -> Result<Option<Guidance>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let resources = app.state::<GuidanceResourceState>();
-        let resources = resources.0.as_ref().ok_or("resource-unavailable")?;
-        let title = if is_zh(app.state::<Mutex<TimerApp>>().lock().unwrap().settings()) {
-            "导入单文件 HTML"
-        } else {
-            "Import single-file HTML"
-        };
-        let mut dialog = app
-            .dialog()
-            .file()
-            .set_title(title)
-            .add_filter("HTML", &["html", "htm"]);
-        if let Some(window) = app.get_webview_window("settings") {
-            dialog = dialog.set_parent(&window);
-        }
-        let Some(file) = dialog.blocking_pick_file() else {
-            return Ok(None);
-        };
-        let path = file.into_path().map_err(|_| "import-failed")?;
-        resources.import_html(&path).map(Some)
-    })
-    .await
-    .map_err(|_| "import-failed".to_string())?
-}
-
-#[tauri::command]
-async fn read_guidance_html(
-    app: AppHandle,
-    guidance: Guidance,
-    session: String,
-) -> Result<String, String> {
-    if guidance.kind != GuidanceKind::Html || !guidance.is_valid() {
-        return Err("resource-unavailable".into());
-    }
-    tauri::async_runtime::spawn_blocking(move || {
-        app.state::<guidance_webview::GuidanceIsolation>()
-            .wait_until_ready(&session)?;
-        let resources = app.state::<GuidanceResourceState>();
-        let content = resources
-            .0
-            .as_ref()
-            .ok_or("resource-unavailable")?
-            .read(&guidance)?;
-        String::from_utf8(content.bytes).map_err(|_| "resource-unavailable".into())
-    })
-    .await
-    .map_err(|_| "resource-unavailable".to_string())?
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum GuidanceAuthoringFile {
-    Demo,
-    Template,
-}
-
-/// 只能导出随包的固定作者材料，目标路径由原生保存对话框取得。
-#[tauri::command]
-async fn save_guidance_authoring_file(
-    app: AppHandle,
-    material: GuidanceAuthoringFile,
-) -> Result<bool, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let (name, content) = match material {
-            GuidanceAuthoringFile::Demo => (
-                "sit-break-demo.html",
-                include_str!("../../src/assets/guidance/stretch-demo.html"),
-            ),
-            GuidanceAuthoringFile::Template => (
-                "sit-break-template.html",
-                include_str!("../../src/assets/guidance/guidance-template.html"),
-            ),
-        };
-        let title = if is_zh(app.state::<Mutex<TimerApp>>().lock().unwrap().settings()) {
-            "保存 HTML 制作材料"
-        } else {
-            "Save HTML authoring file"
-        };
-        let mut dialog = app
-            .dialog()
-            .file()
-            .set_title(title)
-            .set_file_name(name)
-            .add_filter("HTML", &["html"]);
-        if let Some(window) = app.get_webview_window("settings") {
-            dialog = dialog.set_parent(&window);
-        }
-        let Some(file) = dialog.blocking_save_file() else {
-            return Ok(false);
-        };
-        let path = file.into_path().map_err(|_| "export-failed")?;
-        std::fs::write(path, content).map_err(|_| "export-failed".to_string())?;
-        Ok(true)
-    })
-    .await
-    .map_err(|_| "export-failed".to_string())?
-}
-
-#[tauri::command]
 fn get_platform() -> &'static str {
     std::env::consts::OS
 }
@@ -1200,9 +1099,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_platform,
             import_guidance_video,
-            import_guidance_html,
-            read_guidance_html,
-            save_guidance_authoring_file,
             get_settings,
             timer_info,
             preview_schedule,
@@ -1241,7 +1137,6 @@ pub fn run() {
                 }
             }
             handle.manage(GuidanceResourceState(resources));
-            handle.manage(guidance_webview::GuidanceIsolation::default());
             handle.manage(Mutex::new(timer));
 
             // ---- 窗口（在 manage 之后创建，页面加载时状态已就绪）----
@@ -1268,14 +1163,11 @@ pub fn run() {
             .focused(false)
             .build()?;
             let zh = is_zh(&settings);
-            let reminder = guidance_webview::builder(
-                native_check_window(WebviewWindowBuilder::new(
-                    &handle,
-                    "reminder",
-                    WebviewUrl::App("reminder.html".into()),
-                )),
+            let reminder = native_check_window(WebviewWindowBuilder::new(
                 &handle,
-            )
+                "reminder",
+                WebviewUrl::App("reminder.html".into()),
+            ))
             .title(if zh {
                 "Sit Break 提醒"
             } else {
@@ -1293,7 +1185,6 @@ pub fn run() {
             .resizable(false)
             .focused(false)
             .build()?;
-            guidance_webview::install_frame_hooks(&reminder)?;
             let settings_win = native_check_window(WebviewWindowBuilder::new(
                 &handle,
                 "settings",

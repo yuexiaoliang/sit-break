@@ -472,7 +472,7 @@ fn restoring_an_already_started_break_keeps_latest_mode_selection_and_pending_re
 fn all_current_phases_restore_their_old_snapshot_and_future_rounds_use_saved_edits() {
     for guidance in [
         serde_json::json!({"kind":"video", "source":{"type":"local","id":"local-00000000000000000000000000000001"}}),
-        serde_json::json!({"kind":"html", "source":{"type":"local", "id":"local-0123456789abcdef0123456789abcdef"}}),
+        serde_json::json!({"kind":"video", "source":{"type":"local", "id":"local-0123456789abcdef0123456789abcdef"}}),
     ] {
         for phase in [Mode::Work, Mode::Remind, Mode::Break] {
             for paused in [false, true] {

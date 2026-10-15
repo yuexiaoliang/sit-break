@@ -7,8 +7,6 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { checkLocalVideo } from './native-local-video-check.mjs';
-import { checkHtml } from './native-html-check.mjs';
-import { checkAuthoring } from './native-authoring-check.mjs';
 import { preimportedVideo } from './native-resource-fixture.mjs';
 
 const usage = 'node scripts/native-webview-check.mjs <debug-exe> <output-directory>';
@@ -25,7 +23,7 @@ const dataDirectory = join(process.env.APPDATA, identifier);
 const nativeProbe = fileURLToPath(new URL('./native-window.ps1', import.meta.url));
 const runFile = promisify(execFile);
 const delay = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
-const report = { startedAt: new Date().toISOString(), executable, identifier, runs: [], checks: [], video: { status: 'not_started' }, localVideo: { status: 'not_started', fixtureMode: 'preimported-copy' }, html: { status: 'not_started', fixtureMode: 'preimported-copy' }, authoring: { status: 'not_started' }, notCovered: ['Windows 原生文件选择器、导入命令及导入 UI 尚未执行；本地场景只使用明确的已导入副本 fixture', '作者材料实际导出和系统剪贴板写入尚未执行'] };
+const report = { startedAt: new Date().toISOString(), executable, identifier, runs: [], checks: [], video: { status: 'not_started' }, localVideo: { status: 'not_started', fixtureMode: 'preimported-copy' }, notCovered: ['Windows 原生文件选择器、导入命令及导入 UI 尚未执行；本地场景只使用明确的已导入副本 fixture'] };
 const connections = [];
 let application;
 let originalTheme;
@@ -221,6 +219,16 @@ async function checkSimpleLocalVideo(app) {
     use_schedule: false, work_minutes: 1, break_minutes: 2,
     tips: [{ id: 'native-check-video-only', text: '', guidance }],
   } });
+  await app.settings.invoke('open_settings');
+  await waitFor('设置只显示本地视频来源', () => app.settings.evaluate(`(() => {
+    const pickers = Array.from(document.querySelectorAll('.guidance-picker select'));
+    return pickers.length > 0 && pickers[0].value === 'local-video'
+      && pickers.every(select => JSON.stringify(Array.from(select.options, option => option.value)) === '["","local-video"]')
+      && !document.querySelector('.guidance-authoring-trigger, .guidance-url, .guidance-frame, iframe');
+  })()`));
+  await app.settings.screenshot('04-video-only-settings');
+  report.checks.push({ name: '来源仅有不使用指引与本地视频，无网页或制作入口' });
+  await app.settings.invoke('hide_settings');
   await app.settings.invoke('reset_timer');
   assert.equal((await app.settings.invoke('timer_info')).mode, 'work');
   // 简单计时走真实一分钟；不注入计时器，也不改写工作状态。
@@ -389,17 +397,11 @@ try {
   report.checks.push({ name: '真实退出重开及提前结束操作', saved, restored });
   await checkSimpleLocalVideo(app);
   app = await checkLocalVideo({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, videoSample, delay, onApp: (next) => { app = next; } });
-  app = await checkHtml({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, delay,
-    setTheme: (value) => powershell('Theme', value), onApp: (next) => { app = next; } });
-  app = await checkAuthoring({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, delay,
-    setTheme: (value) => powershell('Theme', value), onApp: (next) => { app = next; } });
   report.status = 'passed';
 } catch (error) {
   report.status = 'failed';
   if (report.video.status === 'running') report.video.status = 'failed';
   if (report.localVideo.status === 'running') report.localVideo.status = 'failed';
-  if (report.html.status === 'running') report.html.status = 'failed';
-  if (report.authoring.status === 'running') report.authoring.status = 'failed';
   report.error = error.stack;
   for (const connection of connections) {
     try { if (connection.socket.readyState === WebSocket.OPEN) await connection.screenshot(`failure-${connection.label}`); }

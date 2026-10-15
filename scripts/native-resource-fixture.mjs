@@ -12,17 +12,6 @@ export async function preimportedVideo(dataDirectory, bytes) {
   return { kind: 'video', source: { type: 'local', id } };
 }
 
-/** 内容工厂可使用已分配的不透明 ID 构造合法攻击载荷，不调用原生导入。 */
-export async function preimportedHtml(dataDirectory, content) {
-  const guidance = { kind: 'html', source: { type: 'local', id: `local-${randomBytes(16).toString('hex')}` } };
-  const html = typeof content === 'function' ? await content(guidance) : content;
-  assert.equal(typeof html, 'string');
-  const directory = join(dataDirectory, 'guidance');
-  await mkdir(directory, { recursive: true });
-  await writeFile(join(directory, `${guidance.source.id}.html`), html, { flag: 'wx' });
-  return guidance;
-}
-
 /** 从真实应用保存的当前工作进度缩短等待，再由产品恢复入口自然提醒。 */
 export async function restartWorkForBreak(context) {
   await context.quit(context.app.settings);
