@@ -290,6 +290,31 @@ fn online_video_reminder_is_saved_reloaded_and_kept_for_the_active_break() {
 }
 
 #[test]
+fn html_only_reminder_keeps_its_guide_after_save_reopen_and_starting_a_break() {
+    let path = std::env::temp_dir().join(format!("sit-break-html-{}.json", fastrand::u64(..)));
+    let mut draft = serde_json::to_value(Settings::default()).unwrap();
+    let guide = serde_json::json!({"kind":"html", "source":{"type":"local","id":"local-0123456789abcdef0123456789abcdef"}});
+    draft["tips"] = serde_json::json!([{"id":"html-entry","text":"","guidance":guide}]);
+    draft["work_minutes"] = serde_json::json!(1);
+    draft["idle_reset"] = serde_json::json!(false);
+    let configured: Settings = serde_json::from_value(draft).unwrap();
+    configured.save_to(&path).unwrap();
+    let mut app = TimerApp::new(Settings::load_from(&path), fastrand::Rng::with_seed(1));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        Duration::from_secs(60),
+    );
+    app.dispatch(Action::StartBreak, Duration::from_secs(60));
+    assert_eq!(app.info().mode, Mode::Break);
+    assert_eq!(app.info().tip.as_deref(), Some(""));
+    assert_eq!(serde_json::to_value(app.info()).unwrap()["guidance"], guide);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn guidance_only_reminder_can_be_saved_reopened_and_shown_without_added_text() {
     let path = std::env::temp_dir().join(format!("sit-break-guidance-{}.json", fastrand::u64(..)));
     let mut app = simple_timer();

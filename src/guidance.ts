@@ -1,8 +1,9 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { createHtmlGuidanceView } from "./html-guidance";
 
 /** 一份动作指引归属一条提醒或单轮休息；资源描述不依赖文字。 */
 export interface Guidance {
-  kind: "video";
+  kind: "video" | "html";
   source: { type: "builtin"; id: string } | { type: "online"; url: string } | { type: "local"; id: string };
 }
 
@@ -49,6 +50,7 @@ async function checkImportedVideo(guidance: Guidance): Promise<void> {
 export function guidancePicker(value: Guidance | null | undefined, strings: Record<string, string>, onChange: (value: Guidance | null) => void): HTMLElement {
   let current = value ?? null;
   let importing = false;
+  let importingSelection = "";
   const commit = (next: Guidance | null) => { current = next; onChange(next); };
   const group = document.createElement("div");
   group.className = "guidance-picker";
@@ -56,7 +58,7 @@ export function guidancePicker(value: Guidance | null | undefined, strings: Reco
   const caption = document.createElement("span");
   caption.textContent = strings.guidance;
   const select = document.createElement("select");
-  for (const [id, name] of [["", strings.noGuidance], ["squat-demo", strings.squatDemo], ["local-video", strings.localVideo], ["online-video", strings.onlineVideo]]) {
+  for (const [id, name] of [["", strings.noGuidance], ["squat-demo", strings.squatDemo], ["local-video", strings.localVideo], ["local-html", strings.localHtml], ["online-video", strings.onlineVideo]]) {
     const option = document.createElement("option");
     option.value = id;
     option.textContent = name;
@@ -86,38 +88,42 @@ export function guidancePicker(value: Guidance | null | undefined, strings: Reco
   };
   function selectCurrent() {
     const source = current?.source;
-    select.value = source?.type === "local" ? "local-video" : source?.type === "online" ? "online-video" : source?.type === "builtin" ? source.id : "";
+    select.value = source?.type === "local" ? `local-${current!.kind}` : source?.type === "online" ? "online-video" : source?.type === "builtin" ? source.id : "";
     if (source?.type === "online") input.value = source.url;
   }
   function renderSource() {
     const online = select.value === "online-video";
-    const local = select.value === "local-video";
+    const html = select.value === "local-html";
+    const local = select.value === "local-video" || html;
     input.hidden = !online;
     input.disabled = !online;
     input.required = online;
     input.setCustomValidity("");
     hint.hidden = !online && !local;
-    hint.textContent = online ? strings.videoUrlHint : strings.localVideoHint;
+    hint.textContent = online ? strings.videoUrlHint : html ? strings.localHtmlHint : strings.localVideoHint;
     choose.hidden = !local;
+    choose.textContent = html ? strings.chooseLocalHtml : strings.chooseLocalVideo;
     if (online) validateUrl();
   }
-  async function importVideo() {
+  async function importFile() {
     if (importing) return;
+    const html = select.value === "local-html";
     importing = true;
+    importingSelection = select.value;
     choose.disabled = true;
-    select.setCustomValidity(strings.importingVideo);
+    select.setCustomValidity(html ? strings.importingHtml : strings.importingVideo);
     group.dataset.importing = "true";
     status.hidden = false;
-    status.textContent = strings.importingVideo;
+    status.textContent = html ? strings.importingHtml : strings.importingVideo;
     try {
-      const imported = await invoke<Guidance | null>("import_guidance_video");
+      const imported = await invoke<Guidance | null>(html ? "import_guidance_html" : "import_guidance_video");
       if (imported) {
-        await checkImportedVideo(imported);
+        if (!html) await checkImportedVideo(imported);
         commit(imported);
       }
       status.hidden = true;
     } catch (error) {
-      status.textContent = error === "unsupported-video" ? strings.unsupportedVideo : strings.importVideoFailed;
+      status.textContent = html ? error === "unsupported-html" ? strings.unsupportedHtml : strings.importHtmlFailed : error === "unsupported-video" ? strings.unsupportedVideo : strings.importVideoFailed;
     } finally {
       importing = false;
       choose.disabled = false;
@@ -129,18 +135,18 @@ export function guidancePicker(value: Guidance | null | undefined, strings: Reco
   }
   selectCurrent();
   select.addEventListener("change", () => {
-    if (importing) { select.value = "local-video"; return; }
+    if (importing) { select.value = importingSelection; return; }
     status.hidden = true;
-    if (select.value === "local-video") {
+    if (select.value === "local-video" || select.value === "local-html") {
       renderSource();
-      void importVideo();
+      void importFile();
       return;
     }
     if (select.value !== "online-video") commit(select.value ? { kind: "video", source: { type: "builtin", id: select.value } } : null);
     renderSource();
     if (select.value === "online-video") input.focus();
   });
-  choose.addEventListener("click", () => { void importVideo(); });
+  choose.addEventListener("click", () => { void importFile(); });
   input.addEventListener("input", validateUrl);
   label.append(caption, select);
   group.append(label, input, hint, choose, status);
@@ -152,6 +158,7 @@ const squatDemoUrl = new URL("./assets/guidance/squat-demo.mp4", import.meta.url
 
 /** 计时刷新只更新文案；只有指引变化、主动重试和离开休息时才替换媒体实例。 */
 export function createGuidanceView(container: HTMLElement) {
+  const htmlView = createHtmlGuidanceView(container, validOnlineUrl, openExternalGuidance);
   let key = "";
   let video: HTMLVideoElement | null = null;
   let status: HTMLParagraphElement | null = null;
@@ -172,6 +179,7 @@ export function createGuidanceView(container: HTMLElement) {
   }
 
   function clear() {
+    htmlView.clear();
     key = "";
     stopWaiting();
     builtinFetch?.abort();
@@ -227,6 +235,12 @@ export function createGuidanceView(container: HTMLElement) {
   function show(guidance: Guidance | null | undefined, labels: Record<string, string>) {
     strings = labels;
     if (!guidance) { clear(); return; }
+    if (guidance.kind === "html") {
+      if (key) clear();
+      htmlView.show(guidance, labels);
+      return;
+    }
+    htmlView.clear();
     const nextKey = JSON.stringify(guidance);
     if (key === nextKey) { updateLabels(); return; }
     clear();
