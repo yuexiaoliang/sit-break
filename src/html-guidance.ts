@@ -36,7 +36,7 @@ export function createHtmlGuidanceView(container: HTMLElement) {
     const current = frame;
     if (!current || event.source !== current.contentWindow || event.origin !== "null") return;
     const message = event.data as Record<string, unknown> | null;
-    if (!message || message.source !== "sit-break-guidance" || message.session !== current.name || message.type !== "ready" || message.documentUrl !== "about:srcdoc") return;
+    if (!message || message.source !== "sit-break-guidance" || message.session !== current.name || message.type !== "ready" || typeof message.documentUrl !== "string" || message.documentUrl.split("#", 1)[0] !== "about:srcdoc") return;
     clearTimeout(timer);
     loading = failed = false;
     current.dataset.state = "ready";
