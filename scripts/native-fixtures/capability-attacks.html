@@ -20,7 +20,8 @@ const nestedAppUrl = __NESTED_APP_URL_JSON__;
 const attackSettings = __ATTACK_SETTINGS_JSON__;
 const record = (name, value) => { results[name] = value; document.getElementById('results').textContent = JSON.stringify(results); };
 const attempt = async (name, action) => {
-  try { record(name, await action()); } catch(error) { record(name, { error:error.name }); }
+  // Tauri 的权限拒绝可直接返回字符串；不记录原文，也不能把拒绝丢成空对象。
+  try { record(name, await action()); } catch(error) { record(name, { error:error?.name || typeof error }); }
 };
 const ownInvoke = (command, payload) => {
   if (typeof window.__TAURI_INTERNALS__?.invoke !== 'function') return 'unavailable';

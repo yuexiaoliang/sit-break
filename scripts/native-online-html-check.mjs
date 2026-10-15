@@ -195,11 +195,14 @@ export async function checkOnlineHtml(context) {
     await inspector.evaluate('document.getElementById("run-attacks").click()');
     await waitFor('在线页面完成实际能力攻击', () => inspector.evaluate('document.getElementById("attack-status").textContent === "done"'), 15_000);
     const results = await inspector.evaluate('JSON.parse(document.getElementById("results").textContent)');
+    const afterSettings = await app.settings.invoke('get_settings');
+    const afterAttack = await app.reminder.invoke('timer_info');
+    report.onlineHtml.capability = { results, settingsUnchanged: JSON.stringify(afterSettings) === JSON.stringify(baseline),
+      beforeTimer: timer, afterTimer: afterAttack, hostUrl: await app.reminder.evaluate('location.href') };
     for (const name of ['parentDom', 'parentNativeCommand']) assert.ok(results[name]?.error, `${name}必须隔离`);
     for (const name of ['ownNativeCommand', 'ownReadSettings', 'ownSaveSettings']) assert.ok(results[name] === 'unavailable' || results[name] === 'pending' || results[name]?.error, `${name}不可执行`);
     for (const name of ['fetchIpc', 'fetchFile', 'fetchAsset', 'fetchLocalVideo']) assert.ok(results[name]?.error, `${name}不可读取`);
-    assert.deepEqual(await app.settings.invoke('get_settings'), baseline);
-    const afterAttack = await app.reminder.invoke('timer_info');
+    assert.deepEqual(afterSettings, baseline);
     assert.equal(afterAttack.mode, 'break');
     assert.ok(afterAttack.remaining <= timer.remaining && afterAttack.remaining >= timer.remaining - 15, '攻击期间只按正常墙钟计时');
     for (const key of ['round', 'guidance', 'work_seconds', 'break_seconds', 'paused']) assert.deepEqual(afterAttack[key], timer[key]);
