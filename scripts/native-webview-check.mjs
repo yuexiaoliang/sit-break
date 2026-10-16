@@ -440,10 +440,15 @@ try {
   });
   report.checks.push({ name: '真实退出重开及提前结束操作', saved, restored });
   const baseline = await app.settings.invoke('get_settings');
-  const compactSettings = { ...baseline, use_schedule: false, language: 'zh', work_minutes: 1,
-    tips: [{ id: 'native-check-single-line', text: '转转头' }] };
+  // 简单工作计时按既有规则重开后重新开始；使用日程快照复用真实恢复路径。
+  const compactSettings = { ...baseline, use_schedule: true, language: 'zh',
+    tips: [{ id: 'native-check-single-line', text: '转转头' }],
+    schedules: baseline.schedules.map(schedule => ({ ...schedule, id: `compact-${schedule.id}`,
+      periods: schedule.periods.map(period => ({ ...period, id: `compact-${period.id}` })) })),
+  };
   await app.settings.invoke('save_settings', { settings: compactSettings });
   await app.settings.invoke('reset_timer');
+  assert.equal((await app.settings.invoke('timer_info')).tip, '转转头', '新日程实际选中单行测试文字');
   await quit(app.settings);
   const compactProgress = JSON.parse(await readFile(progressPath, 'utf8'));
   assert.equal(compactProgress.info.mode, 'work');
@@ -463,8 +468,10 @@ try {
   const compactLayout = await inspectLayout(app.reminder, 'btnEnd');
   await app.reminder.screenshot('03-single-line-compact');
   await app.settings.invoke('save_settings', { settings: { ...compactSettings, show_widget: true } });
-  await waitFor('设置刷新原生窗口后仍按单行内容收紧', () => app.reminder.evaluate('innerHeight === 244'));
-  await inspectLayout(app.reminder, 'btnEnd');
+  await waitFor('设置刷新后原生窗口与单行页面均收紧', async () => {
+    const checked = await inspectLayout(app.reminder, 'btnEnd');
+    return checked.layout.height === 244 && checked;
+  });
   report.checks.push({ name: '单行纯文字：实测正文高度收紧窗口、设置刷新后保持与无外投影', compact, ...compactLayout });
   await app.reminder.evaluate('document.getElementById("btnEnd").click()');
   await waitFor('单行休息结束', async () => (await app.reminder.invoke('timer_info')).mode === 'work');
