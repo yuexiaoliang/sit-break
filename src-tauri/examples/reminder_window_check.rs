@@ -45,20 +45,26 @@ fn main() {
             std::thread::spawn(move || {
                 let mut samples = Vec::new();
                 let mut passed = true;
-                for (name, media, main_thread) in [
-                    ("主线程首次视频休息", true, true),
-                    ("主线程返回纯文字", false, true),
-                    ("主线程纯文字切换视频", true, true),
-                    ("主线程重复视频休息", true, true),
-                    ("后台线程返回纯文字", false, false),
-                    ("后台线程切换视频", true, false),
+                for (name, media, main_thread, fit_height) in [
+                    ("主线程首次视频休息", true, true, None),
+                    ("主线程返回纯文字", false, true, None),
+                    ("主线程纯文字切换视频", true, true, None),
+                    ("主线程重复视频休息", true, true, None),
+                    ("后台线程返回纯文字", false, false, None),
+                    ("后台线程切换视频", true, false, None),
+                    ("主线程单行文字收紧", false, true, Some(244)),
+                    ("主线程长文恢复高度", false, true, Some(368)),
                 ] {
                     // 同步 IPC 在主线程执行；计时线程和恢复入口也需覆盖。
                     if main_thread {
                         let current = window.clone();
                         window
                             .run_on_main_thread(move || {
-                                window_geometry::show_reminder(&current, media).unwrap()
+                                if let Some(height) = fit_height {
+                                    window_geometry::fit_text_break(&current, height).unwrap();
+                                } else {
+                                    window_geometry::show_reminder(&current, media).unwrap();
+                                }
                             })
                             .unwrap();
                     } else {
@@ -75,9 +81,14 @@ fn main() {
                             <= i64::from(area.position.x) + i64::from(area.size.width)
                         && i64::from(position.y) + i64::from(size.height)
                             <= i64::from(area.position.y) + i64::from(area.size.height);
-                    passed &= inside;
+                    let scale = monitor.scale_factor();
+                    let height_matches = fit_height.is_none_or(|height| {
+                        f64::from(area.size.height) < f64::from(height + 24) * scale
+                            || size.height == (f64::from(height) * scale).round() as u32
+                    });
+                    passed &= inside && height_matches;
                     samples.push(json!({
-                        "name": name, "inside": inside, "scale": monitor.scale_factor(),
+                        "name": name, "inside": inside, "heightMatches": height_matches, "scale": scale,
                         "window": {"position": position, "size": size},
                         "workArea": {"position": area.position, "size": area.size}
                     }));

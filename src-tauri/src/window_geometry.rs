@@ -47,10 +47,19 @@ pub(crate) fn clamp_axis(
 }
 
 pub(crate) fn show_reminder(r: &WebviewWindow, media: bool) -> tauri::Result<()> {
+    layout_reminder(r, media, 368.0)?;
+    r.show()
+}
+
+pub(crate) fn fit_text_break(r: &WebviewWindow, height: u32) -> tauri::Result<()> {
+    layout_reminder(r, false, f64::from(height.clamp(244, 368)))
+}
+
+fn layout_reminder(r: &WebviewWindow, media: bool, text_height: f64) -> tauri::Result<()> {
     let (mut width, mut height): (f64, f64) = if media {
         (624.0, 344.0)
     } else {
-        (380.0, 368.0)
+        (380.0, text_height)
     };
     if let Some(monitor) = r
         .current_monitor()
@@ -73,5 +82,5 @@ pub(crate) fn show_reminder(r: &WebviewWindow, media: bool) -> tauri::Result<()>
     } else {
         r.set_size(tauri::LogicalSize::new(width, height))?;
     }
-    r.show()
+    Ok(())
 }

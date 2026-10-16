@@ -781,6 +781,15 @@ fn timer_info(app: AppHandle) -> TimerInfo {
 }
 
 #[tauri::command]
+fn fit_reminder_height(window: WebviewWindow, app: AppHandle, height: u32) -> Result<(), String> {
+    let info = app.state::<Mutex<TimerApp>>().lock().unwrap().info();
+    if window.label() == "reminder" && info.mode == Mode::Break && info.guidance.is_none() {
+        window_geometry::fit_text_break(&window, height).map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn preview_schedule(
     app: AppHandle,
     draft: Settings,
@@ -1056,6 +1065,7 @@ pub fn run() {
             import_guidance_video,
             get_settings,
             timer_info,
+            fit_reminder_height,
             preview_schedule,
             save_settings,
             apply_interval,

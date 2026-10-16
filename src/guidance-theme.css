@@ -15,7 +15,6 @@
   --sb-ring-background: rgba(29, 122, 86, .14);
   --sb-window-background: rgba(255, 255, 255, .92);
   --sb-window-border: rgba(255, 255, 255, .9);
-  --sb-window-shadow: rgba(30, 80, 50, .3);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -35,6 +34,5 @@
     --sb-ring-background: rgba(255, 255, 255, .08);
     --sb-window-background: rgba(24, 29, 27, .94);
     --sb-window-border: rgba(255, 255, 255, .06);
-    --sb-window-shadow: rgba(0, 0, 0, .5);
   }
 }

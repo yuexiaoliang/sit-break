@@ -33,14 +33,12 @@ body.widget-page { display: flex; align-items: center; justify-content: center; 
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, .35),
-    0 12px 32px -10px rgba(15, 60, 40, .45);
+    inset 0 1px 1px rgba(255, 255, 255, .35);
   transition: box-shadow .2s ease;
 }
 .ball:hover {
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, .35),
-    0 14px 36px -10px rgba(15, 60, 40, .6);
+    inset 0 1px 1px rgba(255, 255, 255, .5);
 }
 
 .ball svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
@@ -90,13 +88,11 @@ body.widget-page { display: flex; align-items: center; justify-content: center; 
       radial-gradient(circle at 30% 22%, rgba(96, 220, 175, .16), rgba(96, 220, 175, .05) 55%, rgba(0, 0, 0, 0) 100%),
       rgba(16, 21, 19, .78);
     box-shadow:
-      inset 0 1px 1px rgba(255, 255, 255, .12),
-      0 12px 32px -10px rgba(0, 0, 0, .6);
+      inset 0 1px 1px rgba(255, 255, 255, .12);
   }
   .ball:hover {
     box-shadow:
-      inset 0 1px 1px rgba(255, 255, 255, .12),
-      0 14px 36px -10px rgba(0, 0, 0, .7);
+      inset 0 1px 1px rgba(255, 255, 255, .2);
   }
   .ball .ring-bg { stroke: rgba(255, 255, 255, .1); }
   .num { color: #ecf6f1; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
@@ -104,6 +100,8 @@ body.widget-page { display: flex; align-items: center; justify-content: center; 
   .ball.paused .num { color: #e3c257; }
   .ball.break .num { color: #8ec6f8; }
 }
+
+/* 原生透明窗口外侧不绘制 CSS 投影，避免被 WebView 边界截成矩形。 */
 
 /* ===== ② 提醒与休息浮窗（系统主题） ===== */
 body.reminder-page { display: flex; color-scheme: light dark; }
@@ -114,7 +112,6 @@ body.reminder-page { display: flex; color-scheme: light dark; }
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border: 1px solid var(--sb-window-border);
-  box-shadow: 0 24px 60px -18px var(--sb-window-shadow);
   color: var(--sb-text);
   display: flex; flex-direction: column;
   animation: rise .28s ease-out;
@@ -178,7 +175,6 @@ body.panel-page { display: flex; padding: 6px; }
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, .95);
-  box-shadow: 0 24px 60px -18px rgba(30, 80, 50, .35);
   display: flex; flex-direction: column;
   animation: rise .16s ease-out;
 }
@@ -243,7 +239,6 @@ body.panel-page { display: flex; padding: 6px; }
   .pcard {
     background: rgba(24, 29, 27, .95);
     border-color: rgba(255, 255, 255, .07);
-    box-shadow: 0 24px 60px -18px rgba(0, 0, 0, .55);
   }
   .pmode { color: #aebcb3; }
   .idle-status, .ball.idle .num { color: #a6b9b2; }
@@ -267,7 +262,6 @@ body.settings-page { display: flex; padding: 6px; }
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, .95);
-  box-shadow: 0 24px 60px -18px rgba(30, 80, 50, .3);
   display: flex; flex-direction: column;
   overflow: hidden;
   animation: rise .2s ease-out;
@@ -399,7 +393,7 @@ body.settings-page { display: flex; padding: 6px; }
   .scard {
     background: rgba(24, 29, 27, .95);
     border-color: rgba(255, 255, 255, .07);
-    box-shadow: 0 24px 60px -18px rgba(0, 0, 0, .55);
+
     color: #eef4f0;
   }
   .ftips label { color: #8fa098; }

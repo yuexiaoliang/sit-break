@@ -173,6 +173,7 @@ async function inspectLayout(connection, buttonId, checkText = true) {
     const ids = ${JSON.stringify([buttonId, ...(checkText ? [buttonId === 'btnBreak' ? 'tipText' : 'breakTime'] : [])])};
     const rect = (element) => { const r = element.getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:r.height, right:r.right, bottom:r.bottom }; };
     return { width:innerWidth, height:innerHeight, ratio:devicePixelRatio,
+      outerShadow:getComputedStyle(document.querySelector('.card:not([hidden])')).boxShadow,
       dark:matchMedia('(prefers-color-scheme: dark)').matches,
       background:getComputedStyle(document.documentElement).getPropertyValue('--sb-background').trim(),
       controls:ids.map((id) => {
@@ -190,6 +191,7 @@ async function inspectLayout(connection, buttonId, checkText = true) {
       assert.ok(['auto', 'scroll'].includes(element.overflowY), '长提醒文字必须能在可见区域内滚动阅读');
     }
   }
+  assert.equal(layout.outerShadow, 'none', '透明浮窗外侧不绘制会被 WebView 边界裁切的投影');
   const native = await powershell();
   const window = native.windows.find((item) => item.visible && /Reminder|提醒/.test(item.title));
   assert.ok(window, '必须找到真实可见的原生提醒 HWND');
@@ -437,6 +439,36 @@ try {
     return state.mode === 'work' && state.round.number === 2;
   });
   report.checks.push({ name: '真实退出重开及提前结束操作', saved, restored });
+  const baseline = await app.settings.invoke('get_settings');
+  const compactSettings = { ...baseline, use_schedule: false, language: 'zh', work_minutes: 1,
+    tips: [{ id: 'native-check-single-line', text: '转转头' }] };
+  await app.settings.invoke('save_settings', { settings: compactSettings });
+  await app.settings.invoke('reset_timer');
+  await quit(app.settings);
+  const compactProgress = JSON.parse(await readFile(progressPath, 'utf8'));
+  assert.equal(compactProgress.info.mode, 'work');
+  compactProgress.info.remaining = 1;
+  await writeFile(`${progressPath}.check`, JSON.stringify(compactProgress), 'utf8');
+  await rename(`${progressPath}.check`, progressPath);
+  app = await launch();
+  await waitFor('单行提醒实际进入待休息', async () => (await app.reminder.invoke('timer_info')).mode === 'remind');
+  await app.reminder.evaluate('document.getElementById("btnBreak").click()');
+  const compact = await waitFor('单行正文使原生窗口收紧到 244px', () => app.reminder.evaluate(`(() => {
+    const text=document.getElementById('stretchText'), content=document.getElementById('stretchContent');
+    return innerHeight===244 && content?.textContent==='转转头' && {
+      height:innerHeight,content:content.textContent,contentHeight:content.getBoundingClientRect().height,viewport:text.clientHeight
+    };
+  })()`));
+  assert.ok(Math.abs(compact.contentHeight - compact.viewport) <= 1, '单行正文下不保留可伸展的大块空白');
+  const compactLayout = await inspectLayout(app.reminder, 'btnEnd');
+  await app.reminder.screenshot('03-single-line-compact');
+  await app.settings.invoke('save_settings', { settings: { ...compactSettings, show_widget: true } });
+  await waitFor('设置刷新原生窗口后仍按单行内容收紧', () => app.reminder.evaluate('innerHeight === 244'));
+  await inspectLayout(app.reminder, 'btnEnd');
+  report.checks.push({ name: '单行纯文字：实测正文高度收紧窗口、设置刷新后保持与无外投影', compact, ...compactLayout });
+  await app.reminder.evaluate('document.getElementById("btnEnd").click()');
+  await waitFor('单行休息结束', async () => (await app.reminder.invoke('timer_info')).mode === 'work');
+  await app.settings.invoke('save_settings', { settings: baseline });
   await checkSimpleLocalVideo(app);
   app = await checkLocalVideo({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, videoSample, delay, onApp: (next) => { app = next; } });
   report.status = 'passed';

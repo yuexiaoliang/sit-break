@@ -16,6 +16,7 @@ const cardRemind = document.getElementById("cardRemind")!;
 const cardBreak = document.getElementById("cardBreak")!;
 const tipText = document.getElementById("tipText")!;
 const stretchText = document.getElementById("stretchText")!;
+const stretchContent = document.getElementById("stretchContent")!;
 const breakTimeEl = document.getElementById("breakTime")!;
 const ringCap = document.getElementById("ringCap")!;
 const breakProgress = document.getElementById("breakProgress") as HTMLProgressElement;
@@ -23,6 +24,36 @@ const btnBreak = document.getElementById("btnBreak") as HTMLButtonElement;
 const guidanceView = createGuidanceView(document.getElementById("guidanceContent")!);
 
 let S = STR.zh;
+let plainBreakVisible = false;
+let fitFrame = 0;
+let lastFitRequest = "";
+
+function fitTextBreak() {
+  if (!plainBreakVisible || fitFrame) return;
+  fitFrame = requestAnimationFrame(() => {
+    fitFrame = 0;
+    if (!plainBreakVisible) return;
+    // 内层高度是文字实际占用的高度，不受外层滚动视口的拉伸影响。
+    const textHeight = Math.max(26, stretchContent.getBoundingClientRect().height);
+    const height = Math.max(244, Math.min(368, Math.ceil(
+      window.innerHeight - stretchText.getBoundingClientRect().height + textHeight,
+    )));
+    if (height === window.innerHeight) {
+      lastFitRequest = "";
+      return;
+    }
+    const request = `${window.innerWidth}:${window.innerHeight}:${height}`;
+    if (request === lastFitRequest) return;
+    lastFitRequest = request;
+    invoke("fit_reminder_height", { height }).catch((error) => {
+      lastFitRequest = "";
+      console.error("无法调整纯文字休息浮窗高度", error);
+    });
+  });
+}
+
+new ResizeObserver(fitTextBreak).observe(stretchContent);
+window.addEventListener("resize", fitTextBreak);
 
 function showRemindCard() {
   cardBreak.hidden = true;
@@ -60,6 +91,9 @@ function chime() {
 }
 
 function renderState(state: TimerState) {
+  const wasPlainBreak = plainBreakVisible;
+  plainBreakVisible = state.mode === "break" && !state.guidance;
+  if (!plainBreakVisible) lastFitRequest = "";
   if (state.mode !== "break") guidanceView.clear();
   const round = state.round ? `${fmt(S.roundNumber, { n: state.round.number })} · ` : "";
   if (state.mode === "remind") {
@@ -73,13 +107,15 @@ function renderState(state: TimerState) {
     breakTimeEl.textContent = fmtTime(state.remaining);
     breakTimeEl.setAttribute("aria-label", fmt(S.untilBack, { t: fmtTime(state.remaining) }));
     ringCap.textContent = round + S.remainingTime;
-    if (stretchText.textContent !== (state.tip ?? "")) stretchText.textContent = state.tip ?? "";
+    const textChanged = stretchContent.textContent !== (state.tip ?? "");
+    if (textChanged) stretchContent.textContent = state.tip ?? "";
     stretchText.hidden = !state.tip?.trim();
     cardBreak.classList.toggle("has-guidance", Boolean(state.guidance));
     guidanceView.show(state.guidance, S);
     const progress = state.break_seconds > 0 ? state.remaining / state.break_seconds : 0;
     breakProgress.value = Math.min(1, Math.max(0, progress));
     showBreakCard();
+    if (plainBreakVisible && (textChanged || !wasPlainBreak)) fitTextBreak();
   }
 }
 
