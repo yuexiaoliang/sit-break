@@ -4,7 +4,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use crate::schedule::{minute_of_day, Period, Schedule, ValidationError};
-use crate::{choose_tip, Settings, POSTPONE_SECS};
+use crate::{choose_tip, Guidance, Settings, POSTPONE_SECS};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalTime {
@@ -53,6 +53,8 @@ pub struct TimerInfo {
     pub break_seconds: u64,
     pub round: Option<RoundInfo>,
     pub tip: Option<String>,
+    #[serde(default)]
+    pub guidance: Option<Guidance>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -62,6 +64,7 @@ pub struct ReminderPayload {
     pub postpone_seconds: u64,
     pub sound: bool,
     pub tip: String,
+    pub guidance: Option<Guidance>,
     pub sat_minutes: u32,
 }
 
@@ -103,6 +106,8 @@ struct SavedProgress {
     use_schedule: bool,
     info: TimerInfo,
     previous_tip: Option<String>,
+    #[serde(default)]
+    previous_guidance: Option<Guidance>,
     restart_after_break: bool,
     #[serde(default)]
     schedule_idle_consumed: bool,
@@ -124,6 +129,15 @@ struct ResumedIdle {
 impl SavedProgress {
     fn is_valid(&self) -> bool {
         if self.version != 1
+            || self
+                .info
+                .guidance
+                .as_ref()
+                .is_some_and(|guidance| !guidance.is_valid())
+            || self
+                .previous_guidance
+                .as_ref()
+                .is_some_and(|guidance| !guidance.is_valid())
             || self
                 .grace_remaining_secs
                 .is_some_and(|seconds| seconds > 3600)
@@ -155,11 +169,12 @@ impl SavedProgress {
                 && round.number > 0
                 && crate::schedule::valid_date(&round.date)
                 && self.saved_local.is_some()
-                && self
+                && (self
                     .info
                     .tip
                     .as_ref()
                     .is_some_and(|tip| !tip.trim().is_empty())
+                    || self.info.guidance.as_ref().is_some_and(Guidance::is_valid))
         });
         valid_lengths && valid_remaining && valid_round
     }
@@ -172,6 +187,7 @@ pub struct TimerApp {
     restored_grace_until: Option<Duration>,
     tip_rng: fastrand::Rng,
     previous_tip: Option<String>,
+    previous_guidance: Option<Guidance>,
     // 日程已在本次持续离开中结束一轮，下一轮等待重新操作电脑。
     schedule_idle_consumed: bool,
     last_idle_secs: Option<u64>,
@@ -205,6 +221,7 @@ impl TimerApp {
             use_schedule: self.settings.use_schedule,
             info: self.info(),
             previous_tip: self.previous_tip.clone(),
+            previous_guidance: self.previous_guidance.clone(),
             restart_after_break: self.restart_after_break,
             schedule_idle_consumed: self.schedule_idle_consumed
                 && !self
@@ -293,6 +310,7 @@ impl TimerApp {
                 .unwrap_or(0);
             app.info = saved.info;
             app.previous_tip = saved.previous_tip;
+            app.previous_guidance = saved.previous_guidance;
             app.restart_after_break = saved.restart_after_break;
             app.schedule_idle_consumed = saved.schedule_idle_consumed;
             app.last_idle_secs = saved.last_idle_secs;
@@ -330,12 +348,14 @@ impl TimerApp {
                 break_seconds: 0,
                 round: None,
                 tip: None,
+                guidance: None,
             },
             settings,
             break_ended_at: None,
             restored_grace_until: None,
             tip_rng,
             previous_tip: None,
+            previous_guidance: None,
             schedule_idle_consumed: false,
             last_idle_secs: None,
             last_raw_idle_secs: None,
@@ -498,20 +518,17 @@ impl TimerApp {
                             }
                             if self.info.remaining == 0 {
                                 self.info.mode = Mode::Remind;
-                                if !self.settings.use_schedule || self.info.tip.is_none() {
-                                    let tip = choose_tip(
-                                        &self.settings,
-                                        self.previous_tip.as_deref(),
-                                        &mut self.tip_rng,
-                                    );
-                                    self.previous_tip = Some(tip.clone());
-                                    self.info.tip = Some(tip);
+                                if !self.settings.use_schedule
+                                    || (self.info.tip.is_none() && self.info.guidance.is_none())
+                                {
+                                    self.select_reminder_entry();
                                 }
                                 output.events.push(TimerEvent::Reminder(ReminderPayload {
                                     break_seconds: self.info.break_seconds,
                                     postpone_seconds: self.postpone_seconds(),
                                     sound: self.settings.sound,
                                     tip: self.info.tip.clone().unwrap_or_default(),
+                                    guidance: self.info.guidance.clone(),
                                     sat_minutes: (self.info.work_seconds / 60) as u32,
                                 }));
                                 output.update_windows = true;
@@ -784,21 +801,57 @@ impl TimerApp {
         self.info.work_seconds = definition.work_seconds;
         self.info.break_seconds = definition.break_seconds;
         self.info.remaining = self.info.work_seconds;
-        let tip = definition.content.unwrap_or_else(|| {
-            choose_tip(
-                &self.settings,
-                self.previous_tip.as_deref(),
-                &mut self.tip_rng,
-            )
-        });
-        self.previous_tip = Some(tip.clone());
-        self.info.tip = Some(tip);
+        if definition.content.is_some() || definition.guidance.is_some() {
+            let tip = definition.content.unwrap_or_default();
+            self.previous_tip = Some(tip.clone());
+            self.previous_guidance = definition.guidance.clone();
+            self.info.tip = Some(tip);
+            self.info.guidance = definition.guidance;
+        } else {
+            self.select_reminder_entry();
+        }
         self.info.round = Some(RoundInfo {
             schedule_id: schedule.id.clone(),
             period_id: period.id.clone(),
             date: date.into(),
             number,
         });
+    }
+
+    fn select_reminder_entry(&mut self) {
+        let entries: Vec<_> = self
+            .settings
+            .tips
+            .iter()
+            .filter(|entry| !entry.text.trim().is_empty() || entry.guidance.is_some())
+            .collect();
+        if entries.is_empty() {
+            self.info.tip = Some(choose_tip(
+                &self.settings,
+                self.previous_tip.as_deref(),
+                &mut self.tip_rng,
+            ));
+            self.info.guidance = None;
+        } else {
+            let alternatives: Vec<_> = entries
+                .iter()
+                .copied()
+                .filter(|entry| {
+                    Some(entry.text.as_str()) != self.previous_tip.as_deref()
+                        || entry.guidance != self.previous_guidance
+                })
+                .collect();
+            let candidates = if alternatives.is_empty() {
+                &entries
+            } else {
+                &alternatives
+            };
+            let entry = candidates[self.tip_rng.usize(..candidates.len())];
+            self.info.tip = Some(entry.text.clone());
+            self.info.guidance = entry.guidance.clone();
+        }
+        self.previous_tip = self.info.tip.clone();
+        self.previous_guidance = self.info.guidance.clone();
     }
 
     fn set_idle(&mut self) {
@@ -808,6 +861,7 @@ impl TimerApp {
         self.info.break_seconds = 0;
         self.info.round = None;
         self.info.tip = None;
+        self.info.guidance = None;
     }
 
     fn start_simple_work(&mut self) {
@@ -817,6 +871,7 @@ impl TimerApp {
         self.info.remaining = self.info.work_seconds;
         self.info.round = None;
         self.info.tip = None;
+        self.info.guidance = None;
     }
 
     fn finish_round(&mut self, now: &TimerTime) {

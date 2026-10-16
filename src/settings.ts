@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { STR, applyStatic, currentLang, fmt, type Lang } from "./i18n";
 import { initSchedulePreview } from "./schedule-preview";
+import { guidancePicker, type Guidance } from "./guidance";
 
 interface PeriodDraft {
   id: string;
@@ -18,6 +19,7 @@ interface RoundDraft {
   work_minutes?: number;
   break_minutes?: number;
   content?: string;
+  guidance?: Guidance | null;
 }
 
 interface ValidationError {
@@ -44,6 +46,12 @@ interface ScheduleDraft {
   [key: string]: unknown;
 }
 
+interface ReminderEntry {
+  id: string;
+  text: string;
+  guidance?: Guidance | null;
+}
+
 interface Settings {
   work_minutes: number;
   break_minutes: number;
@@ -55,14 +63,14 @@ interface Settings {
   idle_reset: boolean;
   language: string;
   widget_size: number;
-  tips: string[];
+  tips: ReminderEntry[];
 }
 
 const form = document.getElementById("settingsForm") as HTMLFormElement;
 const workMin = document.getElementById("workMin") as HTMLInputElement;
 const breakMin = document.getElementById("breakMin") as HTMLInputElement;
 const widgetSize = document.getElementById("widgetSize") as HTMLInputElement;
-const tipsList = document.getElementById("tipsList") as HTMLTextAreaElement;
+const tipsList = document.getElementById("tipsList")!;
 const language = document.getElementById("language") as HTMLSelectElement;
 const btnSave = document.getElementById("btnSave") as HTMLButtonElement;
 const saveStatus = document.getElementById("saveStatus")!;
@@ -76,6 +84,7 @@ const switches = {
 };
 let stored: Settings;
 let schedules: ScheduleDraft[] = [];
+let reminderEntries: ReminderEntry[] = [];
 let S = STR.zh;
 const expandedAdjustments = new Set<string>();
 
@@ -244,6 +253,12 @@ function renderRoundAdjustments(period: PeriodDraft, periodCard: HTMLElement) {
       if (content.value === "") delete adjustment.content;
       else adjustment.content = content.value;
     });
+    const picker = guidancePicker(adjustment.guidance, S, (value) => {
+      if (value) adjustment.guidance = value;
+      else delete adjustment.guidance;
+    });
+    picker.querySelector("select")!.dataset.field = `overrides.${index}.guidance`;
+    row.append(picker);
     row.querySelector<HTMLButtonElement>(".remove-adjustment")!.addEventListener("click", () => {
       overrides.splice(index, 1);
       if (details.open) expandedAdjustments.add(period.id);
@@ -340,10 +355,59 @@ function renderSchedules() {
 
 function activeLang(): Lang { return S === STR.en ? "en" : "zh"; }
 
+function renderReminderEntries() {
+  tipsList.replaceChildren();
+  reminderEntries.forEach((entry, index) => {
+    const row = document.createElement("div");
+    row.className = "reminder-entry";
+    row.dataset.reminderId = entry.id;
+    const head = document.createElement("div");
+    head.className = "reminder-entry-head";
+    const label = document.createElement("label");
+    const input = document.createElement("textarea");
+    input.id = `reminder-text-${entry.id}`;
+    input.dataset.field = `tips.${index}.text`;
+    input.rows = 2;
+    input.value = entry.text;
+    label.htmlFor = input.id;
+    label.textContent = fmt(S.reminderEntry, { n: index + 1 });
+    const validateText = () => input.setCustomValidity(input.value.trim() || entry.guidance ? "" : S.validation_reminder_empty);
+    validateText();
+    input.addEventListener("input", () => {
+      entry.text = input.value;
+      input.removeAttribute("aria-invalid");
+      validateText();
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "text-button";
+    remove.dataset.i18n = "removeReminder";
+    remove.textContent = S.removeReminder;
+    remove.setAttribute("aria-label", fmt(S.removeReminderEntry, { n: index + 1 }));
+    remove.addEventListener("click", () => {
+      reminderEntries = reminderEntries.filter((item) => item.id !== entry.id);
+      renderReminderEntries();
+      const next = tipsList.querySelectorAll<HTMLTextAreaElement>("textarea")[Math.min(index, reminderEntries.length - 1)];
+      (next ?? document.getElementById("addReminder"))?.focus();
+    });
+    head.append(label, remove);
+    row.append(head, input);
+    const picker = guidancePicker(entry.guidance, S, (value) => {
+      entry.guidance = value;
+      input.removeAttribute("aria-invalid");
+      validateText();
+    });
+    picker.querySelector("select")!.dataset.field = `tips.${index}.guidance`;
+    row.append(picker);
+    tipsList.appendChild(row);
+  });
+}
+
 async function translate() {
   const lang = await currentLang();
   S = STR[lang];
   applyStatic(lang);
+  renderReminderEntries();
   renderMode();
   renderDurations();
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
@@ -362,7 +426,7 @@ async function load() {
   workMin.value = String(stored.work_minutes);
   breakMin.value = String(stored.break_minutes);
   widgetSize.value = String(stored.widget_size);
-  tipsList.value = stored.tips.join("\n");
+  reminderEntries = structuredClone(stored.tips);
   language.value = ["zh", "en"].includes(stored.language) ? stored.language : "system";
   for (const key of Object.keys(switches) as (keyof typeof switches)[]) setSwitch(key, Boolean(stored[key]));
   saveStatus.textContent = "";
@@ -385,7 +449,7 @@ function current(): Settings {
     sound: isOn("sound"), show_widget: isOn("show_widget"),
     autostart: isOn("autostart"), idle_reset: isOn("idle_reset"),
     language: language.value,
-    tips: tipsList.value.split("\n").map((tip) => tip.trim()).filter(Boolean),
+    tips: reminderEntries,
   };
 }
 
@@ -407,9 +471,15 @@ document.getElementById("addSchedule")!.addEventListener("click", () => {
   renderSchedules();
   scheduleList.lastElementChild?.querySelector<HTMLInputElement>("input[type=text]")?.focus();
 });
+document.getElementById("addReminder")!.addEventListener("click", () => {
+  reminderEntries.push({ id: crypto.randomUUID(), text: "" });
+  renderReminderEntries();
+  tipsList.lastElementChild?.querySelector("textarea")?.focus();
+});
 
 function describeSaveError(error: unknown): string {
   const failure = error as { kind?: string; errors?: ValidationError[]; message?: string };
+  if (failure.kind === "resource") return S.localVideoUnavailable;
   if (failure.kind !== "validation" || !failure.errors) return `${S.saveFailed} ${failure.message ?? String(error)}`;
   let first: HTMLElement | undefined;
   const messages = failure.errors.map((issue) => {
@@ -417,7 +487,7 @@ function describeSaveError(error: unknown): string {
     const period = schedule?.periods.find((item) => item.id === issue.period_id);
     const card = Array.from(scheduleList.querySelectorAll<HTMLElement>(".schedule-card")).find((item) => item.dataset.scheduleId === issue.schedule_id);
     const scope = issue.period_id ? Array.from(card?.querySelectorAll<HTMLElement>(".period-card") ?? []).find((item) => item.dataset.periodId === issue.period_id) : card;
-    const input = scope?.querySelector<HTMLElement>(`[data-field="${issue.field}"]`);
+    const input = (issue.field.startsWith("tips.") ? tipsList : scope)?.querySelector<HTMLElement>(`[data-field="${issue.field}"]`);
     input?.setAttribute("aria-invalid", "true");
     if (input?.closest("details")) input.closest("details")!.open = true;
     first ??= input ?? undefined;
@@ -473,7 +543,7 @@ form.addEventListener("invalid", (event) => {
 }, true);
 
 document.getElementById("btnClose")!.addEventListener("click", () => invoke("hide_settings"));
-window.addEventListener("keydown", (event) => { if (event.key === "Escape" && !(document.getElementById("schedulePreview") as HTMLDialogElement).open) invoke("hide_settings"); });
+window.addEventListener("keydown", (event) => { if (event.key === "Escape" && !document.querySelector("dialog[open]")) invoke("hide_settings"); });
 window.addEventListener("contextmenu", (event) => event.preventDefault());
 const win = getCurrentWindow();
 document.querySelectorAll(".shead, .preview-head").forEach((header) => header.addEventListener("mousedown", (event) => {

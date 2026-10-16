@@ -110,7 +110,7 @@ fn scheduled_timer(idle_reset: bool, hour: u32, minute: u32) -> TimerApp {
             "repeat":{"kind":"weekly","weekdays":[1,2,3,4,5,6,7]},
             "periods":[
                 {"id":"am","start":"09:00","end":"12:00","work_minutes":50,"break_minutes":10,
-                 "overrides":[{"round":1,"content":"爬楼"}]},
+                 "overrides":[{"round":1,"content":"爬楼","guidance":{"kind":"video","source":{"type":"local","id":"local-00000000000000000000000000000001"}}}]},
                 {"id":"pm","start":"13:30","end":"18:00","work_minutes":60,"break_minutes":5}
             ]
         }]))
@@ -409,6 +409,8 @@ fn a_sleeping_break_can_continue_into_lunch_and_finishes_at_the_wake_period() {
 #[test]
 fn closing_a_break_preserves_remaining_time_while_sleeping_the_live_app_counts_it() {
     let mut app = scheduled_timer(false, 9, 0);
+    let selected = app.info().guidance;
+    assert!(selected.is_some());
     app.dispatch(
         Action::Tick {
             elapsed_secs: 3000,
@@ -431,6 +433,7 @@ fn closing_a_break_preserves_remaining_time_while_sleeping_the_live_app_counts_i
     );
     assert_eq!(reopened.info().mode, Mode::Break);
     assert_eq!(reopened.info().remaining, 600);
+    assert_eq!(reopened.info().guidance, selected);
     app.dispatch(Action::Suspend { idle_secs: 0 }, at("2026-10-14", 9, 50));
     app.dispatch(
         Action::Resume {
@@ -440,6 +443,7 @@ fn closing_a_break_preserves_remaining_time_while_sleeping_the_live_app_counts_i
         at("2026-10-14", 9, 55),
     );
     assert_eq!(app.info().remaining, 300);
+    assert_eq!(app.info().guidance, selected);
     reopened.dispatch(Action::Suspend { idle_secs: 0 }, at("2026-10-14", 9, 55));
     reopened.dispatch(
         Action::Resume {
@@ -449,6 +453,7 @@ fn closing_a_break_preserves_remaining_time_while_sleeping_the_live_app_counts_i
         at("2026-10-14", 10, 0),
     );
     assert_eq!(reopened.info().remaining, 300);
+    assert_eq!(reopened.info().guidance, selected);
     std::fs::remove_file(path).unwrap();
 }
 

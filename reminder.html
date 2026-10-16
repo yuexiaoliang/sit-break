@@ -17,26 +17,17 @@
     </div>
   </div>
 
-  <div class="card dark" id="cardBreak" hidden>
+  <div class="card break-card" id="cardBreak" hidden>
     <span class="badge"><svg class="ic" viewBox="0 0 24 24"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/></svg><span data-i18n="onBreak">休息中</span></span>
     <div class="ring-wrap">
-      <svg width="148" height="148">
-        <defs>
-          <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#4fe0a8" />
-            <stop offset="100%" stop-color="#2fc186" />
-          </linearGradient>
-        </defs>
-        <circle class="ring-bg" cx="74" cy="74" r="64" fill="none" stroke-width="8" />
-        <circle class="ring-fg" id="ring" cx="74" cy="74" r="64" fill="none" stroke-width="8"
-          stroke-dasharray="402.1" stroke-dashoffset="0" />
-      </svg>
       <div class="ring-text">
-        <span class="time" id="breakTime">0:00</span>
+        <span class="time" id="breakTime" role="timer">0:00</span>
         <span class="cap" id="ringCap"></span>
       </div>
     </div>
-    <div class="stretch" id="stretchText"></div>
+    <progress class="break-progress" id="breakProgress" max="1" value="1" aria-hidden="true"></progress>
+    <div class="stretch" id="stretchText" tabindex="0"><div id="stretchContent"></div></div>
+    <div class="guidance-content" id="guidanceContent" hidden></div>
     <div class="btns" style="width: 100%">
       <button class="btn btn-ghost" id="btnEnd" data-i18n="endBreak">提前结束休息</button>
     </div>

@@ -1,3 +1,5 @@
+@import "./guidance-theme.css";
+
 /* ===== Sit Break 共享样式 ===== */
 * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
 
@@ -31,14 +33,12 @@ body.widget-page { display: flex; align-items: center; justify-content: center; 
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, .35),
-    0 12px 32px -10px rgba(15, 60, 40, .45);
+    inset 0 1px 1px rgba(255, 255, 255, .35);
   transition: box-shadow .2s ease;
 }
 .ball:hover {
   box-shadow:
-    inset 0 1px 1px rgba(255, 255, 255, .35),
-    0 14px 36px -10px rgba(15, 60, 40, .6);
+    inset 0 1px 1px rgba(255, 255, 255, .5);
 }
 
 .ball svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
@@ -88,13 +88,11 @@ body.widget-page { display: flex; align-items: center; justify-content: center; 
       radial-gradient(circle at 30% 22%, rgba(96, 220, 175, .16), rgba(96, 220, 175, .05) 55%, rgba(0, 0, 0, 0) 100%),
       rgba(16, 21, 19, .78);
     box-shadow:
-      inset 0 1px 1px rgba(255, 255, 255, .12),
-      0 12px 32px -10px rgba(0, 0, 0, .6);
+      inset 0 1px 1px rgba(255, 255, 255, .12);
   }
   .ball:hover {
     box-shadow:
-      inset 0 1px 1px rgba(255, 255, 255, .12),
-      0 14px 36px -10px rgba(0, 0, 0, .7);
+      inset 0 1px 1px rgba(255, 255, 255, .2);
   }
   .ball .ring-bg { stroke: rgba(255, 255, 255, .1); }
   .num { color: #ecf6f1; text-shadow: 0 1px 2px rgba(0, 0, 0, .4); }
@@ -103,16 +101,18 @@ body.widget-page { display: flex; align-items: center; justify-content: center; 
   .ball.break .num { color: #8ec6f8; }
 }
 
-/* ===== ② 提醒弹窗（亮色） ===== */
-body.reminder-page { display: flex; }
+/* 原生透明窗口外侧不绘制 CSS 投影，避免被 WebView 边界截成矩形。 */
+
+/* ===== ② 提醒与休息浮窗（系统主题） ===== */
+body.reminder-page { display: flex; color-scheme: light dark; }
 
 .card {
   flex: 1; margin: 6px; border-radius: 20px; padding: 28px 26px 22px;
-  background: rgba(255, 255, 255, .92);
+  background: var(--sb-window-background);
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, .9);
-  box-shadow: 0 24px 60px -18px rgba(30, 80, 50, .3);
+  border: 1px solid var(--sb-window-border);
+  color: var(--sb-text);
   display: flex; flex-direction: column;
   animation: rise .28s ease-out;
 }
@@ -120,17 +120,17 @@ body.reminder-page { display: flex; }
 
 .badge {
   display: inline-flex; align-items: center; align-self: flex-start; gap: 6px;
-  font-size: 12px; font-weight: 600; color: #1d9e6f;
-  background: rgba(52, 201, 142, .14); padding: 5px 12px; border-radius: 99px;
+  font-size: 12px; font-weight: 600; color: var(--sb-accent);
+  background: var(--sb-accent-soft); padding: 5px 12px; border-radius: 99px;
 }
 .card h2 { font-size: 21px; font-weight: 700; margin: 13px 0 4px; }
-.card .sub { font-size: 13px; color: #7d8a80; }
+.card .sub { font-size: 13px; color: var(--sb-text-secondary); }
 
 .tip {
   margin: 16px 0 22px; padding: 11px 13px; border-radius: 12px;
-  background: linear-gradient(120deg, rgba(52, 201, 142, .1), rgba(94, 178, 255, .1));
-  border: 1px solid rgba(52, 201, 142, .18);
-  font-size: 13.5px; color: #33443a; display: flex; gap: 8px; align-items: flex-start;
+  background: var(--sb-surface);
+  border: 1px solid var(--sb-accent-border);
+  font-size: 13.5px; color: var(--sb-text); display: flex; gap: 8px; align-items: flex-start;
 }
 
 .btns { display: flex; gap: 10px; margin-top: auto; }
@@ -151,61 +151,20 @@ body.reminder-page { display: flex; }
 .tip { align-items: center; }
 .btn:active { transform: scale(.97); }
 .btn-primary {
-  flex: 1.6; color: #fff;
-  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  flex: 1.6; color: var(--sb-on-accent);
+  background: linear-gradient(135deg, var(--sb-accent), var(--sb-accent-strong));
   box-shadow: 0 8px 20px -6px rgba(31, 174, 116, .55);
 }
 .btn-primary:hover { transform: translateY(-1px); }
-.btn-ghost { background: rgba(31, 174, 116, .08); color: var(--accent-dark-text); }
-.btn-ghost:hover { background: rgba(31, 174, 116, .15); }
+.btn-ghost { background: var(--sb-control-background); color: var(--sb-text-secondary); }
+.btn-ghost:hover { background: var(--sb-control-hover); }
 
-/* ===== ③ 提醒弹窗（暗色 / 休息中） ===== */
-.card.dark {
-  background: rgba(24, 29, 27, .94);
-  border-color: rgba(255, 255, 255, .06);
-  box-shadow: 0 24px 60px -18px rgba(0, 0, 0, .5);
-  color: #eef4f0; padding-top: 24px; align-items: center;
-}
-.card.dark .badge { color: #4fe0a8; background: rgba(79, 224, 168, .12); }
-
-.ring-wrap { position: relative; width: 148px; height: 148px; margin: 16px auto 4px; }
-.ring-wrap svg { transform: rotate(-90deg); }
-.ring-wrap .ring-bg { stroke: rgba(255, 255, 255, .08); }
-.ring-wrap .ring-fg { stroke: url(#ringGrad); stroke-linecap: round; transition: stroke-dashoffset .9s linear; }
-.ring-text {
-  position: absolute; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  padding: 0 13px;
-  text-align: center;
-}
-.ring-text .time {
-  font-size: 30px; font-weight: 700; letter-spacing: 1px; font-variant-numeric: tabular-nums;
-}
-.ring-text .cap { max-width: 122px; font-size: 11px; line-height: 1.35; letter-spacing: 0; text-align: center; color: #8fa098; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.stretch { font-size: 12.5px; color: #8fa098; text-align: center; margin: 12px 0 4px; }
-.card.dark .btns { margin-top: 14px; }
-.card.dark .btn-ghost { background: rgba(255, 255, 255, .07); color: #aebcb3; }
-.card.dark .btn-ghost:hover { background: rgba(255, 255, 255, .12); }
-
-/* 亮色主题下提醒页的适配 */
-@media (prefers-color-scheme: dark) {
-  .card {
-    background: rgba(24, 29, 27, .94);
-    border-color: rgba(255, 255, 255, .06);
-    box-shadow: 0 24px 60px -18px rgba(0, 0, 0, .5);
-    color: #eef4f0;
-  }
-  .badge { color: #4fe0a8; background: rgba(79, 224, 168, .12); }
-  .card h2 { color: #eef4f0; }
-  .card .sub { color: #8fa098; }
-  .tip {
-    background: rgba(79, 224, 168, .07);
-    border-color: rgba(79, 224, 168, .14);
-    color: #c4d4ca;
-  }
-  .btn-ghost { background: rgba(255, 255, 255, .07); color: #aebcb3; }
-  .btn-ghost:hover { background: rgba(255, 255, 255, .12); }
-}
+/* ===== ③ 休息内容与计时 ===== */
+.ring-wrap { position: relative; }
+.ring-text { display: flex; flex-direction: column; }
+.ring-text .time { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ring-text .cap { font-size: 11px; line-height: 16px; color: var(--sb-text-secondary); }
+.stretch { color: var(--sb-text-secondary); }
 
 /* ===== ⑤ 托盘面板（左/右键托盘弹出） ===== */
 body.panel-page { display: flex; padding: 6px; }
@@ -216,7 +175,6 @@ body.panel-page { display: flex; padding: 6px; }
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, .95);
-  box-shadow: 0 24px 60px -18px rgba(30, 80, 50, .35);
   display: flex; flex-direction: column;
   animation: rise .16s ease-out;
 }
@@ -281,7 +239,6 @@ body.panel-page { display: flex; padding: 6px; }
   .pcard {
     background: rgba(24, 29, 27, .95);
     border-color: rgba(255, 255, 255, .07);
-    box-shadow: 0 24px 60px -18px rgba(0, 0, 0, .55);
   }
   .pmode { color: #aebcb3; }
   .idle-status, .ball.idle .num { color: #a6b9b2; }
@@ -305,7 +262,6 @@ body.settings-page { display: flex; padding: 6px; }
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, .95);
-  box-shadow: 0 24px 60px -18px rgba(30, 80, 50, .3);
   display: flex; flex-direction: column;
   overflow: hidden;
   animation: rise .2s ease-out;
@@ -437,7 +393,7 @@ body.settings-page { display: flex; padding: 6px; }
   .scard {
     background: rgba(24, 29, 27, .95);
     border-color: rgba(255, 255, 255, .07);
-    box-shadow: 0 24px 60px -18px rgba(0, 0, 0, .55);
+
     color: #eef4f0;
   }
   .ftips label { color: #8fa098; }
@@ -482,6 +438,135 @@ body.settings-page { display: flex; padding: 6px; }
 #tipText, #stretchText { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
 #tipText { min-width: 0; }
 #stretchText { flex: 1; min-height: 0; width: 100%; overflow-y: auto; margin: 10px 0; padding: 0 4px; }
-.reminder-page .card.dark .btns { margin-top: 0; }
+.reminder-page .card.break-card .btns { margin-top: 0; }
 .reminder-page .tip::-webkit-scrollbar, #stretchText::-webkit-scrollbar { width: 6px; }
 .reminder-page .tip::-webkit-scrollbar-thumb, #stretchText::-webkit-scrollbar-thumb { background: rgba(127, 150, 138, .4); border-radius: 99px; }
+
+/* 纯文字休息：文字是主体，倒计时、进度与结束操作各自固定。 */
+.card.break-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px;
+  grid-template-rows: 60px 4px minmax(0, 1fr) 36px;
+  grid-template-areas: "status timer" "progress progress" "copy copy" "actions actions";
+  gap: 20px 12px;
+  padding: 22px;
+  align-items: stretch;
+}
+.break-card > .badge {
+  grid-area: status;
+  align-self: center;
+  margin-top: 0;
+  padding: 0;
+  background: none;
+  font-size: 18px;
+  line-height: 26px;
+  gap: 8px;
+}
+.break-card > .badge .ic { width: 22px; height: 22px; stroke-width: 1.7; }
+.break-card .ring-wrap { grid-area: timer; width: 100%; height: auto; margin: 0; }
+.break-card .ring-text { position: static; align-items: flex-end; padding: 0; text-align: right; }
+.break-card .ring-text .time { font-size: 40px; line-height: 44px; letter-spacing: -.8px; }
+.break-card .ring-text .cap { margin: 0; letter-spacing: 0; }
+.break-progress {
+  grid-area: progress;
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin: 0;
+  border: 0;
+  border-radius: 99px;
+  overflow: hidden;
+  appearance: none;
+  background: var(--sb-ring-background);
+  color: var(--sb-accent);
+}
+.break-progress::-webkit-progress-bar { background: var(--sb-ring-background); border-radius: 99px; }
+.break-progress::-webkit-progress-value { background: var(--sb-accent); border-radius: 99px; transition: width .9s linear; }
+.break-progress::-moz-progress-bar { background: var(--sb-accent); border-radius: 99px; }
+.break-card #stretchText {
+  grid-area: copy;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  padding: 0 6px 0 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  color: var(--sb-text);
+  font-size: 16px;
+  line-height: 26px;
+  text-align: left;
+  overscroll-behavior: contain;
+}
+.break-card #stretchText::-webkit-scrollbar { width: 4px; }
+.break-card #stretchText::-webkit-scrollbar-track { background: var(--sb-control-background); border-radius: 99px; }
+.break-card #stretchText::-webkit-scrollbar-thumb { background: var(--sb-accent); border-radius: 99px; }
+#stretchText:focus-visible { outline: 2px solid var(--sb-accent); outline-offset: 3px; border-radius: 3px; }
+.card.break-card .btns { grid-area: actions; margin: 0; min-width: 0; }
+.break-card #btnEnd {
+  min-height: 36px;
+  padding: 7px 8px;
+  border: 1px solid var(--sb-border);
+  border-radius: 8px;
+  background: var(--sb-accent-soft);
+  color: var(--sb-text);
+  line-height: 20px;
+}
+.break-card #btnEnd:hover { background: var(--sb-control-hover); }
+#btnEnd:focus-visible { outline: 2px solid var(--sb-accent); outline-offset: 3px; }
+
+/* 视频在左，计时与说明在右；只有说明区滚动，休息操作始终可见。 */
+.card.break-card.has-guidance {
+  --guidance-side: 200px;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--guidance-side);
+  grid-template-rows: 24px 44px 4px minmax(0, 1fr) 36px;
+  grid-template-areas: "video status" "video timer" "video progress" "video copy" "video actions";
+  gap: 10px 24px;
+  padding: 16px;
+  align-items: stretch;
+}
+.card.break-card.has-guidance::after {
+  content: "";
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  right: calc(var(--guidance-side) + 28px);
+  width: 1px;
+  background: var(--sb-border);
+  opacity: .55;
+  pointer-events: none;
+}
+.has-guidance > .badge { align-self: center; margin-top: 0; font-size: 14px; line-height: 24px; }
+.has-guidance > .badge .ic { width: 18px; height: 18px; }
+.has-guidance .ring-text .cap { display: none; }
+.has-guidance .ring-text { align-items: flex-start; text-align: left; }
+.has-guidance .ring-text .time { font-size: 36px; line-height: 44px; letter-spacing: -.6px; }
+.has-guidance #stretchText { padding-right: 8px; font-size: 14px; line-height: 1.5; }
+.guidance-content { flex: 1; min-height: 0; min-width: 0; width: 100%; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; overflow: hidden; }
+.has-guidance .guidance-content { grid-area: video; }
+.guidance-content video { flex: 1; min-height: 0; width: 100%; object-fit: contain; border-radius: 10px; background: #101b16; }
+.guidance-status { flex-shrink: 0; max-height: 3.5em; overflow-y: auto; font-size: 12px; line-height: 1.4; color: var(--sb-text-secondary); text-align: center; }
+.guidance-retry { flex-shrink: 0; align-self: center; border: 1px solid var(--sb-border); border-radius: 7px; padding: 5px 14px; font: inherit; font-size: 12px; background: var(--sb-control-background); color: var(--sb-text); cursor: pointer; }
+
+/* 可用屏幕宽度不足时改为紧凑竖排，文字与媒体仍各自保留空间。 */
+@media (max-width: 559px) {
+  .card.break-card.has-guidance {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: 36px auto minmax(0, 1fr) 36px;
+    grid-template-areas: "status timer" "copy copy" "video video" "actions actions";
+    gap: 8px 12px;
+    padding: 14px;
+  }
+  .card.break-card.has-guidance::after { display: none; }
+  .has-guidance .ring-wrap { justify-self: end; align-self: center; width: auto; }
+  .has-guidance .ring-text .time { font-size: 28px; line-height: 36px; }
+  .has-guidance .break-progress { display: none; }
+  .has-guidance #stretchText { max-height: 63px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reminder-page .card { animation: none; }
+  .break-progress::-webkit-progress-value { transition: none; }
+}

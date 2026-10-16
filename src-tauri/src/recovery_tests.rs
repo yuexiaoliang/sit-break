@@ -58,6 +58,11 @@ fn reopening_in_the_same_period_restores_round_two_without_counting_the_closed_t
     app.settings().save_to(&settings_path).unwrap();
     app.save_progress_to(&progress_path, time(9, 57, 3425))
         .unwrap();
+    let mut legacy: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&progress_path).unwrap()).unwrap();
+    legacy["info"].as_object_mut().unwrap().remove("guidance");
+    legacy.as_object_mut().unwrap().remove("previous_guidance");
+    std::fs::write(&progress_path, serde_json::to_string(&legacy).unwrap()).unwrap();
     let mut reopened = TimerApp::restore_from(
         Settings::load_from(&settings_path),
         &progress_path,
@@ -82,7 +87,15 @@ fn reopening_in_the_same_period_restores_round_two_without_counting_the_closed_t
 #[test]
 fn expired_paused_progress_is_discarded_but_manual_pause_survives_lunch_afternoon_and_next_day() {
     let (settings_path, progress_path, dir) = paths();
-    let mut app = TimerApp::new_at(settings(), fastrand::Rng::with_seed(42), time(9, 0, 0));
+    let mut configured = settings();
+    configured.schedules[0].periods[0].overrides[0].content = None;
+    configured.schedules[0].periods[0].overrides[0].guidance = Some(
+        serde_json::from_value(serde_json::json!({
+            "kind":"video", "source":{"type":"local","id":"local-00000000000000000000000000000001"}
+        }))
+        .unwrap(),
+    );
+    let mut app = TimerApp::new_at(configured, fastrand::Rng::with_seed(42), time(9, 0, 0));
     app.dispatch(
         Action::Tick {
             elapsed_secs: 3000,
@@ -91,6 +104,11 @@ fn expired_paused_progress_is_discarded_but_manual_pause_survives_lunch_afternoo
         time(9, 50, 3000),
     );
     app.dispatch(Action::TogglePause, time(9, 50, 3000));
+    let mut edited = app.settings().clone();
+    edited.schedules[0].periods[0].overrides[0].content = Some("新一轮的文字".into());
+    edited.schedules[0].periods[0].overrides[0].guidance = None;
+    app.dispatch(Action::SaveSettings(edited), time(9, 50, 3000));
+    assert!(app.info().guidance.is_some());
     app.settings().save_to(&settings_path).unwrap();
     app.save_progress_to(&progress_path, time(9, 50, 3000))
         .unwrap();
@@ -114,6 +132,7 @@ fn expired_paused_progress_is_discarded_but_manual_pause_survives_lunch_afternoo
             now.clone(),
         );
         assert!(reopened.info().paused);
+        assert!(reopened.info().guidance.is_none());
         assert_eq!(reopened.info().mode, mode);
         assert_eq!(reopened.info().work_seconds, work_seconds);
         let output = reopened.dispatch(
@@ -165,6 +184,93 @@ fn corrupted_progress_does_not_inject_invalid_remaining_or_manual_pause() {
         assert_eq!(reopened.info().remaining, 3000);
         assert!(!reopened.info().paused);
     }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn damaged_guidance_in_saved_progress_does_not_restore_the_old_round_or_pause() {
+    let (settings_path, progress_path, dir) = paths();
+    let mut configured = settings();
+    configured.schedules[0].periods[0].overrides[0].guidance = Some(
+        serde_json::from_value(serde_json::json!({
+            "kind":"video", "source":{"type":"local","id":"local-00000000000000000000000000000001"}
+        }))
+        .unwrap(),
+    );
+    let mut app = TimerApp::new_at(configured, fastrand::Rng::with_seed(42), time(9, 0, 0));
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        time(9, 1, 60),
+    );
+    app.dispatch(Action::TogglePause, time(9, 1, 60));
+    app.settings().save_to(&settings_path).unwrap();
+    app.save_progress_to(&progress_path, time(9, 1, 60))
+        .unwrap();
+    let original: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&progress_path).unwrap()).unwrap();
+    for pointer in ["/info/guidance/source/id", "/previous_guidance/source/id"] {
+        let mut damaged = original.clone();
+        *damaged.pointer_mut(pointer).unwrap() = serde_json::json!("missing-demo");
+        std::fs::write(&progress_path, serde_json::to_string(&damaged).unwrap()).unwrap();
+        let reopened = TimerApp::restore_from(
+            Settings::load_from(&settings_path),
+            &progress_path,
+            fastrand::Rng::with_seed(42),
+            time(10, 0, 0),
+        );
+        assert_eq!(reopened.info().remaining, 3000);
+        assert!(!reopened.info().paused);
+        assert_eq!(reopened.info().guidance, app.info().guidance);
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn restored_guidance_without_an_optional_text_field_keeps_its_pair_when_work_finishes() {
+    let (settings_path, progress_path, dir) = paths();
+    let mut configured = settings();
+    let round = &mut configured.schedules[0].periods[0].overrides[0];
+    round.content = None;
+    round.work_minutes = Some(1);
+    round.guidance = Some(
+        serde_json::from_value(serde_json::json!({
+            "kind":"video", "source":{"type":"local","id":"local-00000000000000000000000000000001"}
+        }))
+        .unwrap(),
+    );
+    let app = TimerApp::new_at(configured, fastrand::Rng::with_seed(42), time(9, 0, 0));
+    app.settings().save_to(&settings_path).unwrap();
+    app.save_progress_to(&progress_path, time(9, 0, 0)).unwrap();
+    let mut saved: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&progress_path).unwrap()).unwrap();
+    saved["info"].as_object_mut().unwrap().remove("tip");
+    std::fs::write(&progress_path, serde_json::to_string(&saved).unwrap()).unwrap();
+    let mut reopened = TimerApp::restore_from(
+        Settings::load_from(&settings_path),
+        &progress_path,
+        fastrand::Rng::with_seed(42),
+        time(10, 0, 0),
+    );
+    assert!(reopened.info().tip.is_none());
+    assert_eq!(reopened.info().guidance, app.info().guidance);
+    let output = reopened.dispatch(
+        Action::Tick {
+            elapsed_secs: 60,
+            idle_secs: 0,
+        },
+        time(10, 1, 60),
+    );
+    assert_eq!(reopened.info().guidance, app.info().guidance);
+    assert!(
+        matches!(&output.events[..], [crate::timer::TimerEvent::Reminder(payload)]
+        if payload.tip.is_empty() && payload.guidance == app.info().guidance)
+    );
+    reopened.dispatch(Action::StartBreak, time(10, 1, 60));
+    assert_eq!(reopened.info().guidance, app.info().guidance);
+    assert!(reopened.info().tip.is_none());
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -289,7 +395,14 @@ fn restoring_rebuilds_remaining_grace_on_the_new_process_clock() {
 fn restoring_an_already_started_break_keeps_latest_mode_selection_and_pending_restart() {
     for use_schedule in [false, true] {
         let (settings_path, progress_path, dir) = paths();
-        let mut app = TimerApp::new_at(settings(), fastrand::Rng::with_seed(42), time(9, 0, 0));
+        let mut configured = settings();
+        configured.schedules[0].periods[0].overrides[0].guidance = Some(
+            serde_json::from_value(serde_json::json!({
+                "kind":"video", "source":{"type":"local","id":"local-00000000000000000000000000000001"}
+            }))
+            .unwrap(),
+        );
+        let mut app = TimerApp::new_at(configured, fastrand::Rng::with_seed(42), time(9, 0, 0));
         app.dispatch(
             Action::Tick {
                 elapsed_secs: 3000,
@@ -306,6 +419,8 @@ fn restoring_an_already_started_break_keeps_latest_mode_selection_and_pending_re
             time(9, 56, 3360),
         );
         let before = app.info();
+        assert_eq!(before.tip.as_deref(), Some("爬楼"));
+        assert!(before.guidance.is_some());
         let mut changed = app.settings().clone();
         changed.use_schedule = false;
         changed.work_minutes = 23;
@@ -313,6 +428,7 @@ fn restoring_an_already_started_break_keeps_latest_mode_selection_and_pending_re
         changed.schedules[0].periods[0].overrides[0].work_minutes = Some(40);
         changed.schedules[0].periods[0].overrides[0].break_minutes = Some(4);
         changed.schedules[0].periods[0].overrides[0].content = Some("新的首轮".into());
+        changed.schedules[0].periods[0].overrides[0].guidance = None;
         app.dispatch(Action::SaveSettings(changed), time(9, 56, 3360));
         if use_schedule {
             let mut changed = app.settings().clone();
@@ -330,6 +446,7 @@ fn restoring_an_already_started_break_keeps_latest_mode_selection_and_pending_re
         );
         assert_eq!(reopened.info(), before);
         reopened.dispatch(Action::EndBreak, time(10, 30, 0));
+        assert!(reopened.info().guidance.is_none());
         if use_schedule {
             assert_eq!(reopened.info().round.unwrap().number, 1);
             assert_eq!(
@@ -353,87 +470,104 @@ fn restoring_an_already_started_break_keeps_latest_mode_selection_and_pending_re
 
 #[test]
 fn all_current_phases_restore_their_old_snapshot_and_future_rounds_use_saved_edits() {
-    for phase in [Mode::Work, Mode::Remind, Mode::Break] {
-        for paused in [false, true] {
-            let (settings_path, progress_path, dir) = paths();
-            let mut app = TimerApp::new_at(settings(), fastrand::Rng::with_seed(42), time(9, 0, 0));
-            app.dispatch(
-                Action::Tick {
-                    elapsed_secs: if phase == Mode::Work { 60 } else { 3000 },
-                    idle_secs: 0,
-                },
-                time(9, 50, 3000),
-            );
-            if phase == Mode::Break {
-                app.dispatch(Action::StartBreak, time(9, 55, 3300));
+    for guidance in [
+        serde_json::json!({"kind":"video", "source":{"type":"local","id":"local-00000000000000000000000000000001"}}),
+        serde_json::json!({"kind":"video", "source":{"type":"local", "id":"local-0123456789abcdef0123456789abcdef"}}),
+    ] {
+        for phase in [Mode::Work, Mode::Remind, Mode::Break] {
+            for paused in [false, true] {
+                let (settings_path, progress_path, dir) = paths();
+                let mut configured = settings();
+                configured.schedules[0].periods[0].overrides[0].content = None;
+                configured.schedules[0].periods[0].overrides[0].guidance =
+                    Some(serde_json::from_value(guidance.clone()).unwrap());
+                let mut app =
+                    TimerApp::new_at(configured, fastrand::Rng::with_seed(42), time(9, 0, 0));
                 app.dispatch(
                     Action::Tick {
-                        elapsed_secs: 60,
+                        elapsed_secs: if phase == Mode::Work { 60 } else { 3000 },
                         idle_secs: 0,
                     },
-                    time(9, 56, 3360),
+                    time(9, 50, 3000),
                 );
-            }
-            if paused {
-                app.dispatch(Action::TogglePause, time(9, 56, 3360));
-            }
-            let before = app.info();
-            let mut edited = app.settings().clone();
-            let period = &mut edited.schedules[0].periods[0];
-            period.work_minutes = 60;
-            period.break_minutes = 7;
-            period.overrides[0].work_minutes = Some(40);
-            period.overrides[0].break_minutes = Some(4);
-            period.overrides[0].content = Some("下一次的爬楼".into());
-            period.overrides[1].work_minutes = Some(30);
-            period.overrides[1].break_minutes = Some(8);
-            period.overrides[1].content = Some("新深蹲\n再喝水".into());
-            edited.sound = false;
-            app.dispatch(Action::SaveSettings(edited), time(9, 56, 3360));
-            app.settings().save_to(&settings_path).unwrap();
-            app.save_progress_to(&progress_path, time(9, 56, 3360))
-                .unwrap();
-            let mut reopened = TimerApp::restore_from(
-                Settings::load_from(&settings_path),
-                &progress_path,
-                fastrand::Rng::with_seed(42),
-                time(10, 30, 0),
-            );
-            assert_eq!(reopened.info(), before);
-            assert_eq!(reopened.info().tip.as_deref(), Some("爬楼"));
-            if paused {
-                reopened.dispatch(Action::TogglePause, time(10, 30, 0));
-            }
-            if phase == Mode::Work {
+                if phase == Mode::Break {
+                    app.dispatch(Action::StartBreak, time(9, 55, 3300));
+                    app.dispatch(
+                        Action::Tick {
+                            elapsed_secs: 60,
+                            idle_secs: 0,
+                        },
+                        time(9, 56, 3360),
+                    );
+                }
+                if paused {
+                    app.dispatch(Action::TogglePause, time(9, 56, 3360));
+                }
+                let before = app.info();
+                assert_eq!(before.tip.as_deref(), Some(""));
+                assert!(before.guidance.is_some());
+                let mut edited = app.settings().clone();
+                let period = &mut edited.schedules[0].periods[0];
+                period.work_minutes = 60;
+                period.break_minutes = 7;
+                period.overrides[0].work_minutes = Some(40);
+                period.overrides[0].break_minutes = Some(4);
+                period.overrides[0].content = Some("下一次的爬楼".into());
+                period.overrides[0].guidance = None;
+                period.overrides[1].work_minutes = Some(30);
+                period.overrides[1].break_minutes = Some(8);
+                period.overrides[1].content = Some("新深蹲\n再喝水".into());
+                edited.sound = false;
+                app.dispatch(Action::SaveSettings(edited), time(9, 56, 3360));
+                app.settings().save_to(&settings_path).unwrap();
+                app.save_progress_to(&progress_path, time(9, 56, 3360))
+                    .unwrap();
+                let mut reopened = TimerApp::restore_from(
+                    Settings::load_from(&settings_path),
+                    &progress_path,
+                    fastrand::Rng::with_seed(42),
+                    time(10, 30, 0),
+                );
+                assert_eq!(reopened.info(), before);
+                assert_eq!(reopened.info().tip.as_deref(), Some(""));
+                assert!(reopened.settings().schedules[0].periods[0].overrides[0]
+                    .guidance
+                    .is_none());
+                if paused {
+                    reopened.dispatch(Action::TogglePause, time(10, 30, 0));
+                }
+                if phase == Mode::Work {
+                    reopened.dispatch(
+                        Action::Tick {
+                            elapsed_secs: before.remaining,
+                            idle_secs: 0,
+                        },
+                        time(10, 35, 300),
+                    );
+                }
+                if phase != Mode::Break {
+                    reopened.dispatch(Action::StartBreak, time(10, 35, 300));
+                }
+                let remaining = reopened.info().remaining;
                 reopened.dispatch(
                     Action::Tick {
-                        elapsed_secs: before.remaining,
+                        elapsed_secs: remaining,
                         idle_secs: 0,
                     },
-                    time(10, 35, 300),
+                    time(10, 45, 900),
                 );
+                assert_eq!(reopened.info().round.unwrap().number, 2);
+                assert!(reopened.info().guidance.is_none());
+                assert_eq!(
+                    (
+                        reopened.info().work_seconds,
+                        reopened.info().break_seconds,
+                        reopened.info().tip.as_deref()
+                    ),
+                    (1800, 480, Some("新深蹲\n再喝水"))
+                );
+                std::fs::remove_dir_all(dir).unwrap();
             }
-            if phase != Mode::Break {
-                reopened.dispatch(Action::StartBreak, time(10, 35, 300));
-            }
-            let remaining = reopened.info().remaining;
-            reopened.dispatch(
-                Action::Tick {
-                    elapsed_secs: remaining,
-                    idle_secs: 0,
-                },
-                time(10, 45, 900),
-            );
-            assert_eq!(reopened.info().round.unwrap().number, 2);
-            assert_eq!(
-                (
-                    reopened.info().work_seconds,
-                    reopened.info().break_seconds,
-                    reopened.info().tip.as_deref()
-                ),
-                (1800, 480, Some("新深蹲\n再喝水"))
-            );
-            std::fs::remove_dir_all(dir).unwrap();
         }
     }
 }
@@ -602,7 +736,7 @@ fn missing_progress_and_legacy_simple_settings_keep_the_original_simple_startup(
     assert_eq!(reopened.info().remaining, 1620);
     assert_eq!(reopened.info().break_seconds, 180);
     assert!(!reopened.settings().sound);
-    assert_eq!(reopened.settings().tips, vec!["旧自定义提示"]);
+    assert_eq!(reopened.settings().tips[0].text, "旧自定义提示");
     std::fs::write(&progress_path, "{截断的进度").unwrap();
     let malformed = TimerApp::restore_from(
         Settings::load_from(&settings_path),

@@ -1,0 +1,38 @@
+/* 浮窗共用的语义配色，主题变化仅更新 CSS。 */
+:root {
+  --sb-background: #ffffff;
+  --sb-surface: #f0f8f4;
+  --sb-text: #1f2a24;
+  --sb-text-secondary: #52665a;
+  --sb-border: #d7e6dd;
+  --sb-accent: #1d7a56;
+  --sb-accent-strong: #176044;
+  --sb-on-accent: #ffffff;
+  --sb-accent-soft: rgba(47, 193, 134, .1);
+  --sb-accent-border: rgba(29, 122, 86, .22);
+  --sb-control-background: rgba(31, 174, 116, .08);
+  --sb-control-hover: rgba(31, 174, 116, .15);
+  --sb-ring-background: rgba(29, 122, 86, .14);
+  --sb-window-background: rgba(255, 255, 255, .92);
+  --sb-window-border: rgba(255, 255, 255, .9);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sb-background: #181d1b;
+    --sb-surface: #202b25;
+    --sb-text: #eef4f0;
+    --sb-text-secondary: #aebcb3;
+    --sb-border: #35483d;
+    --sb-accent: #4fe0a8;
+    --sb-accent-strong: #2fc186;
+    --sb-on-accent: #10261c;
+    --sb-accent-soft: rgba(79, 224, 168, .12);
+    --sb-accent-border: rgba(79, 224, 168, .2);
+    --sb-control-background: rgba(255, 255, 255, .07);
+    --sb-control-hover: rgba(255, 255, 255, .12);
+    --sb-ring-background: rgba(255, 255, 255, .08);
+    --sb-window-background: rgba(24, 29, 27, .94);
+    --sb-window-border: rgba(255, 255, 255, .06);
+  }
+}

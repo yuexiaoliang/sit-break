@@ -77,9 +77,16 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .size-field input { width: 80px; }
 .size-field span { color: var(--muted); font-size: 12px; }
 .tips-editor { margin-top: 12px; }
-.tips-editor > label { font-size: 14px; font-weight: 600; }
+.tips-editor > h3 { display: inline; font-size: 14px; font-weight: 600; }
 .tips-editor > span { color: var(--muted); font-size: 12px; margin-left: 12px; }
-.tips-editor textarea { display: block; width: 100%; min-height: 60px; height: 60px; margin-top: 7px; padding: 7px 10px; font-size: 13px; line-height: 20px; resize: vertical; }
+.reminder-entry { margin: 10px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--field); }
+.reminder-entry-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.reminder-entry-head label { font-size: 12px; font-weight: 600; }
+.reminder-entry textarea { display: block; width: 100%; min-height: 60px; margin-top: 5px; padding: 7px 10px; font-size: 13px; line-height: 20px; resize: vertical; }
+.guidance-picker { display: flex; flex-direction: column; gap: 7px; margin-top: 9px; font-size: 12px; }
+.guidance-picker > label { display: flex; align-items: center; gap: 12px; }
+.guidance-hint { margin: 0; line-height: 1.45; color: var(--muted); }
+.guidance-picker select { flex: 1; min-width: 0; padding: 7px; border: 1px solid var(--border); border-radius: 7px; font: inherit; background: var(--field); color: inherit; }
 .tips-editor p { color: var(--muted); font-size: 11px; margin-top: 7px; }
 .bottom-actions { display: flex; flex-direction: column; gap: 7px; padding: 12px 0 16px; }
 #saveStatus { font-size: 12px; color: var(--green-ink); overflow-wrap: anywhere; }
@@ -126,7 +133,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .period-duration { display: flex; align-items: center; gap: 7px; }
 .period-duration span { flex: none; color: var(--muted); font-size: 12px; margin-top: 4px; }
 .period-note { color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 12px; }
-input[aria-invalid=true] { border-color: var(--error); }
+input[aria-invalid=true], textarea[aria-invalid=true] { border-color: var(--error); }
 #saveStatus { white-space: pre-line; }
 
 .quiet-periods { border: 1px dashed var(--border); border-radius: 8px; background: var(--soft); padding: 9px 12px; margin-top: 14px; color: var(--muted); font-size: 12px; line-height: 1.6; }

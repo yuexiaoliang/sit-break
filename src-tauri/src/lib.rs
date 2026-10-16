@@ -10,11 +10,19 @@ use tauri::{
 use tauri_plugin_autostart::MacosLauncher;
 #[cfg(not(windows))]
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_dialog::DialogExt;
 
 #[cfg(test)]
 mod editing_tests;
+#[cfg(test)]
+mod guidance_resource_tests;
+pub mod guidance_resources;
 mod platform;
 mod power;
+mod window_geometry;
+#[cfg(not(target_os = "macos"))]
+use window_geometry::position_bottom_right;
+use window_geometry::{clamp_axis, show_reminder};
 pub mod preview;
 #[cfg(test)]
 mod preview_tests;
@@ -48,8 +56,8 @@ const TIPS: &[&str] = &[
     "下蹲 10 次，活动髋关节和膝盖",
 ];
 
-fn default_tips() -> Vec<String> {
-    TIPS.iter().map(|s| s.to_string()).collect()
+fn default_tips() -> Vec<ReminderEntry> {
+    TIPS.iter().map(|text| (*text).into()).collect()
 }
 
 const TIPS_EN: &[&str] = &[
@@ -65,8 +73,73 @@ const TIPS_EN: &[&str] = &[
     "Do 10 squats for your hips and knees",
 ];
 
-fn default_tips_en() -> Vec<String> {
-    TIPS_EN.iter().map(|s| s.to_string()).collect()
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReminderEntry {
+    pub id: String,
+    pub text: String,
+    pub guidance: Option<Guidance>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GuidanceKind {
+    Video,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
+pub enum GuidanceSource {
+    Local { id: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Guidance {
+    pub kind: GuidanceKind,
+    pub source: GuidanceSource,
+}
+
+impl Guidance {
+    pub fn is_valid(&self) -> bool {
+        let GuidanceSource::Local { id } = &self.source;
+        guidance_resources::valid_id(id)
+    }
+}
+
+impl From<String> for ReminderEntry {
+    fn from(text: String) -> Self {
+        Self {
+            id: format!("reminder-{:032x}", fastrand::u128(..)),
+            text,
+            guidance: None,
+        }
+    }
+}
+
+impl From<&str> for ReminderEntry {
+    fn from(text: &str) -> Self {
+        text.to_owned().into()
+    }
+}
+
+impl<'de> Deserialize<'de> for ReminderEntry {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum StoredEntry {
+            Legacy(String),
+            Entry {
+                id: String,
+                text: String,
+                #[serde(default)]
+                guidance: Option<Guidance>,
+            },
+        }
+        Ok(match StoredEntry::deserialize(deserializer)? {
+            StoredEntry::Legacy(text) => text.into(),
+            StoredEntry::Entry { id, text, guidance } => Self { id, text, guidance },
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,7 +155,7 @@ pub struct Settings {
     pub idle_reset: bool,
     pub language: String,
     pub widget_size: u32,
-    pub tips: Vec<String>,
+    pub tips: Vec<ReminderEntry>,
 }
 
 impl Default for Settings {
@@ -107,7 +180,54 @@ impl Settings {
     pub fn load_from(path: &std::path::Path) -> Self {
         std::fs::read_to_string(path)
             .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
+            .and_then(|text| {
+                let mut stored: serde_json::Value = serde_json::from_str(&text).ok()?;
+                // 清理开发测试版的 HTML 和其他来源，保留文字、日程和偏好。
+                let remove_unsupported = |entry: &mut serde_json::Value| {
+                    if entry.get("guidance").is_some_and(|guide| {
+                        !guide.is_null()
+                            && (guide["source"]["type"].as_str() != Some("local")
+                                || guide["kind"].as_str() != Some("video"))
+                    }) {
+                        entry
+                            .as_object_mut()
+                            .map(|fields| fields.remove("guidance"));
+                        return true;
+                    }
+                    false
+                };
+                if let Some(tips) = stored.get_mut("tips").and_then(|tips| tips.as_array_mut()) {
+                    tips.retain_mut(|entry| {
+                        !remove_unsupported(entry)
+                            || entry["text"]
+                                .as_str()
+                                .is_some_and(|text| !text.trim().is_empty())
+                    });
+                }
+                if let Some(schedules) = stored
+                    .get_mut("schedules")
+                    .and_then(|schedules| schedules.as_array_mut())
+                {
+                    for schedule in schedules {
+                        if let Some(periods) = schedule
+                            .get_mut("periods")
+                            .and_then(|periods| periods.as_array_mut())
+                        {
+                            for period in periods {
+                                if let Some(overrides) = period
+                                    .get_mut("overrides")
+                                    .and_then(|overrides| overrides.as_array_mut())
+                                {
+                                    for adjustment in overrides {
+                                        remove_unsupported(adjustment);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                serde_json::from_value(stored).ok()
+            })
             .unwrap_or_default()
     }
 
@@ -139,8 +259,8 @@ fn choose_tip(settings: &Settings, previous: Option<&str>, rng: &mut fastrand::R
     let mut tips: Vec<&str> = settings
         .tips
         .iter()
-        .map(|tip| tip.trim())
-        .filter(|tip| !tip.is_empty())
+        .map(|entry| entry.text.as_str())
+        .filter(|tip| !tip.trim().is_empty())
         .collect();
     if tips.is_empty() {
         tips.extend_from_slice(if is_zh(settings) { TIPS } else { TIPS_EN });
@@ -162,6 +282,8 @@ fn choose_tip(settings: &Settings, previous: Option<&str>, rng: &mut fastrand::R
 }
 
 struct TimerClock(Instant);
+
+struct GuidanceResourceState(Option<guidance_resources::GuidanceResources>);
 
 #[derive(Default)]
 struct PanelState {
@@ -343,35 +465,6 @@ fn autostart_is_enabled(app: &AppHandle) -> bool {
     app.autolaunch().is_enabled().unwrap_or(false)
 }
 
-fn position_bottom_right(window: &WebviewWindow) {
-    let Ok(Some(monitor)) = window.current_monitor() else {
-        return;
-    };
-    let area = monitor.work_area();
-    let ws = window.outer_size().unwrap_or_default();
-    let margin = (24.0 * monitor.scale_factor()) as i32;
-    let x = clamp_axis(i32::MAX, area.position.x, area.size.width, ws.width, margin);
-    let y = clamp_axis(
-        i32::MAX,
-        area.position.y,
-        area.size.height,
-        ws.height,
-        margin,
-    );
-    let _ = window.set_position(PhysicalPosition::new(x, y));
-}
-
-fn clamp_axis(candidate: i32, origin: i32, available: u32, window: u32, margin: i32) -> i32 {
-    if window >= available {
-        return origin;
-    }
-    let margin = margin.min((available - window) as i32 / 2).max(0);
-    candidate.clamp(
-        origin + margin,
-        origin + available as i32 - window as i32 - margin,
-    )
-}
-
 fn position_panel_default<R: tauri::Runtime>(window: &WebviewWindow<R>) {
     let Ok(Some(monitor)) = window.current_monitor() else {
         return;
@@ -446,7 +539,8 @@ fn position_near_tray<R: tauri::Runtime>(window: &WebviewWindow<R>, cursor: Phys
 fn update_windows(app: &AppHandle) {
     let state = app.state::<Mutex<TimerApp>>();
     let st = state.lock().unwrap();
-    let mode = st.info().mode;
+    let info = st.info();
+    let mode = info.mode;
     let show_widget = st.settings().show_widget;
     drop(st);
 
@@ -470,8 +564,8 @@ fn update_windows(app: &AppHandle) {
                 let _ = w.hide();
             }
             if let Some(r) = &reminder {
-                position_bottom_right(r);
-                let _ = r.show();
+                let media = mode == Mode::Break && info.guidance.is_some();
+                let _ = show_reminder(r, media);
             }
         }
     }
@@ -640,6 +734,34 @@ fn apply_break(app: AppHandle, minutes: u32) {
 // ---------------- Tauri commands ----------------
 
 #[tauri::command]
+async fn import_guidance_video(app: AppHandle) -> Result<Option<Guidance>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let resources = app.state::<GuidanceResourceState>();
+        let resources = resources.0.as_ref().ok_or("resource-unavailable")?;
+        let title = if is_zh(app.state::<Mutex<TimerApp>>().lock().unwrap().settings()) {
+            "导入本地视频"
+        } else {
+            "Import local video"
+        };
+        let mut dialog = app
+            .dialog()
+            .file()
+            .set_title(title)
+            .add_filter("MP4 video", &["mp4", "m4v"]);
+        if let Some(window) = app.get_webview_window("settings") {
+            dialog = dialog.set_parent(&window);
+        }
+        let Some(file) = dialog.blocking_pick_file() else {
+            return Ok(None);
+        };
+        let path = file.into_path().map_err(|_| "import-failed")?;
+        resources.import_video(&path).map(Some)
+    })
+    .await
+    .map_err(|_| "import-failed".to_string())?
+}
+
+#[tauri::command]
 fn get_platform() -> &'static str {
     std::env::consts::OS
 }
@@ -656,6 +778,15 @@ fn get_settings(app: AppHandle) -> Settings {
 #[tauri::command]
 fn timer_info(app: AppHandle) -> TimerInfo {
     app.state::<Mutex<TimerApp>>().lock().unwrap().info()
+}
+
+#[tauri::command]
+fn fit_reminder_height(window: WebviewWindow, app: AppHandle, height: u32) -> Result<(), String> {
+    let info = app.state::<Mutex<TimerApp>>().lock().unwrap().info();
+    if window.label() == "reminder" && info.mode == Mode::Break && info.guidance.is_none() {
+        window_geometry::fit_text_break(&window, height).map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -677,30 +808,25 @@ fn save_settings(app: AppHandle, settings: Settings) -> Result<(), serde_json::V
     if !errors.is_empty() {
         return Err(json!({ "kind": "validation", "errors": errors }));
     }
+    if guidance_resources::settings_guidance(&settings)
+        .next()
+        .is_some()
+    {
+        let state = app.state::<GuidanceResourceState>();
+        let resources = state.0.as_ref().ok_or_else(|| json!({"kind":"resource"}))?;
+        resources
+            .validate_settings(&settings)
+            .map_err(|_| json!({"kind":"resource"}))?;
+    }
     if settings.autostart != autostart_is_enabled(&app) {
         autostart_set(&app, settings.autostart)
             .map_err(|message| json!({ "kind": "system", "message": message }))?;
     }
     let widget_size = settings.widget_size.clamp(40, 140);
-    let mut settings = Settings {
+    let settings = Settings {
         widget_size,
         ..settings
     };
-
-    // 切换语言时，若提示列表仍是另一语言的默认文案，则跟随切换（不覆盖自定义内容）
-    let zh_now = is_zh(&settings);
-    let other_defaults = if zh_now {
-        default_tips_en()
-    } else {
-        default_tips()
-    };
-    if settings.tips == other_defaults {
-        settings.tips = if zh_now {
-            default_tips()
-        } else {
-            default_tips_en()
-        };
-    }
 
     dispatch_timer(&app, Action::SaveSettings(settings));
     Ok(())
@@ -814,6 +940,23 @@ fn run_timer(app: AppHandle, power_events: mpsc::Receiver<power::PowerEvent>) {
 
 // ---------------- app entry ----------------
 
+fn native_check_window<'a, R: tauri::Runtime, M: Manager<R>>(
+    builder: WebviewWindowBuilder<'a, R, M>,
+) -> WebviewWindowBuilder<'a, R, M> {
+    // 提升权限的 Windows CI 可能忽略 WebView2 环境参数；发布构建不包含此入口。
+    #[cfg(all(windows, debug_assertions))]
+    if let Some(port) = std::env::var("SIT_BREAK_NATIVE_CHECK_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|port| *port > 0)
+    {
+        return builder.additional_browser_args(&format!(
+            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-address=127.0.0.1 --remote-debugging-port={port}"
+        ));
+    }
+    builder
+}
+
 #[cfg(not(target_os = "macos"))]
 fn widget_window_size(size: u32) -> f64 {
     let size = size as f64 + 24.0;
@@ -872,14 +1015,57 @@ pub fn run() {
                 eprintln!("error opening existing application: {error}");
             }
         }))
+        .plugin(tauri_plugin_dialog::init())
+        .register_uri_scheme_protocol("guidance", |context, request| {
+            // 用户网页的 opaque Origin 不可读取副本。播放器的普通 no-cors 请求仍可播放。
+            let trusted_origin = request
+                .headers()
+                .get("origin")
+                .filter(|origin| {
+                    let Ok(origin) = origin.to_str() else {
+                        return false;
+                    };
+                    matches!(
+                        origin,
+                        "tauri://localhost" | "http://tauri.localhost" | "https://tauri.localhost"
+                    ) || (cfg!(debug_assertions)
+                        && context
+                            .app_handle()
+                            .config()
+                            .build
+                            .dev_url
+                            .as_ref()
+                            .is_some_and(|url| url.origin().ascii_serialization() == origin))
+                })
+                .cloned();
+            let state = context.app_handle().state::<GuidanceResourceState>();
+            let mut response = match &state.0 {
+                Some(resources) => resources.video_response(request),
+                None => tauri::http::Response::builder()
+                    .status(503)
+                    .body(Vec::new())
+                    .unwrap(),
+            };
+            response
+                .headers_mut()
+                .insert("vary", tauri::http::HeaderValue::from_static("Origin"));
+            if let Some(origin) = trusted_origin {
+                response
+                    .headers_mut()
+                    .insert("access-control-allow-origin", origin);
+            }
+            response
+        })
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
         ))
         .invoke_handler(tauri::generate_handler![
             get_platform,
+            import_guidance_video,
             get_settings,
             timer_info,
+            fit_reminder_height,
             preview_schedule,
             save_settings,
             apply_interval,
@@ -907,34 +1093,46 @@ pub fn run() {
             } else {
                 TimerApp::new_at(settings.clone(), fastrand::Rng::new(), now)
             };
+            let resources = handle.path().app_data_dir().ok().and_then(|directory| {
+                guidance_resources::GuidanceResources::open(directory.join("guidance")).ok()
+            });
+            if let Some(resources) = &resources {
+                if let Err(error) = resources.retain_for(timer.settings(), &timer.info()) {
+                    eprintln!("无法回收未引用的动作指引：{error}");
+                }
+            }
+            handle.manage(GuidanceResourceState(resources));
             handle.manage(Mutex::new(timer));
 
             // ---- 窗口（在 manage 之后创建，页面加载时状态已就绪）----
             #[cfg(not(target_os = "macos"))]
-            let widget =
-                WebviewWindowBuilder::new(&handle, "widget", WebviewUrl::App("widget.html".into()))
-                    .title("Sit Break")
-                    .inner_size(
-                        widget_window_size(settings.widget_size),
-                        widget_window_size(settings.widget_size),
-                    )
-                    .visible(false)
-                    .decorations(false)
-                    .transparent(true)
-                    .accept_first_mouse(true)
-                    .shadow(false)
-                    .always_on_top(true)
-                    .visible_on_all_workspaces(cfg!(target_os = "macos"))
-                    .skip_taskbar(true)
-                    .resizable(false)
-                    .focused(false)
-                    .build()?;
+            let widget = native_check_window(WebviewWindowBuilder::new(
+                &handle,
+                "widget",
+                WebviewUrl::App("widget.html".into()),
+            ))
+            .title("Sit Break")
+            .inner_size(
+                widget_window_size(settings.widget_size),
+                widget_window_size(settings.widget_size),
+            )
+            .visible(false)
+            .decorations(false)
+            .transparent(true)
+            .accept_first_mouse(true)
+            .shadow(false)
+            .always_on_top(true)
+            .visible_on_all_workspaces(cfg!(target_os = "macos"))
+            .skip_taskbar(true)
+            .resizable(false)
+            .focused(false)
+            .build()?;
             let zh = is_zh(&settings);
-            let reminder = WebviewWindowBuilder::new(
+            let reminder = native_check_window(WebviewWindowBuilder::new(
                 &handle,
                 "reminder",
                 WebviewUrl::App("reminder.html".into()),
-            )
+            ))
             .title(if zh {
                 "Sit Break 提醒"
             } else {
@@ -952,11 +1150,11 @@ pub fn run() {
             .resizable(false)
             .focused(false)
             .build()?;
-            let settings_win = WebviewWindowBuilder::new(
+            let settings_win = native_check_window(WebviewWindowBuilder::new(
                 &handle,
                 "settings",
                 WebviewUrl::App("settings.html".into()),
-            )
+            ))
             .title(if zh {
                 "Sit Break 设置"
             } else {
@@ -974,21 +1172,24 @@ pub fn run() {
             .center()
             .focused(false)
             .build()?;
-            let panel =
-                WebviewWindowBuilder::new(&handle, "panel", WebviewUrl::App("panel.html".into()))
-                    .title("Sit Break")
-                    .inner_size(272.0, 340.0)
-                    .visible(false)
-                    .decorations(false)
-                    .transparent(true)
-                    .accept_first_mouse(true)
-                    .shadow(false)
-                    .always_on_top(true)
-                    .visible_on_all_workspaces(cfg!(target_os = "macos"))
-                    .skip_taskbar(true)
-                    .resizable(false)
-                    .focused(false)
-                    .build()?;
+            let panel = native_check_window(WebviewWindowBuilder::new(
+                &handle,
+                "panel",
+                WebviewUrl::App("panel.html".into()),
+            ))
+            .title("Sit Break")
+            .inner_size(272.0, 340.0)
+            .visible(false)
+            .decorations(false)
+            .transparent(true)
+            .accept_first_mouse(true)
+            .shadow(false)
+            .always_on_top(true)
+            .visible_on_all_workspaces(cfg!(target_os = "macos"))
+            .skip_taskbar(true)
+            .resizable(false)
+            .focused(false)
+            .build()?;
 
             #[cfg(target_os = "macos")]
             for window in [&reminder, &panel] {
@@ -1026,9 +1227,15 @@ pub fn run() {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         let _ = rw.hide();
-                        // Alt+F4 关掉提醒视同「再等等」
+                        // 关闭待开始的提醒视同「再等等」；关闭已开始的休息先结束，
+                        // 防止隐藏的浮窗继续播放用户已经打开声音的视频。
                         let app = rw.app_handle();
-                        postpone(app.clone());
+                        let mode = app.state::<Mutex<TimerApp>>().lock().unwrap().info().mode;
+                        if mode == Mode::Break {
+                            end_break(app.clone());
+                        } else {
+                            postpone(app.clone());
+                        }
                     }
                 }
             });
@@ -1136,7 +1343,7 @@ mod tip_tests {
         for _ in 0..100 {
             let tip = choose_tip(&settings, Some(&previous), &mut rng);
             assert_ne!(tip, previous);
-            assert!(settings.tips.contains(&tip));
+            assert!(settings.tips.iter().any(|entry| entry.text == tip));
             previous = tip;
         }
     }
@@ -1144,7 +1351,7 @@ mod tip_tests {
     #[test]
     fn custom_tips_beyond_the_first_ten_can_be_selected() {
         let settings = Settings {
-            tips: (0..25).map(|i| format!("Custom tip {i}")).collect(),
+            tips: (0..25).map(|i| format!("Custom tip {i}").into()).collect(),
             ..Settings::default()
         };
         let mut rng = fastrand::Rng::with_seed(7);
@@ -1152,7 +1359,7 @@ mod tip_tests {
         let mut previous: Option<String> = None;
         for _ in 0..1000 {
             let tip = choose_tip(&settings, previous.as_deref(), &mut rng);
-            assert!(settings.tips.contains(&tip));
+            assert!(settings.tips.iter().any(|entry| entry.text == tip));
             seen.insert(tip.clone());
             previous = Some(tip);
         }
@@ -1207,7 +1414,7 @@ mod tip_tests {
         let previous = choose_tip(&settings, None, &mut rng);
         settings.tips = vec!["New tip".into(), "Another new tip".into()];
         let tip = choose_tip(&settings, Some(&previous), &mut rng);
-        assert!(settings.tips.contains(&tip));
+        assert!(settings.tips.iter().any(|entry| entry.text == tip));
     }
 }
 
