@@ -33,8 +33,19 @@ export const STR: Record<Lang, Record<string, string>> = {
     generalDescription: "让 Sit Break 适合你的日常习惯。",
     remindersDescription: "设置休息时想看到的文字与本地视频。",
     scheduleOffNote:
-      "日程计时尚未开启，可先编辑和预览；启用后保存即可按日程执行。",
-    scheduleEnabledDescription: "已启用，工作与休息时长以日程安排为准。",
+      "当前选择简单计时。可先编辑和预览，再到“计时与休息”选择日程计时并保存。",
+    timingMode: "计时方式",
+    scheduledTitle: "日程计时",
+    scheduledDescription: "按日程中的时长提醒，执行时段外保持待机。",
+    scheduleOverview: "日程概览",
+    enabledScheduleCount: "已启用 {n} 份日程",
+    scheduleDefaultRhythm: "默认工作 {work} 分钟 · 休息 {rest} 分钟",
+    scheduleAdjustedRounds: "含 {n} 轮单独调整",
+    noEnabledSchedules: "还没有启用的日程",
+    noEnabledSchedulesDescription:
+      "现有日程均已停用。启用一份并保存后，才会按安排提醒。",
+    simpleNeedsCorrection: "保留的简单计时时长有误，请修正后再保存。",
+    correctSimple: "修正简单计时设置",
     validation_widget_range: "悬浮计时条大小必须是 40–140 的整数。",
     loadFailed: "暂时无法读取设置，请重试。",
     operationFailed: "操作未完成，请重试。",
@@ -67,12 +78,8 @@ export const STR: Record<Lang, Record<string, string>> = {
     simpleTitle: "简单计时",
     simpleDescription: "设定工作与休息时长，到点提醒你。",
     simpleSummary: "每工作 {work} 分钟，提醒休息 {rest} 分钟。",
-    useSchedule: "使用日程",
     scheduleTitle: "日程安排",
     scheduleDescription: "设好平常的节奏，只调整不一样的那几轮。",
-    scheduleOptionalDescription: "按日期和时段安排不同节奏。",
-    scheduleModeDescription:
-      "按时段执行，空档不提醒。关闭后回到简单计时 {work}/{rest}。",
     emptySchedules: "还没有日程",
     emptySchedulesDescription:
       "添加一份日程，安排自己的节奏。没有执行时段时保持待机。",
@@ -246,9 +253,21 @@ export const STR: Record<Lang, Record<string, string>> = {
     generalDescription: "Make Sit Break fit your everyday habits.",
     remindersDescription: "Choose text and local videos to show during breaks.",
     scheduleOffNote:
-      "Scheduled timing is off. You can edit and preview now, then enable and save when ready.",
-    scheduleEnabledDescription:
-      "Enabled. Work and break lengths follow your schedules.",
+      "Simple timer is selected. Edit and preview here, then choose Scheduled timer in Work & breaks and save.",
+    timingMode: "Timer mode",
+    scheduledTitle: "Scheduled timer",
+    scheduledDescription:
+      "Follow your scheduled lengths. Stay idle outside time periods.",
+    scheduleOverview: "Schedule overview",
+    enabledScheduleCount: "Enabled schedules: {n}",
+    scheduleDefaultRhythm: "Default: {work} min work · {rest} min break",
+    scheduleAdjustedRounds: "Adjusted rounds: {n}",
+    noEnabledSchedules: "No enabled schedules",
+    noEnabledSchedulesDescription:
+      "All schedules are disabled. Enable one and save to receive scheduled reminders.",
+    simpleNeedsCorrection:
+      "Your retained simple timer lengths need correction before saving.",
+    correctSimple: "Correct simple timer settings",
     validation_widget_range:
       "Floating timer size must be an integer from 40 to 140.",
     loadFailed: "Could not load settings. Please retry.",
@@ -283,12 +302,8 @@ export const STR: Record<Lang, Record<string, string>> = {
     simpleTitle: "Simple timer",
     simpleDescription: "Set your work and break lengths. We'll remind you.",
     simpleSummary: "A {rest} min break after every {work} min of work.",
-    useSchedule: "Use schedules",
     scheduleTitle: "Schedules",
     scheduleDescription: "Set your usual rhythm, adjust only what differs.",
-    scheduleOptionalDescription: "Arrange your rhythm by date and time period.",
-    scheduleModeDescription:
-      "Reminders only during scheduled periods. Turn off for the {work}/{rest} simple timer.",
     emptySchedules: "No schedules yet",
     emptySchedulesDescription:
       "Add a schedule to arrange your rhythm. The timer stays idle without a time period.",

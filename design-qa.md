@@ -66,3 +66,18 @@ final result: passed
 - 已打开并比较完整对照和明暗截图。字体层级、原有间距、雾紫配色与 Phosphor 图标保持既定方向；文案缩短并贴近所属开关，无新图像资产。主要变化为提示块移除、说明归位和窗口四角收圆，没有新的 P0／P1／P2 视觉问题。
 - 实际切换日程开关后，中英文说明均正确更新；320 × 420 英文窗口下说明可换行，正文可滚动，底部保存按钮可见，无水平溢出。打开和关闭日程预览后，遮罩保持窗口圆角。
 - 本轮 TypeScript 与生产构建、现有 9 项前端测试通过。浏览器截图与交互检查不替代实际 WKWebView／WebView2 的透明窗口验收，原生验证边界仍按前节说明。
+
+## 2026-10-16：以计时方式选择替代日程开关
+
+final result: passed
+
+用户确认的新交互为：顶部选择“简单计时／日程计时”，配置区只展示所选方式的内容，共用设置放在下方。本轮沿用既有视觉系统与窗口结构，对原先“使用日程”开关做明确的交互替换。
+
+- 依据为用户确认的交互方案、原始视觉参考 `reference.png` 和修改前的 `settings-scheduled-dark.png`。修改前截图与实现均为 720 × 820 CSS 像素、1 倍密度，外侧各 24 像素浅灰画布。[完整对照](docs/ui-design/app-refresh/comparison-timer-modes-dark.png)去除画布后逐张按 720 × 820 原尺寸排列；左侧为日程开启的旧界面，中间为新简单计时，右侧为新日程计时。不同计时方式的内容差异属于本次明确要求，不以原图的三开关布局作为必须保留的目标。
+- 已打开完整对照与[配置区局部对照](docs/ui-design/app-refresh/comparison-timer-modes-detail.png)共同判断字体、间距、配色、图标与文案。保留系统字体层级、雾紫色、Phosphor 标准图标和 18 像素窗口圆角；顶部选择使用 Mantine，内容进入动效为 160 毫秒，遵守减少动态效果。没有新增位图资产，也没有复制计时引擎规则。
+- [P2，已修复] 首次深色检查中，选中项比轨道更暗，辨识度不足。选中项改用较亮的现有表面色并增加细边框；重新捕获的明暗两种模式截图与局部对照显示选中状态明确，没有新的 P0／P1／P2 视觉问题。
+- 简单计时：[浅色](docs/ui-design/app-refresh/timer-mode-simple-light.png)、[深色](docs/ui-design/app-refresh/timer-mode-simple-dark.png)。日程计时：[浅色](docs/ui-design/app-refresh/timer-mode-scheduled-light.png)、[深色](docs/ui-design/app-refresh/timer-mode-scheduled-dark.png)。四张截图均为 768 × 868 像素，应用区域为 `(24,24)–(744,844)`，没有拉伸或改变密度。
+- 日程概览展示已启用日程的名称、重复日期、执行时段、默认时长和单轮调整数量。[无日程](docs/ui-design/app-refresh/timer-mode-empty.png)提供添加入口；[全部停用](docs/ui-design/app-refresh/timer-mode-disabled.png)提供编辑入口并说明需启用后保存。在浏览器中实际点击添加入口后进入新日程，名称输入自动获得焦点。
+- [英文窄窗口](docs/ui-design/app-refresh/timer-mode-narrow.png)的应用视口为 320 × 420、截图为 368 × 468，1 倍密度。[滚动后截图](docs/ui-design/app-refresh/timer-mode-narrow-scrolled.png)验证长名称完整换行、多执行时段可滚动。实测正文滚动位置 468，内容高度 1499，视口高度 361；保存按钮仍在应用视口内，无水平溢出。
+- 实际用方向键左右切换模式，选中项、内容区和键盘焦点同步变化。模式与侧栏切换均保留草稿，保存后才生效。未完成的时间输入在概览中显示“—”，保存仍定位实际错误；隐藏的简单计时时长有误时提供可聚焦的修正入口，不静默改变计时方式。
+- 本轮 TypeScript、生产构建与 12 项前端测试通过，macOS 隔离测试应用构建成功。无 Rust 计时规则变更；真实 WKWebView／WebView2 窗口交互的验证边界保持前述说明，平台自动检查以最新 PR 记录为准。

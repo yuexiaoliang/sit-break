@@ -30,6 +30,7 @@ import {
   errorKey,
   localDate,
   newPeriod,
+  newSchedule,
   quietGaps,
   type PeriodDraft,
   type ScheduleDraft,
@@ -522,16 +523,7 @@ export function ScheduleEditor({
         id="addSchedule"
         className="add-schedule"
         onClick={() => {
-          onChange([
-            ...draft.schedules,
-            {
-              id: crypto.randomUUID(),
-              name: S.newSchedule,
-              enabled: true,
-              repeat: { kind: "weekly", weekdays: [1, 2, 3, 4, 5] },
-              periods: [],
-            },
-          ]);
+          onChange([...draft.schedules, newSchedule(S.newSchedule)]);
           focusLast(".schedule-name input");
         }}
       >

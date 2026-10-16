@@ -110,6 +110,15 @@ export function quietGaps(periods: PeriodDraft[]) {
   }
   return gaps;
 }
+export function newSchedule(name: string): ScheduleDraft {
+  return {
+    id: crypto.randomUUID(),
+    name,
+    enabled: true,
+    repeat: { kind: "weekly", weekdays: [1, 2, 3, 4, 5] },
+    periods: [],
+  };
+}
 export function newPeriod(
   schedule: ScheduleDraft,
   draft: SettingsDraft,

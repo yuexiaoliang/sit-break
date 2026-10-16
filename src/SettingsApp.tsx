@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ActionIcon,
   Alert,
-  Anchor,
   Button,
   Group,
   NavLink,
@@ -37,7 +36,6 @@ import { listen } from "@tauri-apps/api/event";
 import "dayjs/locale/zh-cn";
 import {
   AppearancePicker,
-  DurationControl,
   PreferenceRow,
   dragWindow,
   plainLabel,
@@ -47,8 +45,10 @@ import { STR, fmt } from "./i18n";
 import { GuidancePicker } from "./Guidance";
 import { ScheduleEditor } from "./ScheduleEditor";
 import { SchedulePreview } from "./SchedulePreview";
+import { TimerSettings } from "./TimerSettings";
 import {
   errorKey,
+  newSchedule,
   prepareSettings,
   type Settings,
   type SettingsDraft,
@@ -194,9 +194,11 @@ export default function SettingsApp() {
       navigate(target);
       // Accordion 先展开有错轮次，再把焦点放到实际输入上。
       setTimeout(() => {
-        const host = document.querySelector<HTMLElement>(
-          `[data-error-key="${CSS.escape(errorKey(first))}"]`,
-        );
+        const host = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            `[data-error-key="${CSS.escape(errorKey(first))}"]`,
+          ),
+        ).find((element) => !element.closest("[hidden]"));
         const input = host?.matches("input,textarea,button")
           ? host
           : host?.querySelector<HTMLElement>(
@@ -420,54 +422,29 @@ export default function SettingsApp() {
                 </header>
                 {item.id === "timer" && (
                   <>
-                    <div className="durations">
-                      <div
-                        data-error-key={errorKey({
-                          schedule_id: null,
-                          period_id: null,
-                          field: "work_minutes",
-                        })}
-                      >
-                        <DurationControl
-                          id="workMin"
-                          label={S.workLength}
-                          value={draft.work_minutes}
-                          max={240}
-                          presets={[15, 30, 45, 60]}
-                          S={S}
-                          error={fieldError("work_minutes")}
-                          onChange={(value) => change("work_minutes", value)}
-                        />
-                      </div>
-                      <div
-                        data-error-key={errorKey({
-                          schedule_id: null,
-                          period_id: null,
-                          field: "break_minutes",
-                        })}
-                      >
-                        <DurationControl
-                          id="breakMin"
-                          label={S.breakLen}
-                          value={draft.break_minutes}
-                          max={60}
-                          presets={[3, 5, 10]}
-                          S={S}
-                          error={fieldError("break_minutes")}
-                          onChange={(value) => change("break_minutes", value)}
-                        />
-                      </div>
-                    </div>
-                    <Text size="sm" c="dimmed" className="simple-summary">
-                      {draft.use_schedule && `${S.simpleTitle} · `}
-                      {fmt(S.simpleSummary, {
-                        work:
-                          draft.work_minutes === "" ? "—" : draft.work_minutes,
-                        rest:
-                          draft.break_minutes === ""
-                            ? "—"
-                            : draft.break_minutes,
-                      })}
+                    <TimerSettings
+                      draft={section === "timer" ? snapshotDraft() : draft}
+                      onChange={change}
+                      errors={errors}
+                      S={S}
+                      onEditSchedules={() => navigate("schedules")}
+                      onAddSchedule={() => {
+                        change("schedules", [
+                          ...draft.schedules,
+                          newSchedule(S.newSchedule),
+                        ]);
+                        navigate("schedules");
+                        requestAnimationFrame(() => {
+                          const names =
+                            document.querySelectorAll<HTMLInputElement>(
+                              ".schedule-name input",
+                            );
+                          names[names.length - 1]?.focus();
+                        });
+                      }}
+                    />
+                    <Text size="xs" c="dimmed" className="timer-shared-label">
+                      {S.sharedSettings}
                     </Text>
                     <div className="timer-preferences">
                       <PreferenceRow
@@ -486,28 +463,6 @@ export default function SettingsApp() {
                         checked={draft.idle_reset}
                         onChange={(value) => change("idle_reset", value)}
                       />
-                      <PreferenceRow
-                        icon={<CalendarBlankIcon />}
-                        id="swSchedule"
-                        title={S.useSchedule}
-                        description={
-                          draft.use_schedule
-                            ? S.scheduleEnabledDescription
-                            : S.scheduleOptionalDescription
-                        }
-                        checked={draft.use_schedule}
-                        onChange={(value) => change("use_schedule", value)}
-                      >
-                        <Anchor
-                          component="button"
-                          type="button"
-                          size="xs"
-                          className="edit-schedules"
-                          onClick={() => navigate("schedules")}
-                        >
-                          {S.editSchedule}
-                        </Anchor>
-                      </PreferenceRow>
                     </div>
                     <div className="next-reminder">
                       <FileVideoIcon size={23} />

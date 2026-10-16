@@ -261,6 +261,101 @@ label {
   font-size: 12px;
   line-height: 1.8;
 }
+.timer-configuration {
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--surface-border);
+}
+.timer-mode-picker {
+  padding: 5px;
+}
+.timer-mode-picker .mantine-SegmentedControl-label {
+  padding: 10px 8px;
+  white-space: normal;
+  line-height: 1.4;
+}
+.timer-mode-picker .mantine-SegmentedControl-label[data-active] {
+  color: var(--accent);
+}
+.timer-mode-picker .mantine-SegmentedControl-indicator {
+  border: 1px solid var(--surface-border);
+}
+:root[data-mantine-color-scheme="dark"]
+  .timer-mode-picker
+  .mantine-SegmentedControl-indicator {
+  background: var(--surface-hover);
+}
+.timer-mode-label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+.timer-mode-label svg {
+  flex-shrink: 0;
+}
+.timer-mode-panel {
+  margin-top: 18px;
+  animation: page-appear 160ms ease-out;
+}
+.timer-mode-description {
+  font-size: 13px;
+  line-height: 1.7;
+  margin-bottom: 14px;
+}
+.schedule-overview-heading {
+  margin-bottom: 10px;
+}
+.schedule-overview-card {
+  background: var(--surface-subtle);
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  padding: 15px 17px;
+}
+.schedule-overview-name {
+  overflow-wrap: anywhere;
+}
+.schedule-overview-periods {
+  margin-top: 13px;
+}
+.schedule-overview-period + .schedule-overview-period {
+  border-top: 1px solid var(--surface-border);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+.schedule-overview-time {
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 3px;
+}
+.schedule-mode-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  text-align: center;
+  padding: 22px 18px;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+}
+.schedule-mode-empty > svg {
+  color: var(--accent);
+  margin-bottom: 3px;
+}
+.schedule-mode-empty > button {
+  margin-top: 7px;
+}
+.inactive-duration-error {
+  padding: 12px;
+  margin-top: 12px;
+  border: 1px solid var(--mantine-color-red-outline);
+  border-radius: 8px;
+}
+.inactive-duration-error > button {
+  margin-top: 8px;
+}
+.timer-shared-label {
+  margin-top: 20px;
+  font-size: 12px;
+}
 .durations {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -325,9 +420,7 @@ label {
   color: var(--muted);
 }
 .simple-summary {
-  padding: 0 0 20px;
   font-size: 12px;
-  border-bottom: 1px solid var(--surface-border);
 }
 .preference-row {
   display: grid;
@@ -356,12 +449,6 @@ label {
 }
 .preference-switch {
   padding-top: 2px;
-}
-.edit-schedules {
-  display: inline-block;
-  margin-top: 8px;
-  font-weight: 550;
-  font-size: 12px;
 }
 .next-reminder {
   border-top: 1px solid var(--surface-border);

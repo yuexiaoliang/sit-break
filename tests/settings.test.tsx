@@ -49,10 +49,15 @@ beforeEach(() => {
   backend.saveGate = null;
 });
 describe("设置主要交互", () => {
-  it("独立编辑日程入口保留时长草稿，不自动打开使用日程", async () => {
+  it("切换计时方式及编辑日程保留草稿，导航不改变所选方式", async () => {
     const user = await setup();
     await user.clear(screen.getByLabelText("工作时长"));
     await user.type(screen.getByLabelText("工作时长"), "30");
+    await user.click(screen.getByText("日程计时", { exact: true }));
+    expect(screen.queryByRole("textbox", { name: "工作时长" })).toBeNull();
+    expect(
+      screen.getByRole("region", { name: "日程概览" }).textContent,
+    ).toContain("09:00–24:00");
     await user.click(
       screen.getByRole("button", { name: "编辑日程", exact: true }),
     );
@@ -62,13 +67,18 @@ describe("设置主要交互", () => {
     await user.click(
       screen.getByRole("button", { name: "计时与休息", exact: true }),
     );
+    expect(
+      (screen.getByRole("radio", { name: "日程计时" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    await user.click(screen.getByText("简单计时", { exact: true }));
     expect((screen.getByLabelText("工作时长") as HTMLInputElement).value).toBe(
       "30",
     );
     expect(
       (
-        screen.getByRole("switch", {
-          name: "使用日程",
+        screen.getByRole("radio", {
+          name: "日程计时",
           exact: true,
         }) as HTMLInputElement
       ).checked,
@@ -79,6 +89,95 @@ describe("设置主要交互", () => {
     await screen.findByText("已保存");
     expect(backend.settings.work_minutes).toBe(30);
     expect(backend.settings.use_schedule).toBe(false);
+  });
+  it("已有日程模式直接显示概览；模式切换保留日程修改并可保存", async () => {
+    backend.settings.use_schedule = true;
+    const user = await setup();
+    expect(screen.queryByRole("textbox", { name: "工作时长" })).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "编辑日程", exact: true }),
+    );
+    const hours = screen.getByLabelText("开始时间 · 小时");
+    await user.click(hours);
+    await user.keyboard("10");
+    await user.click(
+      screen.getByRole("button", { name: "计时与休息", exact: true }),
+    );
+    await user.click(screen.getByText("简单计时", { exact: true }));
+    await user.click(screen.getByText("日程计时", { exact: true }));
+    await user.click(
+      screen.getByRole("button", { name: "保存设置", exact: true }),
+    );
+    await screen.findByText("已保存");
+    expect(backend.settings.use_schedule).toBe(true);
+    expect(backend.settings.schedules[0].periods[0].start).toBe("10:00");
+    expect(
+      screen.getByRole("region", { name: "日程概览" }).textContent,
+    ).toContain("10:00–24:00");
+    expect(screen.getByRole("switch", { name: "提示音" })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "离开自动重置" })).toBeTruthy();
+  });
+  it("日程空状态可以直接添加日程，并保留选中的计时方式", async () => {
+    backend.settings.schedules = [];
+    const user = await setup();
+    await user.click(screen.getByText("日程计时", { exact: true }));
+    expect(
+      screen.getByRole("region", { name: "日程概览" }).textContent,
+    ).toContain("还没有日程");
+    await user.click(
+      screen.getByRole("button", { name: "添加日程", exact: true }),
+    );
+    const name = screen.getByLabelText("日程名称");
+    expect(document.activeElement).toBe(name);
+    await user.clear(name);
+    await user.type(name, "晨间安排");
+    await user.click(
+      screen.getByRole("button", { name: "计时与休息", exact: true }),
+    );
+    expect(
+      screen.getByRole("region", { name: "日程概览" }).textContent,
+    ).toContain("晨间安排");
+    expect(
+      (screen.getByRole("radio", { name: "日程计时" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    await user.click(
+      screen.getByRole("button", { name: "保存设置", exact: true }),
+    );
+    await screen.findByText("已保存");
+    expect(backend.settings.schedules[0].name).toBe("晨间安排");
+    expect(backend.settings.use_schedule).toBe(true);
+  });
+  it("隐藏的简单计时时长有误时，提供可聚焦的修正入口，不静默改变模式", async () => {
+    const user = await setup();
+    await user.clear(screen.getByLabelText("工作时长"));
+    await user.click(screen.getByText("日程计时", { exact: true }));
+    backend.calls = [];
+    await user.click(
+      screen.getByRole("button", { name: "保存设置", exact: true }),
+    );
+    expect(backend.calls).not.toContain("save_settings");
+    const correct = screen.getByRole("button", {
+      name: "修正简单计时设置",
+      exact: true,
+    });
+    await waitFor(() => expect(document.activeElement).toBe(correct));
+    expect(
+      (screen.getByRole("radio", { name: "日程计时" }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    await user.click(correct);
+    const work = screen.getByLabelText("工作时长");
+    await waitFor(() => expect(document.activeElement).toBe(work));
+    expect((work as HTMLInputElement).value).toBe("");
+    await user.type(work, "30");
+    await user.click(screen.getByText("日程计时", { exact: true }));
+    await user.click(
+      screen.getByRole("button", { name: "保存设置", exact: true }),
+    );
+    await screen.findByText("已保存");
+    expect(backend.settings.use_schedule).toBe(true);
+    expect(backend.settings.work_minutes).toBe(30);
   });
   it("24:00可保存；清空一段时间后即使换页也必须纠错，不能静默保存旧值", async () => {
     const user = await setup();
@@ -94,8 +193,12 @@ describe("设置主要交互", () => {
     await user.keyboard("{Backspace}");
     expect((hours as HTMLInputElement).value).toBe("");
     await user.click(
-      screen.getByRole("button", { name: "提醒内容", exact: true }),
+      screen.getByRole("button", { name: "计时与休息", exact: true }),
     );
+    await user.click(screen.getByText("日程计时", { exact: true }));
+    expect(
+      screen.getByRole("region", { name: "日程概览" }).textContent,
+    ).toContain("—–24:00");
     backend.calls = [];
     await user.click(
       screen.getByRole("button", { name: "保存设置", exact: true }),
