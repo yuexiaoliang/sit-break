@@ -459,6 +459,7 @@ export default function SettingsApp() {
                       </div>
                     </div>
                     <Text size="sm" c="dimmed" className="simple-summary">
+                      {draft.use_schedule && `${S.simpleTitle} · `}
                       {fmt(S.simpleSummary, {
                         work:
                           draft.work_minutes === "" ? "—" : draft.work_minutes,
@@ -468,15 +469,6 @@ export default function SettingsApp() {
                             : draft.break_minutes,
                       })}
                     </Text>
-                    {draft.use_schedule && (
-                      <Alert
-                        className="simple-inactive"
-                        variant="light"
-                        color="plum"
-                      >
-                        {S.simpleInactive}
-                      </Alert>
-                    )}
                     <div className="timer-preferences">
                       <PreferenceRow
                         icon={<BellIcon />}
@@ -498,7 +490,11 @@ export default function SettingsApp() {
                         icon={<CalendarBlankIcon />}
                         id="swSchedule"
                         title={S.useSchedule}
-                        description={S.scheduleOptionalDescription}
+                        description={
+                          draft.use_schedule
+                            ? S.scheduleEnabledDescription
+                            : S.scheduleOptionalDescription
+                        }
                         checked={draft.use_schedule}
                         onChange={(value) => change("use_schedule", value)}
                       >

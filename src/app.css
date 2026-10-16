@@ -131,12 +131,18 @@ label {
 .mantine-Switch-track {
   cursor: pointer;
 }
+.settings-page {
+  --settings-window-radius: 18px;
+  clip-path: inset(0 round var(--settings-window-radius));
+}
 .settings-shell {
   display: grid;
   grid-template-columns: 176px minmax(0, 1fr);
   height: 100%;
   background: var(--surface);
   border: 1px solid var(--surface-border);
+  border-radius: var(--settings-window-radius);
+  overflow: hidden;
 }
 .settings-sidebar {
   display: flex;
@@ -322,9 +328,6 @@ label {
   padding: 0 0 20px;
   font-size: 12px;
   border-bottom: 1px solid var(--surface-border);
-}
-.simple-inactive {
-  margin-bottom: 10px;
 }
 .preference-row {
   display: grid;

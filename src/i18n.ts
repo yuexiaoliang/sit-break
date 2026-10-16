@@ -34,8 +34,7 @@ export const STR: Record<Lang, Record<string, string>> = {
     remindersDescription: "设置休息时想看到的文字与本地视频。",
     scheduleOffNote:
       "日程计时尚未开启，可先编辑和预览；启用后保存即可按日程执行。",
-    simpleInactive:
-      "当前使用日程计时。下方时长保留用于简单计时，修改后不会改变日程中的时长。",
+    scheduleEnabledDescription: "已启用，工作与休息时长以日程安排为准。",
     validation_widget_range: "悬浮计时条大小必须是 40–140 的整数。",
     loadFailed: "暂时无法读取设置，请重试。",
     operationFailed: "操作未完成，请重试。",
@@ -248,8 +247,8 @@ export const STR: Record<Lang, Record<string, string>> = {
     remindersDescription: "Choose text and local videos to show during breaks.",
     scheduleOffNote:
       "Scheduled timing is off. You can edit and preview now, then enable and save when ready.",
-    simpleInactive:
-      "Scheduled timing is active. These lengths are kept for the simple timer and do not change your schedules.",
+    scheduleEnabledDescription:
+      "Enabled. Work and break lengths follow your schedules.",
     validation_widget_range:
       "Floating timer size must be an integer from 40 to 140.",
     loadFailed: "Could not load settings. Please retry.",
