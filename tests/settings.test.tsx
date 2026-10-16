@@ -150,10 +150,19 @@ describe("设置主要交互", () => {
     backend.calls = [];
     await user.keyboard("{Escape}");
     expect(backend.calls).not.toContain("hide_settings");
+    await user.click(screen.getByRole("combobox", { name: "语言" }));
     await user.click(
-      screen.getByRole("button", { name: "保存设置", exact: true }),
+      await screen.findByRole("option", { name: "English", exact: true }),
     );
-    await screen.findByText("已保存");
+    await user.click(within(general).getByText("Light", { exact: true }));
+    expect(document.documentElement.lang).toBe("en");
+    await user.click(within(general).getByText("Dark", { exact: true }));
+    expect(document.documentElement.lang).toBe("en");
+    await user.click(
+      screen.getByRole("button", { name: "Save settings", exact: true }),
+    );
+    await screen.findByText("Saved");
     expect(backend.settings.appearance).toBe("dark");
+    expect(backend.settings.language).toBe("en");
   });
 });

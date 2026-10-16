@@ -13,7 +13,7 @@ import {
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { IconContext } from "@phosphor-icons/react";
-import { useSettings, resolveLang } from "./runtime";
+import { useSettings } from "./runtime";
 import type { Appearance } from "./model";
 import "@mantine/core/styles.css";
 import "@mantine/dates/styles.css";
@@ -106,8 +106,6 @@ export function AppTheme({ children }: { children: ReactNode }) {
   const mode = preview ?? settings.appearance;
   const scheme = mode === "system" ? (prefersDark ? "dark" : "light") : mode;
   useEffect(() => {
-    document.documentElement.lang =
-      resolveLang(settings.language) === "zh" ? "zh-CN" : "en";
     document.documentElement.dataset.appearance = mode;
     localStorage.setItem("sit-break-appearance", settings.appearance);
   }, [settings.language, settings.appearance, mode]);
@@ -116,7 +114,11 @@ export function AppTheme({ children }: { children: ReactNode }) {
     [],
   );
   return (
-    <MantineProvider theme={theme} forceColorScheme={scheme}>
+    <MantineProvider
+      theme={theme}
+      forceColorScheme={scheme}
+      env={import.meta.env.MODE === "test" ? "test" : undefined}
+    >
       <IconContext.Provider value={iconStyle}>
         <PreviewTheme.Provider value={setPreview}>
           {children}

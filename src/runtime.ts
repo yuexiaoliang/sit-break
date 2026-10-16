@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { STR, type Lang } from "./i18n";
@@ -66,7 +66,11 @@ export function usePlatform() {
 }
 export function useStrings(language?: string) {
   const settings = useSettings();
-  return STR[resolveLang(language ?? settings.language)];
+  const lang = resolveLang(language ?? settings.language);
+  useEffect(() => {
+    document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  }, [lang]);
+  return STR[lang];
 }
 export async function refreshSettings() {
   const settings = normalizeSettings(await invoke<Settings>("get_settings"));
