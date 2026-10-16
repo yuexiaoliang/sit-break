@@ -47,6 +47,21 @@ jobs:
         working-directory: src-tauri
         run: cargo build --locked --bin sit-break
 
+      - name: macOS 原生浮窗边界
+        if: runner.os == 'macOS'
+        timeout-minutes: 2
+        working-directory: src-tauri
+        run: cargo run --locked --example reminder_window_check -- "${{ runner.temp }}/sit-break-window-check.json"
+
+      - name: 上传 macOS 原生定位报告
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-native-window-check
+          path: ${{ runner.temp }}/sit-break-window-check.json
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Rust formatting
         working-directory: src-tauri
         run: cargo fmt --all -- --check

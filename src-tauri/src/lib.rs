@@ -19,6 +19,10 @@ mod guidance_resource_tests;
 pub mod guidance_resources;
 mod platform;
 mod power;
+mod window_geometry;
+#[cfg(not(target_os = "macos"))]
+use window_geometry::position_bottom_right;
+use window_geometry::{clamp_axis, show_reminder};
 pub mod preview;
 #[cfg(test)]
 mod preview_tests;
@@ -461,35 +465,6 @@ fn autostart_is_enabled(app: &AppHandle) -> bool {
     app.autolaunch().is_enabled().unwrap_or(false)
 }
 
-fn position_bottom_right(window: &WebviewWindow) {
-    let Ok(Some(monitor)) = window.current_monitor() else {
-        return;
-    };
-    let area = monitor.work_area();
-    let ws = window.outer_size().unwrap_or_default();
-    let margin = (24.0 * monitor.scale_factor()) as i32;
-    let x = clamp_axis(i32::MAX, area.position.x, area.size.width, ws.width, margin);
-    let y = clamp_axis(
-        i32::MAX,
-        area.position.y,
-        area.size.height,
-        ws.height,
-        margin,
-    );
-    let _ = window.set_position(PhysicalPosition::new(x, y));
-}
-
-fn clamp_axis(candidate: i32, origin: i32, available: u32, window: u32, margin: i32) -> i32 {
-    if window >= available {
-        return origin;
-    }
-    let margin = margin.min((available - window) as i32 / 2).max(0);
-    candidate.clamp(
-        origin + margin,
-        origin + available as i32 - window as i32 - margin,
-    )
-}
-
 fn position_panel_default<R: tauri::Runtime>(window: &WebviewWindow<R>) {
     let Ok(Some(monitor)) = window.current_monitor() else {
         return;
@@ -590,31 +565,7 @@ fn update_windows(app: &AppHandle) {
             }
             if let Some(r) = &reminder {
                 let media = mode == Mode::Break && info.guidance.is_some();
-                let (mut width, mut height): (f64, f64) = if media {
-                    (624.0, 344.0)
-                } else {
-                    (380.0, 368.0)
-                };
-                if let Some(monitor) = r
-                    .current_monitor()
-                    .ok()
-                    .flatten()
-                    .or_else(|| r.primary_monitor().ok().flatten())
-                {
-                    let area = monitor.work_area();
-                    let available_width =
-                        (f64::from(area.size.width) / monitor.scale_factor() - 24.0).max(1.0);
-                    if media && available_width < 560.0 {
-                        height = 460.0;
-                    }
-                    width = width.min(available_width);
-                    height = height.min(
-                        (f64::from(area.size.height) / monitor.scale_factor() - 24.0).max(1.0),
-                    );
-                }
-                let _ = r.set_size(tauri::LogicalSize::new(width, height));
-                position_bottom_right(r);
-                let _ = r.show();
+                let _ = show_reminder(r, media);
             }
         }
     }

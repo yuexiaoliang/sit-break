@@ -194,6 +194,11 @@ async function inspectLayout(connection, buttonId, checkText = true) {
   const window = native.windows.find((item) => item.visible && /Reminder|提醒/.test(item.title));
   assert.ok(window, '必须找到真实可见的原生提醒 HWND');
   assert.ok(window.outer.width > 0 && window.outer.height > 0);
+  assert.ok(window.outer.x >= window.workArea.x && window.outer.y >= window.workArea.y,
+    '原生浮窗左侧和顶部必须在显示器工作区内');
+  assert.ok(window.outer.x + window.outer.width <= window.workArea.x + window.workArea.width
+    && window.outer.y + window.outer.height <= window.workArea.y + window.workArea.height,
+    '原生浮窗右侧和底部必须在显示器工作区内，不能只检查窗口内部布局');
   assert.ok(window.outer.width * window.outer.height < window.workArea.width * window.workArea.height / 2, '浮窗不能占据半屏');
   assert.ok(Math.abs(window.client.width - layout.width * layout.ratio) <= 4, 'Win32 客户区与真实 WebView 宽度一致');
   assert.ok(Math.abs(window.client.height - layout.height * layout.ratio) <= 4, 'Win32 客户区与真实 WebView 高度一致');
