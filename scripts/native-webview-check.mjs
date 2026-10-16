@@ -173,9 +173,9 @@ async function inspectLayout(connection, buttonId, checkText = true) {
     const ids = ${JSON.stringify([buttonId, ...(checkText ? [buttonId === 'btnBreak' ? 'tipText' : 'breakTime'] : [])])};
     const rect = (element) => { const r = element.getBoundingClientRect(); return { x:r.x, y:r.y, width:r.width, height:r.height, right:r.right, bottom:r.bottom }; };
     return { width:innerWidth, height:innerHeight, ratio:devicePixelRatio,
-      outerShadow:getComputedStyle(document.querySelector('.card:not([hidden])')).boxShadow,
+      outerShadow:getComputedStyle(document.querySelector('.reminder-surface')).boxShadow,
       dark:matchMedia('(prefers-color-scheme: dark)').matches,
-      background:getComputedStyle(document.documentElement).getPropertyValue('--sb-background').trim(),
+      background:getComputedStyle(document.documentElement).getPropertyValue('--surface').trim(),
       controls:ids.map((id) => {
         const e = document.getElementById(id);
         // 长文字本身允许超出可见高度；检查它的滚动视口及实际可滚动性。
@@ -219,7 +219,7 @@ async function videoSample(connection, objectId, diagnostic = report.video) {
         buffered:Array.from({length:this.buffered.length}, (_,i)=>[this.buffered.start(i),this.buffered.end(i)]),
         source:this.getAttribute('src'), currentSrc:this.currentSrc,
         rect:{x:r.x,y:r.y,right:r.right,bottom:r.bottom},
-        endButton:(() => { const r=document.getElementById('btnEnd').getBoundingClientRect(); return {x:r.x,y:r.y,right:r.right,bottom:r.bottom}; })() };
+        endButton:(() => { const button=document.getElementById('btnEnd');if(!button)return null;const r=button.getBoundingClientRect(); return {x:r.x,y:r.y,right:r.right,bottom:r.bottom}; })() };
     }` });
   assert.ok(!result.exceptionDetails, JSON.stringify(result.exceptionDetails));
   diagnostic.lastSample = result.result.value;
@@ -236,12 +236,16 @@ async function checkSimpleLocalVideo(app) {
     tips: [{ id: 'native-check-video-only', text: '', guidance }],
   } });
   await app.settings.invoke('open_settings');
-  await waitFor('设置只显示本地视频来源', () => app.settings.evaluate(`(() => {
-    const pickers = Array.from(document.querySelectorAll('.guidance-picker select'));
-    return pickers.length > 0 && pickers[0].value === 'local-video'
-      && pickers.every(select => JSON.stringify(Array.from(select.options, option => option.value)) === '["","local-video"]')
+  await app.settings.evaluate("document.querySelector('[data-section=reminders]').click()");
+  await waitFor('设置显示本地视频组件', () => app.settings.evaluate(`!!document.querySelector('.view-reminders:not([hidden]) .guidance-picker')`));
+  await app.settings.evaluate("document.querySelector('.view-reminders .guidance-picker input[role=combobox]').click()");
+  await waitFor('来源下拉仅有两个本地选项', () => app.settings.evaluate(`(() => {
+    const options = Array.from(document.querySelectorAll('[role=option]')).filter(e => e.getClientRects().length);
+    return options.length === 2 && JSON.stringify(options.map(e => e.getAttribute('value'))) === '["","local-video"]'
       && !document.querySelector('.guidance-authoring-trigger, .guidance-url, .guidance-frame, iframe');
   })()`));
+  await app.settings.call('Input.dispatchKeyEvent', {type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+  await app.settings.call('Input.dispatchKeyEvent', {type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
   await app.settings.screenshot('04-video-only-settings');
   report.checks.push({ name: '来源仅有不使用指引与本地视频，无网页或制作入口' });
   await app.settings.invoke('hide_settings');
@@ -253,7 +257,7 @@ async function checkSimpleLocalVideo(app) {
   const reminded = await app.reminder.invoke('timer_info');
   assert.equal(reminded.tip, '');
   assert.deepEqual(reminded.guidance, guidance);
-  await waitFor('仅指引提醒页隐藏空文字且尚未创建播放器', () => app.reminder.evaluate(`!document.getElementById('cardRemind').hidden && document.getElementById('tipText').parentElement.hidden && !document.querySelector('video')`));
+  await waitFor('仅指引提醒页隐藏空文字且尚未创建播放器', () => app.reminder.evaluate(`!!document.getElementById('cardRemind') && !document.getElementById('tipText') && !document.querySelector('video')`));
   await inspectLayout(app.reminder, 'btnBreak', false);
   await app.reminder.screenshot('04-video-reminder');
   await app.reminder.evaluate('document.getElementById("btnBreak").click()');
@@ -265,7 +269,7 @@ async function checkSimpleLocalVideo(app) {
   try {
     const initial = await videoSample(app.reminder, objectId);
     report.video.initial = initial;
-    assert.ok(initial.muted && initial.defaultMuted && initial.loop && initial.controls && !initial.paused, '本地视频副本自动静音循环并带播放控制');
+    assert.ok(initial.muted && initial.defaultMuted && initial.loop && !initial.controls && !initial.paused, '本地视频副本自动静音循环并带播放控制');
     assert.ok(initial.width > 0 && initial.height > 0 && initial.readyState >= 2);
     assert.ok(initial.rect.x >= 0 && initial.rect.y >= 0 && (initial.rect.right <= initial.endButton.x || initial.rect.bottom <= initial.endButton.y), '视频与结束按钮各占独立区域，不能重叠');
     assert.equal(await app.reminder.evaluate('document.getElementById("stretchText").hidden'), true, '仅指引休息省略文字区域');
@@ -275,7 +279,7 @@ async function checkSimpleLocalVideo(app) {
     assert.ok(advanced > 0.3 && advanced < 2.5, '真实 WebView2 视频时间必须前进');
     assert.ok(playing.same, '计时 tick 不得重建播放器');
     report.video.stage = '真实暂停和拖动进度';
-    await app.reminder.evaluate('document.querySelector("#guidanceContent video").pause()');
+    await app.reminder.evaluate('document.querySelector("[data-action=toggle-playback]").click()');
     const beforePause = await app.reminder.invoke('timer_info');
     const paused = await videoSample(app.reminder, objectId);
     await delay(2200);
@@ -303,7 +307,7 @@ async function checkSimpleLocalVideo(app) {
       await app.reminder.screenshot(`05-video-${theme}`);
       themes.push({ theme, video, state, ...layout });
     }
-    await app.reminder.evaluate('document.querySelector("#guidanceContent video").play()');
+    await app.reminder.evaluate('document.querySelector("[data-action=toggle-playback]").click()');
     report.video.stage = '真实循环播放';
     let previousTime = (await videoSample(app.reminder, objectId)).currentTime;
     const looped = await waitFor('原生视频播完后实际循环', async () => {
@@ -387,7 +391,7 @@ try {
   })()`);
   const plainBeforeScroll=await textLayout();
   assert.equal(plainBeforeScroll.content,marker);
-  assert.equal(plainBeforeScroll.fontSize,'16px');
+  assert.equal(plainBeforeScroll.fontSize,'17px');
   assert.ok(!plainBeforeScroll.hasVideo && !plainBeforeScroll.hasRing, '纯文字休息使用文字主体与线性进度');
   assert.ok(plainBeforeScroll.scrollHeight > plainBeforeScroll.clientHeight && plainBeforeScroll.clientHeight > 60);
   await app.reminder.evaluate('document.getElementById("stretchText").focus()');
@@ -464,7 +468,7 @@ try {
       height:innerHeight,content:content.textContent,contentHeight:content.getBoundingClientRect().height,viewport:text.clientHeight
     };
   })()`));
-  assert.ok(Math.abs(compact.contentHeight - compact.viewport) <= 1, '单行正文下不保留可伸展的大块空白');
+  assert.ok(compact.viewport >= compact.contentHeight && compact.viewport - compact.contentHeight <= 20, '单行正文下仅保留必要内距，不保留大块空白');
   const compactLayout = await inspectLayout(app.reminder, 'btnEnd');
   await app.reminder.screenshot('03-single-line-compact');
   await app.settings.invoke('save_settings', { settings: { ...compactSettings, show_widget: true } });

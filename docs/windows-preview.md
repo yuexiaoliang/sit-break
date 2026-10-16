@@ -6,4 +6,4 @@ PR 更新后，[Windows 测试版工作流](https://github.com/yuexiaoliang/sit-
 
 应用名为 **Sit Break Preview**，标识为 `com.sitbreak.preview`，设置和运行进度保存在 `%APPDATA%\com.sitbreak.preview`，与正式版分开。解压目录中的使用说明记录完整源码提交，`SHA256SUMS.txt` 用于核对安装包和可执行文件。
 
-启动后点击右下角托盘图标或悬浮计时条，进入设置。关闭“使用日程”可体验简单计时，开启后可编辑日程、执行时段和单轮安排。快速体验提醒可先设置工作 1 分钟、休息 1 分钟。实机验收范围见[日程验证记录](schedule-verification.md)。
+启动后点击右下角托盘图标或悬浮计时条，进入设置。在“计时与休息”顶部选择“简单计时”或“日程计时”；日程模式通过“编辑日程”进入执行时段和单轮安排，保存后生效。快速体验提醒可先设置工作 1 分钟、休息 1 分钟。实机验收范围见[日程验证记录](schedule-verification.md)。

@@ -35,6 +35,9 @@ jobs:
       - name: Type-check & build frontend (tsc + vite)
         run: npm run build
 
+      - name: Frontend interaction tests
+        run: npm test
+
       - name: Cargo check
         working-directory: src-tauri
         run: cargo check --locked

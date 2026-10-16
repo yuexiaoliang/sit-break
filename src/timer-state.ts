@@ -1,4 +1,4 @@
-import type { Guidance } from "./guidance";
+import type { Guidance } from "./model";
 
 /** 后端计时应用入口的完整状态，初次读取与 tick 事件共用。 */
 export interface TimerState {
@@ -9,5 +9,10 @@ export interface TimerState {
   break_seconds: number;
   tip: string | null;
   guidance: Guidance | null;
-  round: { schedule_id: string; period_id: string; date: string; number: number } | null;
+  round: {
+    schedule_id: string;
+    period_id: string;
+    date: string;
+    number: number;
+  } | null;
 }

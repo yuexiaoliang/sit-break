@@ -1,0 +1,213 @@
+{
+  "passed": true,
+  "samples": [
+    {
+      "heightMatches": true,
+      "inside": true,
+      "name": "主线程首次视频休息",
+      "scale": 2.0,
+      "window": {
+        "position": {
+          "x": 1584,
+          "y": 964
+        },
+        "size": {
+          "height": 688,
+          "width": 1248
+        }
+      },
+      "workArea": {
+        "position": {
+          "x": 0,
+          "y": 50
+        },
+        "size": {
+          "height": 1650,
+          "width": 2880
+        }
+      }
+    },
+    {
+      "heightMatches": true,
+      "inside": true,
+      "name": "主线程返回纯文字",
+      "scale": 2.0,
+      "window": {
+        "position": {
+          "x": 2072,
+          "y": 916
+        },
+        "size": {
+          "height": 736,
+          "width": 760
+        }
+      },
+      "workArea": {
+        "position": {
+          "x": 0,
+          "y": 50
+        },
+        "size": {
+          "height": 1650,
+          "width": 2880
+        }
+      }
+    },
+    {
+      "heightMatches": true,
+      "inside": true,
+      "name": "主线程纯文字切换视频",
+      "scale": 2.0,
+      "window": {
+        "position": {
+          "x": 1584,
+          "y": 964
+        },
+        "size": {
+          "height": 688,
+          "width": 1248
+        }
+      },
+      "workArea": {
+        "position": {
+          "x": 0,
+          "y": 50
+        },
+        "size": {
+          "height": 1650,
+          "width": 2880
+        }
+      }
+    },
+    {
+      "heightMatches": true,
+      "inside": true,
+      "name": "主线程重复视频休息",
+      "scale": 2.0,
+      "window": {
+        "position": {
+          "x": 1584,
+          "y": 964
+        },
+        "size": {
+          "height": 688,
+          "width": 1248
+        }
+      },
+      "workArea": {
+        "position": {
+          "x": 0,
+          "y": 50
+        },
+        "size": {
+          "height": 1650,
+          "width": 2880
+        }
+      }
+    },
+    {
+      "heightMatches": true,
+      "inside": true,
+      "name": "后台线程返回纯文字",
+      "scale": 2.0,
+      "window": {
+        "position": {
+          "x": 2072,
+          "y": 916
+        },
+        "size": {
+          "height": 736,
+          "width": 760
+        }
+      },
+      "workArea": {
+        "position": {
+          "x": 0,
+          "y": 50
+        },
+        "size": {
+          "height": 1650,
+          "width": 2880
+        }
+      }
+    },
+    {
+      "heightMatches": true,
+      "inside": true,
+      "name": "后台线程切换视频",
+      "scale": 2.0,
+      "window": {
+        "position": {
+          "x": 1584,
+          "y": 964
+        },
+        "size": {
+          "height": 688,
+          "width": 1248
+        }
+      },
+      "workArea": {
+        "position": {
+          "x": 0,
+          "y": 50
+        },
+        "size": {
+          "height": 1650,
+          "width": 2880
+        }
+      }
+    },
+    {
+      "heightMatches": true,
+      "inside": true,
+      "name": "主线程单行文字收紧",
+      "scale": 2.0,
+      "window": {
+        "position": {
+          "x": 2072,
+          "y": 1164
+        },
+        "size": {
+          "height": 488,
+          "width": 760
+        }
+      },
+      "workArea": {
+        "position": {
+          "x": 0,
+          "y": 50
+        },
+        "size": {
+          "height": 1650,
+          "width": 2880
+        }
+      }
+    },
+    {
+      "heightMatches": true,
+      "inside": true,
+      "name": "主线程长文恢复高度",
+      "scale": 2.0,
+      "window": {
+        "position": {
+          "x": 2072,
+          "y": 916
+        },
+        "size": {
+          "height": 736,
+          "width": 760
+        }
+      },
+      "workArea": {
+        "position": {
+          "x": 0,
+          "y": 50
+        },
+        "size": {
+          "height": 1650,
+          "width": 2880
+        }
+      }
+    }
+  ]
+}

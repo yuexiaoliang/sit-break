@@ -142,6 +142,16 @@ impl<'de> Deserialize<'de> for ReminderEntry {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Appearance {
+    Light,
+    Dark,
+    #[default]
+    #[serde(other)]
+    System,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -154,6 +164,7 @@ pub struct Settings {
     pub autostart: bool,
     pub idle_reset: bool,
     pub language: String,
+    pub appearance: Appearance,
     pub widget_size: u32,
     pub tips: Vec<ReminderEntry>,
 }
@@ -170,6 +181,7 @@ impl Default for Settings {
             autostart: false,
             idle_reset: true,
             language: "system".to_string(),
+            appearance: Appearance::System,
             widget_size: 64,
             tips: default_tips(),
         }
@@ -1160,7 +1172,7 @@ pub fn run() {
             } else {
                 "Sit Break Settings"
             })
-            .inner_size(562.0, 785.0)
+            .inner_size(720.0, 820.0)
             .min_inner_size(320.0, 420.0)
             .visible(false)
             .decorations(false)
@@ -1172,6 +1184,17 @@ pub fn run() {
             .center()
             .focused(false)
             .build()?;
+            if let Ok(Some(monitor)) = settings_win.current_monitor() {
+                let area = monitor.work_area();
+                let scale = monitor.scale_factor();
+                let width = (area.size.width as f64 / scale - 24.0).clamp(320.0, 720.0);
+                let height = (area.size.height as f64 / scale - 24.0).clamp(420.0, 820.0);
+                settings_win.set_size(tauri::LogicalSize::new(width, height))?;
+                settings_win.set_position(PhysicalPosition::new(
+                    area.position.x + ((area.size.width as f64 - width * scale) / 2.0) as i32,
+                    area.position.y + ((area.size.height as f64 - height * scale) / 2.0) as i32,
+                ))?;
+            }
             let panel = native_check_window(WebviewWindowBuilder::new(
                 &handle,
                 "panel",
@@ -1312,6 +1335,38 @@ pub fn run() {
             power_monitor.take();
         }
     });
+}
+
+#[cfg(test)]
+mod appearance_tests {
+    use super::{Appearance, Settings};
+
+    #[test]
+    fn old_settings_keep_values_and_follow_system() {
+        let settings: Settings =
+            serde_json::from_str(r#"{"work_minutes":30,"break_minutes":3}"#).unwrap();
+        assert_eq!(settings.appearance, Appearance::System);
+        assert_eq!((settings.work_minutes, settings.break_minutes), (30, 3));
+    }
+
+    #[test]
+    fn unknown_appearance_does_not_discard_settings() {
+        let settings: Settings =
+            serde_json::from_str(r#"{"appearance":"future","work_minutes":60}"#).unwrap();
+        assert_eq!(settings.appearance, Appearance::System);
+        assert_eq!(settings.work_minutes, 60);
+    }
+
+    #[test]
+    fn explicit_appearance_roundtrips() {
+        let settings = Settings {
+            appearance: Appearance::Dark,
+            ..Default::default()
+        };
+        let encoded = serde_json::to_string(&settings).unwrap();
+        let restored: Settings = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(restored.appearance, Appearance::Dark);
+    }
 }
 
 #[cfg(test)]

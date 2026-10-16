@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/design/logo/mark.svg" alt="Sit Break logo" width="72" height="72" />
+  <img src="docs/design/logo/mark.svg" alt="Sit Break 标志" width="72" height="72" />
 </p>
 
-# Sit Break · Break Reminders
+# Sit Break · 久坐提醒
 
 [![macOS](https://img.shields.io/badge/macOS-12%2B-000000)](https://github.com/yuexiaoliang/sit-break/releases/latest)
 [![Windows](https://img.shields.io/badge/Windows-10%2F11-0078d4)](https://github.com/yuexiaoliang/sit-break/releases/latest)
@@ -10,153 +10,149 @@
 [![CI](https://github.com/yuexiaoliang/sit-break/actions/workflows/ci.yml/badge.svg)](https://github.com/yuexiaoliang/sit-break/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**Work at your own pace, with reminders to get up and move.** Sit Break lives in the macOS menu bar or Windows system tray. By default, it repeats one set of work and break durations. When you need more detail, enable schedules to give mornings, afternoons, and individual rounds their own durations and break activities.
+**按自己的节奏工作，到点起来活动。** Sit Break 是一款在本机运行的久坐提醒工具，常驻 macOS 菜单栏或 Windows 系统托盘。选择固定的工作／休息节奏，或按日期、时段安排日程；休息时可以显示自定义文字和自己导入的本地视频。
 
-**English** | [简体中文](README.zh-CN.md)
+[下载最新正式版](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.5.0 更新说明](docs/releases/v0.5.0.md) · [日程使用说明](docs/schedules.md)
 
-[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [Schedule guide (Chinese)](docs/schedules.md)
+## v0.5.0 有什么变化
 
-## Two Timer Modes
+- **统一界面**：设置、托盘面板、休息浮窗和 Windows 悬浮计时条共用控件与雾紫配色，支持浅色、深色和跟随系统。
+- **明确的计时方式**：顶部切换“简单计时／日程计时”，只展示当前方式的配置；切换保留草稿，保存后生效。
+- **本地视频指引**：为提醒条目或指定轮次导入本地视频，可与文字搭配，也可单独使用。
+- **更紧凑的休息浮窗**：单行文字自动收紧，长文独立滚动；视频、倒计时和结束按钮保持清楚可见。
+- **更顺手的设置**：侧栏导航、日程概览、空状态引导、圆角窗口和轻微过渡；尊重系统的减少动态效果设置。
 
-| | Simple timer | Scheduled timer |
-| --- | --- | --- |
-| Best for | The same rhythm every round | Different routines by time of day or round |
-| Setup | Set work and break lengths | Enable “Use schedules,” add time periods, and optionally adjust individual rounds |
-| Repetition | Repeat work and break cycles | Run once on a date, or repeat on selected weekdays |
-| Break content | Randomly show your custom reminder tips | Assign one or more activities to a particular round |
-| Outside scheduled periods | Keep using the simple timer | Stay idle; do not start new work timers or break reminders |
+## 界面预览
 
-The simple timer is the default. Switching schedules on or off preserves the settings for the other mode and keeps the settings window the same width. Language, sound, launch at startup, and auto-reset when away are shared by both modes.
-
-## Screenshots
-
-These screenshots show the native macOS interface in English, using a sample schedule. macOS displays its countdown in the menu bar; Windows additionally offers a draggable, resizable floating timer.
+下图使用示例数据展示新版界面：左侧为浅色简单计时，右侧为深色日程计时。
 
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/settings-simple-macos-en.png" alt="Simple timer settings: 45 minutes of work and a 5-minute break" width="360" /></td>
-    <td align="center"><img src="docs/screenshots/settings-schedule-macos-en.png" alt="Schedule settings: weekdays, time periods, and default durations" width="360" /></td>
-  </tr>
-  <tr>
-    <td align="center">Simple timer</td>
-    <td align="center">Optional schedules</td>
+    <td align="center"><img src="docs/ui-design/app-refresh/timer-mode-simple-light.png" alt="浅色简单计时：工作 45 分钟、休息 5 分钟" width="360" /></td>
+    <td align="center"><img src="docs/ui-design/app-refresh/timer-mode-scheduled-dark.png" alt="深色日程计时：已启用日程及执行时段概览" width="360" /></td>
   </tr>
 </table>
 
 <p align="center">
-  <img src="docs/screenshots/schedule-overview-macos-en.png" alt="Schedule preview dialog with rounds, break content, and estimated times" width="480" />
+  <img src="docs/ui-design/app-refresh/reminder-video.png" alt="休息浮窗：本地视频、倒计时与文字说明" width="624" />
 </p>
 
-The preview opens in a separate dialog. Viewing it does not save your draft or start a timer. Settings and previews follow your system's light or dark appearance.
+## 下载与安装
 
-## Download and Install
+前往 [最新正式版](https://github.com/yuexiaoliang/sit-break/releases/latest)，按平台选择文件：
 
-Visit the [latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) and choose a file for your platform:
-
-| Platform | File | Usage |
+| 平台 | 文件 | 使用方式 |
 | --- | --- | --- |
-| macOS | `Sit.Break_<version>_universal.dmg` | Supports Apple Silicon and Intel; open it and drag the app into Applications |
-| Windows x64 | `Sit.Break_<version>_x64-setup.exe` | Recommended installer |
-| Windows x64 | `Sit.Break_<version>_x64_en-US.msi` | MSI installer |
-| Windows x64 | `sit-break.exe` | Portable executable; requires WebView2 Runtime to be installed already |
+| macOS | `Sit.Break_<版本>_universal.dmg` | 支持 Apple Silicon 和 Intel；打开后将应用拖入 Applications |
+| Windows x64 | `Sit.Break_<版本>_x64-setup.exe` | 推荐的安装程序，可按需安装 WebView2 |
+| Windows x64 | `Sit.Break_<版本>_x64_en-US.msi` | MSI 安装程序 |
+| Windows x64 | `sit-break.exe` | 免安装程序，需事先安装 WebView2 Runtime |
 
-Requires macOS 12+, or Windows 10/11 with WebView2. macOS builds use local ad-hoc signing and are not notarized by Apple. Windows installers are not code-signed.
+**兼容范围**：macOS 12+，系统 WKWebView 需支持 WebKit 15.4+，建议安装系统及浏览器组件更新；Windows 10/11 x64，使用 Chromium 108+ 的 WebView2，建议保持 Runtime 更新。设置、计时和已导入视频在本机使用，无需登录；Windows 安装时若缺少 WebView2，安装程序可能需要联网补齐。
 
-After installation, open settings from:
+macOS 使用本地 ad-hoc 签名，尚未经过 Apple 公证；Windows 安装包未使用代码签名证书。
 
-- **macOS:** Click the ring logo or countdown in the menu bar, then choose “Settings.” The app has no Dock icon or desktop floating timer.
-- **Windows:** Click the system tray icon or floating timer, then choose “Settings.” You may need to expand the tray's hidden icons.
+升级前退出正在运行的旧版，覆盖安装即可保留原正式版设置。`Sit Break Preview`、`Sit Break UI Check` 等独立测试包与正式版使用不同配置目录，测试包中的日程不会自动迁移到正式版。
 
-If you used **Sit Break Preview / Sit Break 测试版**, quit it before starting the regular release. Preview and regular builds store settings separately, so schedules created in the preview do not migrate automatically. Upgrading an existing regular installation preserves its settings.
+## 开始使用
 
-## Getting Started
+安装后启动应用：
 
-1. For a fixed rhythm, leave “Use schedules” off, set your work and break lengths, and click “Save settings.” The initial defaults are 45 minutes of work and a 5-minute break.
-2. For detailed routines, enable “Use schedules,” choose a date or repeating weekdays, and add time periods.
-3. Set each period's default work and break lengths. Expand “Round adjustments (optional)” and add only the rounds that need different settings.
-4. Click “Preview schedule” to review the estimates, then save. To try a reminder quickly, start with 1 minute of work and a 1-minute break.
+- **macOS**：点击顶部菜单栏的标志或倒计时，打开“设置”；应用不显示 Dock 图标或桌面悬浮计时条。
+- **Windows**：点击系统托盘图标或桌面悬浮计时条，打开“设置”；托盘图标可能位于展开箭头中。
 
-### A Workday Example
+### 简单计时
 
-Repeat Monday through Friday and add two time periods, leaving a lunch gap between them:
+进入“计时与休息”，选择“简单计时”，设置工作时长、休息时长并保存。首次使用默认为工作 45 分钟、休息 5 分钟，也可以用快捷按钮选择时长。工作为 1–240 分钟，休息为 1–60 分钟，均为整数。
 
-| Time | Default rhythm | Round adjustments |
+工作结束先提醒，点击“开始休息”后才开始本次休息倒计时。准备稍后休息时，可以选择“再等等”；休息结束后进入下一轮。想快速体验，可先设为工作 1 分钟、休息 1 分钟。
+
+### 日程计时
+
+在同一页选择“日程计时”，通过“添加日程”或“编辑日程”进入详细设置，也可以从侧栏“日程安排”进入。
+
+1. 填写日程名称，选择指定日期执行一次，或按勾选的星期每周重复。
+2. 添加执行时段，填写开始、结束时间及默认工作／休息时长。结束时间支持 `24:00`；跨午夜请拆成两天安排。
+3. 展开“单轮调整（可选）”，只填写需要不同的轮次、时长、休息内容或本地视频。时长留空表示继承本时段默认值。
+4. 点击“预览日程”查看预计安排，再保存设置。预览不会保存草稿，也不会启动计时。
+
+| 计时方式 | 执行规则 | 没有有效执行时段时 |
 | --- | --- | --- |
-| 09:00–12:00 | Work 55 minutes, break 5 minutes | Round 1: work 50 minutes, break 10 minutes, “Climb stairs”; round 2: “Squats” |
-| 12:00–13:30 | Leave this gap unscheduled; no reminders | — |
-| 13:30–18:00 | Work 60 minutes, break 5 minutes | Leave adjustments empty to use the defaults |
+| 简单计时 | 按一组全局工作／休息时长循环 | 继续简单计时 |
+| 日程计时 | 按启用日程的时段、默认时长和单轮调整执行 | 保持待机，不自动退回简单计时 |
 
-Starting at 09:00 without postponing a break gives an estimated first break at 09:50. Starting the afternoon at 13:30 means working for a full 60 minutes before the first break at 14:30.
+日程概览只展示已启用的日程及其安排。两种计时方式互相保留配置；“编辑日程”和侧栏入口只负责导航，不切换计时方式。提示音、离开自动重置、提醒内容等设置共用。
 
-Break content is displayed exactly as entered. It can describe one or more activities and include line breaks. The whole break shares one countdown; the app does not split the text into separate activity timers.
+例如，工作日可设置 `09:00–12:00` 与 `13:30–18:00` 两个执行时段，中间留作午休。时段之间不提醒；时段结束时停止工作和尚未开始的休息提醒，已经开始的休息可以完成。更完整的轮次、冲突、恢复与睡眠规则见 [日程使用说明](docs/schedules.md)。
 
-### Start Your Break When You Are Ready
+### 文字与本地视频
 
-When work ends, a reminder appears first. Choose “Snooze” or “Take a break.” Snoozing stays within the same round and does not skip that break.
+在“提醒内容”中逐条设置提醒小字和动作指引，或在日程的单轮调整中为指定轮次设置内容。
 
-For example, if a break is estimated for 09:50 but you start at 09:55, a 10-minute break lasts until 10:05, and the next round starts afterward. Preview times are estimates that move as you wait or take breaks.
+- 文字与视频至少保留一个，可以只有文字、只有视频，或同时配置。
+- 动作指引通过系统文件选择器导入本地 MP4／M4V，推荐使用 H.264 编码的 MP4。应用检查能否播放；不支持时可转为兼容编码后重新导入。
+- 应用保存视频副本，原文件移动或删除不影响已导入指引；修改源视频后需重新导入。取消或导入失败时保留原配置。
+- 仅支持本地视频文件，不支持网址、在线内容、HTML 文件或在输入框粘贴 HTML 源码。
 
-At a period's end, unfinished work stops and reminders for breaks that have not started close. A break already in progress can finish. Lunch gaps do not catch up on missed rounds or start new reminders.
+某轮配置了文字或视频时，使用该轮完整的内容组合；两者都未配置时，随机选择一条全局提醒。休息内容按原文展示，可以描述多项活动，但整次休息共用一个倒计时。
 
-## 动作指引（开发分支）
+点击“开始休息”后，视频默认静音循环，可播放／暂停、拖动进度或开启声音；这些操作不改变休息倒计时。切换主题和倒计时更新保持播放器状态，提前结束休息会停止播放。
 
-[PR #26](https://github.com/yuexiaoliang/sit-break/pull/26) 正在集成本地视频指引，尚未包含在 v0.4.0 正式版中。仅通过系统文件选择器导入 MP4 视频，应用保存独立副本；提醒条目和日程单轮都可配置，支持只展示视频。
+## 外观与日常操作
 
-使用方式见[动作指引说明](README.zh-CN.md#动作指引开发分支)与[原生验收记录](docs/native-webview-check.md)。
+在侧栏底部或“通用设置”中选择浅色、深色或跟随系统，保存后各窗口同步。切换外观不会清空编辑中的内容，也不会重启正在播放的视频。系统启用减少动态效果时，应用减少非必要过渡。
 
-## More Features
+- **暂停与重置**：暂停保持到手动恢复；重置重新计当前轮工作，提前结束休息进入下一轮。
+- **离开自动重置**：按本轮休息时长判断是否离开够久，可关闭；工作中离开够久重置当前轮，提醒后离开够久视为本轮已休息。
+- **退出恢复**：正常退出后，在同一天、同一有效日程时段重开可恢复本轮进度和暂停状态；应用关闭期间不累计计时。
+- **本机设置**：支持登录电脑后自动启动、提示音开关，以及中文／English 界面；Windows 可开关悬浮计时条并调整大小。
+- **草稿与快捷键**：切换侧栏和计时方式保留草稿；`⌘S`／`Ctrl+S` 保存。`Esc` 优先关闭当前下拉或弹层。
 
-- **Pause and reset:** A manual pause lasts until you resume. Reset restarts work in the current round; ending a break early advances to the next round.
-- **Schedule progress recovery:** After a normal quit, reopening on the same day within the same valid period can restore the current round and pause state. Time while the app is closed does not count down.
-- **Auto-reset when away:** Uses the current round's break length to decide whether you have been away long enough. You can turn it off. Sleep is handled according to the current phase and does not count as work.
-- **Custom tips and sound:** Maintain your own tips, avoid consecutive repeats when different options exist, and turn reminder sounds on or off.
-- **Launch at startup:** Choose whether the app runs automatically when you sign in.
-- **Chinese / English interface:** Follow your system language or select one manually.
+## 从源码运行
 
-For editing running schedules, conflicts, reopening, and sleep rules, see the [schedule guide (Chinese)](docs/schedules.md). Check coverage and acceptance records are documented in [verification notes (Chinese)](docs/schedule-verification.md).
-
-## Run and Build from Source
-
-Install [Node.js 22.12+](https://nodejs.org) and [Rust](https://rustup.rs). On macOS, install Xcode Command Line Tools (`xcode-select --install`). On Windows, install the MSVC build tools and WebView2.
+需要 Node.js 22.12+ 与 Rust stable。macOS 需 Xcode Command Line Tools；Windows 需 MSVC 构建工具与 WebView2。
 
 ```bash
 npm ci
-npm run tauri dev    # Development mode
-npm run tauri build  # Build the app and installers
+npm run tauri dev
 ```
 
-After installing Rust, reopen your terminal or run `source "$HOME/.cargo/env"`. Bundles are written to `src-tauri/target/release/bundle/`; the portable Windows executable is `src-tauri/target/release/sit-break.exe`.
-
-To build an app for your local Mac only:
+构建当前平台的应用和安装包：
 
 ```bash
-npm run tauri build -- --bundles app
+npm run tauri build
 ```
 
-To build a universal macOS app for Apple Silicon and Intel:
+产物位于 `src-tauri/target/release/bundle/`；Windows 免安装程序位于 `src-tauri/target/release/sit-break.exe`。macOS 通用版本需先安装两个 Rust 目标：
 
 ```bash
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
 npm run tauri build -- --target universal-apple-darwin
 ```
 
-The project uses **Tauri 2, Rust, TypeScript, and Vite**, with HTML / CSS for the interface. Rust manages timers, progress, windows, and power events. Closing settings or a panel does not interrupt the timer.
+项目使用 **Tauri 2、Rust、React、TypeScript、Mantine 和 Vite**。Rust 负责计时、日程、运行进度、窗口与本地资源；前端负责界面与交互。关闭设置或托盘面板不会中断计时。
 
-## Checks and Releases
-
-- [CI](.github/workflows/ci.yml): Frontend checks and builds, Rust checks, formatting, tests, and application binary builds on macOS and Windows.
-- [Windows preview](.github/workflows/windows-preview.yml): Builds x64 installers and portable executables for PRs with separate preview settings. See the [preview guide (Chinese)](docs/windows-preview.md) for downloads.
-- [Release](.github/workflows/release.yml): Pushing a `v*` tag builds and publishes the universal macOS DMG, Windows NSIS / MSI installers, and portable executable.
-
-Keep features, examples, and installation instructions in sync across both full READMEs, and use interface screenshots in each README's language. Before releasing, update both READMEs and release notes, and complete checks and acceptance testing. From an up-to-date `main` branch with a clean working tree, run:
+## 开发验证与发布
 
 ```bash
-npm run release -- minor --dry-run  # Preview without changing files or pushing
-npm run release -- minor            # Also accepts patch, major, or an explicit version
+npm test
+npm run build
+cargo fmt --all --manifest-path src-tauri/Cargo.toml -- --check
+cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
 ```
 
-The release script synchronizes npm, Tauri, and Rust versions and lockfiles, then commits, creates a tag, and pushes. Regenerate icons with `npm run icons`; source assets are described in the [logo design notes (Chinese)](docs/design/logo-brief.md).
+[CI](.github/workflows/ci.yml) 在 macOS 与 Windows 运行前端测试和构建、Rust 检查与测试，并执行 macOS 原生浮窗定位检查。[Windows 原生验收](.github/workflows/windows-native-check.yml)在真实 WebView2 中检查浮窗、视频与恢复流程；原生文件选择器和部分 macOS 手动交互仍有未覆盖项，详见 [验收范围](docs/native-webview-check.md)与 [设计检查记录](design-qa.md)。
 
-## License
+[Windows 测试版](docs/windows-preview.md)使用独立配置，不会替代正式发布。发布前更新本 README、相关使用说明及 `docs/releases/` 中的版本说明，确认目标提交的检查结果。在已同步、工作区干净的 `main` 分支执行：
+
+```bash
+npm run release -- minor --dry-run
+npm run release -- minor
+```
+
+也支持 `patch`、`major` 或指定版本号。脚本同步 npm、Tauri、Rust 的版本及锁文件，提交后推送 `main` 和版本标签；[Release 工作流](.github/workflows/release.yml)构建 macOS 通用包和 Windows x64 安装包。发布后核对两平台构建、下载附件与版本说明，确认附件齐全。
+
+## 许可证
 
 [MIT](LICENSE)
