@@ -39,7 +39,7 @@ export async function checkLocalVideo(context) {
   try {
     first = await sample();
     assert.equal(new URL(first.currentSrc).hostname, 'guidance.localhost', '实际本地媒体必须经过受控资源协议');
-    assert.ok(first.muted && first.loop && first.controls && !first.paused);
+    assert.ok(first.muted && first.loop && !first.controls && !first.paused);
     await context.delay(1100);
     const playing = await sample();
     const advanced = (playing.currentTime - first.currentTime + first.duration) % first.duration;

@@ -3,7 +3,7 @@
     "target": "ES2020",
     "useDefineForClassFields": true,
     "module": "ESNext",
-    "lib": ["ES2020", "DOM"],
+    "lib": ["ES2022", "DOM"],
     "skipLibCheck": true,
 
     /* Bundler mode */
@@ -11,6 +11,7 @@
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "jsx": "react-jsx",
     "noEmit": true,
 
     /* Linting */

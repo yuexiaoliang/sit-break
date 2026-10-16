@@ -1,9 +1,51 @@
-import { invoke } from "@tauri-apps/api/core";
-
 export type Lang = "zh" | "en";
 
 export const STR: Record<Lang, Record<string, string>> = {
   zh: {
+    previousCalendar: "上一页日历",
+    nextCalendar: "下一页日历",
+    clearDate: "清除日期",
+    timerSection: "计时与休息",
+    timerDescription: "找到适合自己的工作节奏。",
+    remindersSection: "提醒内容",
+    editSchedule: "编辑日程",
+    localSettings: "设置仅保存在本机。",
+    nextReminder: "下一次休息会显示你设置的提醒内容。",
+    appearance: "外观",
+    lightTheme: "浅色",
+    darkTheme: "深色",
+    appearanceDescription: "各个窗口使用同一套外观，跟随系统时自动切换。",
+    unsaved: "尚未保存",
+    saving: "正在保存…",
+    increase: "增加",
+    decrease: "减少",
+    hours: "小时",
+    minutes: "分钟",
+    chooseVideo: "选择本地视频",
+    videoSelected: "已导入本地视频",
+    removeVideo: "移除视频",
+    cancel: "取消",
+    confirm: "确认",
+    deleteTitle: "删除这项设置？",
+    deleteDescription: "删除后需保存设置才会生效。",
+    remove: "删除",
+    noChanges: "没有需要保存的更改",
+    generalDescription: "让 Sit Break 适合你的日常习惯。",
+    remindersDescription: "设置休息时想看到的文字与本地视频。",
+    scheduleOffNote:
+      "日程计时尚未开启，可先编辑和预览；启用后保存即可按日程执行。",
+    simpleInactive:
+      "当前使用日程计时。下方时长保留用于简单计时，修改后不会改变日程中的时长。",
+    validation_widget_range: "悬浮计时条大小必须是 40–140 的整数。",
+    loadFailed: "暂时无法读取设置，请重试。",
+    operationFailed: "操作未完成，请重试。",
+    videoMuted: "静音",
+    videoUnmuted: "取消静音",
+    videoProgress: "视频进度",
+    play: "播放",
+    pauseVideo: "暂停视频",
+    toggleLoop: "循环播放",
+    importingWait: "请等待视频导入完成后再保存。",
     pause: "暂停计时",
     resume: "开始计时",
     reset: "重置计时",
@@ -30,9 +72,11 @@ export const STR: Record<Lang, Record<string, string>> = {
     scheduleTitle: "日程安排",
     scheduleDescription: "设好平常的节奏，只调整不一样的那几轮。",
     scheduleOptionalDescription: "按日期和时段安排不同节奏。",
-    scheduleModeDescription: "按时段执行，空档不提醒。关闭后回到简单计时 {work}/{rest}。",
+    scheduleModeDescription:
+      "按时段执行，空档不提醒。关闭后回到简单计时 {work}/{rest}。",
     emptySchedules: "还没有日程",
-    emptySchedulesDescription: "添加一份日程，安排自己的节奏。没有执行时段时保持待机。",
+    emptySchedulesDescription:
+      "添加一份日程，安排自己的节奏。没有执行时段时保持待机。",
     addSchedule: "＋ 添加日程",
     newSchedule: "新日程",
     scheduleName: "日程名称",
@@ -44,8 +88,13 @@ export const STR: Record<Lang, Record<string, string>> = {
     repeatWeekdays: "执行星期",
     workdays: "周一至周五",
     everyDay: "每天",
-    weekday1: "周一", weekday2: "周二", weekday3: "周三", weekday4: "周四",
-    weekday5: "周五", weekday6: "周六", weekday7: "周日",
+    weekday1: "周一",
+    weekday2: "周二",
+    weekday3: "周三",
+    weekday4: "周四",
+    weekday5: "周五",
+    weekday6: "周六",
+    weekday7: "周日",
     weekdaySeparator: "、",
     validation_invalid_weekdays: "请至少选择一个星期；每个星期只能选择一次。",
     emptyPeriods: "还没有执行时段",
@@ -58,7 +107,8 @@ export const STR: Record<Lang, Record<string, string>> = {
     periodEnd: "结束时间",
     defaultWork: "默认工作时长",
     defaultBreak: "默认休息时长",
-    periodEndHint: "结束时间填写 HH:MM；24:00 表示当日结束。跨午夜请按两天分别安排。",
+    periodEndHint:
+      "结束时间填写 HH:MM；24:00 表示当日结束。跨午夜请按两天分别安排。",
     roundAdjustments: "单轮调整（可选）",
     roundInheritance: "只添加特别的轮次。时长留空时继承本时段默认值。",
     adjustmentRound: "轮次序号",
@@ -66,7 +116,8 @@ export const STR: Record<Lang, Record<string, string>> = {
     removeAdjustment: "移除调整",
     inheritDefault: "继承 {n} 分钟",
     breakContent: "休息内容",
-    breakContentHint: "可写一项或多项活动，整次休息共用一个倒计时。文字和指引都留空时，随机选用一条完整提醒。",
+    breakContentHint:
+      "可写一项或多项活动，整次休息共用一个倒计时。文字和指引都留空时，随机选用一条完整提醒。",
     validation_round_number: "轮次序号必须是从 1 开始的整数。",
     validation_duplicate_round: "同一时段中每个轮次只能有一份调整。",
     roundNumber: "第 {n} 轮",
@@ -74,7 +125,8 @@ export const STR: Record<Lang, Record<string, string>> = {
     fixSchedule: "请修正日程后再保存。",
     validation_invalid_date: "请选择有效的本地日期。",
     validation_invalid_time: "请填写有效时间（HH:MM），结束时间可用 24:00。",
-    validation_end_before_start: "结束时间必须晚于开始时间；跨午夜请按两天分别安排。",
+    validation_end_before_start:
+      "结束时间必须晚于开始时间；跨午夜请按两天分别安排。",
     validation_work_range: "工作时长必须是 1–240 的整数分钟。",
     validation_break_range: "休息时长必须是 1–60 的整数分钟。",
     validation_identity: "日程或时段身份重复，请重新添加该安排。",
@@ -91,18 +143,22 @@ export const STR: Record<Lang, Record<string, string>> = {
     removeReminder: "删除",
     reminderEntry: "提醒 {n}",
     removeReminderEntry: "删除提醒 {n}",
-    validation_reminder_empty: "请填写提醒小字或选择动作指引，或删除这个空条目。",
+    validation_reminder_empty:
+      "请填写提醒小字或选择动作指引，或删除这个空条目。",
     validation_reminder_identity: "提醒条目身份无效，请重新添加该条目。",
     validation_guidance_invalid: "这份动作指引不可用，请重新选择。",
     guidance: "动作指引",
     noGuidance: "不使用指引",
     localVideo: "本地视频（MP4）",
     chooseLocalVideo: "重新选择视频…",
-    localVideoHint: "使用应用保存的独立副本，源文件移动或删除不影响播放。更新内容时请重新选择。推荐 H.264 编码的 MP4 视频。",
+    localVideoHint:
+      "使用应用保存的独立副本，源文件移动或删除不影响播放。更新内容时请重新选择。推荐 H.264 编码的 MP4 视频。",
     importingVideo: "正在导入视频…",
     unsupportedVideo: "请选择 MP4 视频文件。原来的指引已保留。",
-    importVideoFailed: "无法导入这份视频，请检查文件和可用空间后重试。原来的指引已保留。",
-    localVideoUnavailable: "所选本地指引无法读取，设置尚未保存。请重新导入或移除该指引。",
+    importVideoFailed:
+      "无法导入这份视频，请检查文件和可用空间后重试。原来的指引已保留。",
+    localVideoUnavailable:
+      "所选本地指引无法读取，设置尚未保存。请重新导入或移除该指引。",
     videoLoading: "正在加载视频…",
     videoTimeout: "本地视频加载较慢，可重试或重新导入。休息计时仍在继续。",
     videoGuidance: "动作示范视频",
@@ -116,7 +172,8 @@ export const STR: Record<Lang, Record<string, string>> = {
     previewCaption: "查看当前草稿，不会保存或启动计时。",
     closePreview: "关闭预览",
     previewContent: "预计安排，可使用方向键滚动",
-    previewNote: "时间是预计值，会随等待、推迟和实际休息更新，不表示轮次已完成。",
+    previewNote:
+      "时间是预计值，会随等待、推迟和实际休息更新，不表示轮次已完成。",
     previewPaused: "当前已暂停，以下时间按现在恢复估算。",
     previewCurrentRound: "当前已生效安排",
     previewRhythm: "工作 {work} 分钟 · 休息 {rest} 分钟",
@@ -147,7 +204,7 @@ export const STR: Record<Lang, Record<string, string>> = {
     langSys: "跟随系统",
     tipsLabel: "提醒小字（每行一条，随机展示）",
     save: "保存",
-    saved: "已保存 ✓",
+    saved: "已保存",
     satFor: "已连续坐了 {n} 分钟",
     timeToMove: "该起来活动一下了",
     standUp: "站起来走两步，身体会谢谢你",
@@ -158,6 +215,52 @@ export const STR: Record<Lang, Record<string, string>> = {
     endBreak: "提前结束休息",
   },
   en: {
+    previousCalendar: "Previous calendar page",
+    nextCalendar: "Next calendar page",
+    clearDate: "Clear date",
+    timerSection: "Work & breaks",
+    timerDescription: "Find a rhythm that works for you.",
+    remindersSection: "Reminders",
+    editSchedule: "Edit schedules",
+    localSettings: "Settings stay on this device.",
+    nextReminder: "Your reminder content will appear at the next break.",
+    appearance: "Appearance",
+    lightTheme: "Light",
+    darkTheme: "Dark",
+    appearanceDescription:
+      "A shared appearance across windows. System follows your device.",
+    unsaved: "Unsaved changes",
+    saving: "Saving…",
+    increase: "Increase",
+    decrease: "Decrease",
+    hours: "hours",
+    minutes: "minutes",
+    chooseVideo: "Choose local video",
+    videoSelected: "Local video imported",
+    removeVideo: "Remove video",
+    cancel: "Cancel",
+    confirm: "Confirm",
+    deleteTitle: "Delete this item?",
+    deleteDescription: "The deletion takes effect after you save settings.",
+    remove: "Delete",
+    noChanges: "No changes to save",
+    generalDescription: "Make Sit Break fit your everyday habits.",
+    remindersDescription: "Choose text and local videos to show during breaks.",
+    scheduleOffNote:
+      "Scheduled timing is off. You can edit and preview now, then enable and save when ready.",
+    simpleInactive:
+      "Scheduled timing is active. These lengths are kept for the simple timer and do not change your schedules.",
+    validation_widget_range:
+      "Floating timer size must be an integer from 40 to 140.",
+    loadFailed: "Could not load settings. Please retry.",
+    operationFailed: "Could not complete the action. Please retry.",
+    videoMuted: "Mute",
+    videoUnmuted: "Unmute",
+    videoProgress: "Video progress",
+    play: "Play",
+    pauseVideo: "Pause video",
+    toggleLoop: "Loop video",
+    importingWait: "Wait for the video import to finish before saving.",
     pause: "Pause",
     resume: "Resume",
     reset: "Reset",
@@ -172,7 +275,8 @@ export const STR: Record<Lang, Record<string, string>> = {
     breakLen: "Break length",
     ballSize: "Floating timer size",
     idle: "Idle",
-    idleDescription: "Reset work or close the reminder after being away for the current break length",
+    idleDescription:
+      "Reset work or close the reminder after being away for the current break length",
     idleStatus: "No active time period now. Reminders are quiet.",
     settingsTitle: "Settings",
     closeSettings: "Close settings",
@@ -184,9 +288,11 @@ export const STR: Record<Lang, Record<string, string>> = {
     scheduleTitle: "Schedules",
     scheduleDescription: "Set your usual rhythm, adjust only what differs.",
     scheduleOptionalDescription: "Arrange your rhythm by date and time period.",
-    scheduleModeDescription: "Reminders only during scheduled periods. Turn off for the {work}/{rest} simple timer.",
+    scheduleModeDescription:
+      "Reminders only during scheduled periods. Turn off for the {work}/{rest} simple timer.",
     emptySchedules: "No schedules yet",
-    emptySchedulesDescription: "Add a schedule to arrange your rhythm. The timer stays idle without a time period.",
+    emptySchedulesDescription:
+      "Add a schedule to arrange your rhythm. The timer stays idle without a time period.",
     addSchedule: "+ Add schedule",
     newSchedule: "New schedule",
     scheduleName: "Schedule name",
@@ -198,12 +304,19 @@ export const STR: Record<Lang, Record<string, string>> = {
     repeatWeekdays: "Days of the week",
     workdays: "Monday to Friday",
     everyDay: "Every day",
-    weekday1: "Mon", weekday2: "Tue", weekday3: "Wed", weekday4: "Thu",
-    weekday5: "Fri", weekday6: "Sat", weekday7: "Sun",
+    weekday1: "Mon",
+    weekday2: "Tue",
+    weekday3: "Wed",
+    weekday4: "Thu",
+    weekday5: "Fri",
+    weekday6: "Sat",
+    weekday7: "Sun",
     weekdaySeparator: ", ",
-    validation_invalid_weekdays: "Choose at least one weekday, with no duplicates.",
+    validation_invalid_weekdays:
+      "Choose at least one weekday, with no duplicates.",
     emptyPeriods: "No time periods yet",
-    emptyPeriodsDescription: "This schedule has no time periods. It will stay idle after saving.",
+    emptyPeriodsDescription:
+      "This schedule has no time periods. It will stay idle after saving.",
     removeSchedule: "Delete schedule",
     addPeriod: "+ Add period",
     executionPeriod: "Time period",
@@ -212,26 +325,36 @@ export const STR: Record<Lang, Record<string, string>> = {
     periodEnd: "End time",
     defaultWork: "Default work length",
     defaultBreak: "Default break length",
-    periodEndHint: "Use HH:MM; 24:00 ends this day. Split overnight periods across two dates.",
+    periodEndHint:
+      "Use HH:MM; 24:00 ends this day. Split overnight periods across two dates.",
     roundAdjustments: "Round adjustments (optional)",
-    roundInheritance: "Add only the rounds that differ. Leave lengths blank to use this period's defaults.",
+    roundInheritance:
+      "Add only the rounds that differ. Leave lengths blank to use this period's defaults.",
     adjustmentRound: "Round number",
     addAdjustment: "+ Add round adjustment",
     removeAdjustment: "Remove adjustment",
     inheritDefault: "Use default: {n} min",
     breakContent: "Break content",
-    breakContentHint: "One or more activities share a single break countdown. Leave both text and guidance empty to pick a complete reminder at random.",
-    validation_round_number: "Round numbers must be whole numbers starting at 1.",
-    validation_duplicate_round: "Each round can have only one adjustment in the same period.",
+    breakContentHint:
+      "One or more activities share a single break countdown. Leave both text and guidance empty to pick a complete reminder at random.",
+    validation_round_number:
+      "Round numbers must be whole numbers starting at 1.",
+    validation_duplicate_round:
+      "Each round can have only one adjustment in the same period.",
     roundNumber: "Round {n}",
     actualDurations: "Work {work} / break {rest} min",
     fixSchedule: "Correct the schedule before saving.",
     validation_invalid_date: "Choose a valid local date.",
-    validation_invalid_time: "Enter a valid time (HH:MM); the end may be 24:00.",
-    validation_end_before_start: "The end must be after the start. Split overnight periods across two dates.",
-    validation_work_range: "Work length must be a whole number from 1 to 240 minutes.",
-    validation_break_range: "Break length must be a whole number from 1 to 60 minutes.",
-    validation_identity: "A schedule or period identity is duplicated. Add it again.",
+    validation_invalid_time:
+      "Enter a valid time (HH:MM); the end may be 24:00.",
+    validation_end_before_start:
+      "The end must be after the start. Split overnight periods across two dates.",
+    validation_work_range:
+      "Work length must be a whole number from 1 to 240 minutes.",
+    validation_break_range:
+      "Break length must be a whole number from 1 to 60 minutes.",
+    validation_identity:
+      "A schedule or period identity is duplicated. Add it again.",
     validation_overlap: "Overlaps {other}. Adjust the start or end time.",
     quietPeriod: "{start}–{end} · No reminders",
     commonSettings: "General settings",
@@ -245,23 +368,33 @@ export const STR: Record<Lang, Record<string, string>> = {
     removeReminder: "Remove",
     reminderEntry: "Reminder {n}",
     removeReminderEntry: "Remove reminder {n}",
-    validation_reminder_empty: "Enter reminder text, choose guidance, or remove this empty entry.",
-    validation_reminder_identity: "This reminder identity is invalid. Add the entry again.",
-    validation_guidance_invalid: "This guidance is unavailable. Choose it again.",
+    validation_reminder_empty:
+      "Enter reminder text, choose guidance, or remove this empty entry.",
+    validation_reminder_identity:
+      "This reminder identity is invalid. Add the entry again.",
+    validation_guidance_invalid:
+      "This guidance is unavailable. Choose it again.",
     guidance: "Guidance",
     noGuidance: "No guidance",
     localVideo: "Local video (MP4)",
     chooseLocalVideo: "Choose another video…",
-    localVideoHint: "The app keeps its own copy, so moving or deleting the source does not affect playback. Choose the file again to update it. H.264 MP4 is recommended.",
+    localVideoHint:
+      "The app keeps its own copy, so moving or deleting the source does not affect playback. Choose the file again to update it. H.264 MP4 is recommended.",
     importingVideo: "Importing video…",
-    unsupportedVideo: "Choose an MP4 video. Your previous guidance has been kept.",
-    importVideoFailed: "Could not import this video. Check the file and available space, then try again. Your previous guidance has been kept.",
-    localVideoUnavailable: "A selected local guide cannot be read. Settings have not been saved. Import it again or remove it.",
+    unsupportedVideo:
+      "Choose an MP4 video. Your previous guidance has been kept.",
+    importVideoFailed:
+      "Could not import this video. Check the file and available space, then try again. Your previous guidance has been kept.",
+    localVideoUnavailable:
+      "A selected local guide cannot be read. Settings have not been saved. Import it again or remove it.",
     videoLoading: "Loading video…",
-    videoTimeout: "The local video is taking too long. Retry or import it again. Your break timer is still running.",
+    videoTimeout:
+      "The local video is taking too long. Retry or import it again. Your break timer is still running.",
     videoGuidance: "Movement demonstration video",
-    videoFailed: "The video cannot play right now. Your break timer is still running.",
-    videoAutoplay: "Press play to watch the demonstration. Your break timer is still running.",
+    videoFailed:
+      "The video cannot play right now. Your break timer is still running.",
+    videoAutoplay:
+      "Press play to watch the demonstration. Your break timer is still running.",
     playVideo: "Play video",
     retryGuidance: "Retry",
     saveSettings: "Save settings",
@@ -270,24 +403,30 @@ export const STR: Record<Lang, Record<string, string>> = {
     previewCaption: "View your draft without saving or starting a timer.",
     closePreview: "Close preview",
     previewContent: "Estimated schedule, use arrow keys to scroll",
-    previewNote: "These times are estimates. Waiting, snoozing and actual breaks can move them. They do not mark rounds as completed.",
+    previewNote:
+      "These times are estimates. Waiting, snoozing and actual breaks can move them. They do not mark rounds as completed.",
     previewPaused: "The timer is paused. These times assume resuming now.",
     previewCurrentRound: "Current applied round",
     previewRhythm: "Work {work} min · Break {rest} min",
     previewBreakTimes: "Estimated break {start}–{end}",
     previewBreakEnds: "Current break is estimated to end at {end}",
-    previewWaiting: "Assumes starting the break now. Waiting moves later times.",
-    previewRandomTip: "No custom content; a random tip is chosen when the round starts.",
+    previewWaiting:
+      "Assumes starting the break now. Waiting moves later times.",
+    previewRandomTip:
+      "No custom content; a random tip is chosen when the round starts.",
     previewUnnamed: "Unnamed schedule",
-    previewUsingProgress: "Upcoming estimates · Current progress and future draft",
-    previewFromStart: "Planned preview · Estimated from period start, not a record of actual progress",
+    previewUsingProgress:
+      "Upcoming estimates · Current progress and future draft",
+    previewFromStart:
+      "Planned preview · Estimated from period start, not a record of actual progress",
     previewDisabled: "Schedule disabled · Plan only",
     previewNotToday: "Not running today",
     previewNextBreak: "Estimated current break",
     previewFirstBreak: "Estimated first break",
     previewNoUpcoming: "No further rounds are estimated in this period.",
     previewWorkStarts: "Estimated work starts",
-    previewNoBreakBeforeEnd: "Work stops at the period end; this break will not start.",
+    previewNoBreakBeforeEnd:
+      "Work stops at the period end; this break will not start.",
     previewUnavailable: "This draft cannot be previewed yet. Fix these issues:",
     previewLoading: "Loading estimates…",
     saveFailed: "Couldn't save. Please try again.",
@@ -301,7 +440,7 @@ export const STR: Record<Lang, Record<string, string>> = {
     langSys: "System",
     tipsLabel: "Tips (one per line, shown randomly)",
     save: "Save",
-    saved: "Saved ✓",
+    saved: "Saved",
     satFor: "Sitting for {n} min",
     timeToMove: "Time to move",
     standUp: "Stand up and take a short walk — your body will thank you",
@@ -313,32 +452,9 @@ export const STR: Record<Lang, Record<string, string>> = {
   },
 };
 
-export function fmt(tpl: string, params: Record<string, string | number>): string {
+export function fmt(
+  tpl: string,
+  params: Record<string, string | number>,
+): string {
   return tpl.replace(/\{(\w+)\}/g, (_, k) => String(params[k] ?? ""));
-}
-
-export async function currentLang(): Promise<Lang> {
-  try {
-    const s = await invoke<{ language: string }>("get_settings");
-    if (s.language === "zh") return "zh";
-    if (s.language === "en") return "en";
-  } catch {
-    // 设置不可用时跟随浏览器语言
-  }
-  return (navigator.language || "en").toLowerCase().startsWith("zh") ? "zh" : "en";
-}
-
-export function applyStatic(lang: Lang) {
-  const dict = STR[lang];
-  document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((el) => {
-    const v = dict[el.dataset.i18n!];
-    if (v !== undefined) el.textContent = v;
-  });
-}
-
-// 读取当前语言并刷新静态文案；语言切换后各窗口调用它重新生效
-export async function initLang(): Promise<Lang> {
-  const lang = await currentLang();
-  applyStatic(lang);
-  return lang;
 }
