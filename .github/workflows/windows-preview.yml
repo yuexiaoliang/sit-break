@@ -63,6 +63,8 @@ jobs:
           @"
           # Sit Break Windows 测试版
 
+          [English](README.md) | **简体中文**
+
           源码提交：$commit
           平台：Windows 10/11 x64
 
@@ -76,6 +78,24 @@ jobs:
           本测试版未使用 Windows 代码签名证书；安装程序会按需安装 WebView2，可能需要联网。
           免安装版本需要电脑已有 WebView2 Runtime。
           "@ | Set-Content "$output/使用说明.md" -Encoding utf8
+          @"
+          # Sit Break Windows Preview
+
+          **English** | [简体中文](使用说明.md)
+
+          Source commit: $commit
+          Platform: Windows 10/11 x64
+
+          Run Sit-Break-Preview-x64-setup.exe to install, or use the portable executable.
+          Quit other Sit Break instances first to avoid duplicate reminders.
+          The app is named Sit Break Preview. Data is stored separately under %APPDATA%\com.sitbreak.preview.
+          Open settings through the tray icon or floating timer. Choose Simple timer or Scheduled timer in Work & breaks.
+          In scheduled mode, open Edit schedules and save to apply your plan.
+          For a quick test, set both work and break lengths to 1 minute.
+
+          Preview builds are not code-signed. The installer may download WebView2 when needed.
+          The portable executable requires an existing WebView2 Runtime.
+          "@ | Set-Content "$output/README.md" -Encoding utf8
           Get-ChildItem $output -Filter *.exe | ForEach-Object {
             $hash = Get-FileHash $_.FullName -Algorithm SHA256
             "$($hash.Hash.ToLowerInvariant())  $($_.Name)"
