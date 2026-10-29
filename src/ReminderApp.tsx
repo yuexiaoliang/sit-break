@@ -3,6 +3,7 @@ import { Alert, Badge, Button, Progress, Text } from "@mantine/core";
 import { ClockIcon, CoffeeIcon, LightbulbIcon } from "@phosphor-icons/react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { dragWindow } from "./components";
 import { GuidanceVideo } from "./Guidance";
 import { fmt } from "./i18n";
 import { formatTime, useRuntime, useStrings } from "./runtime";
@@ -87,7 +88,11 @@ export default function ReminderApp() {
   }
   if (timer.mode !== "break")
     return (
-      <div className="reminder-surface reminder-prompt" id="cardRemind">
+      <div
+        className="reminder-surface reminder-prompt"
+        id="cardRemind"
+        onMouseDown={dragWindow}
+      >
         <Badge
           variant="light"
           leftSection={<ClockIcon size={15} />}
@@ -127,6 +132,7 @@ export default function ReminderApp() {
     <div
       className={`reminder-surface break-card${timer.guidance ? " has-guidance" : ""}`}
       id="cardBreak"
+      onMouseDown={dragWindow}
     >
       {timer.guidance && (
         <div className="guidance-content" id="guidanceContent">

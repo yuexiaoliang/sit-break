@@ -27,7 +27,7 @@ export function dragWindow(event: React.MouseEvent) {
   if (
     event.button !== 0 ||
     (event.target as HTMLElement).closest(
-      "button,input,select,textarea,a,[role=button]",
+      "button,input,select,textarea,a,video,audio,[role=button],[role=slider]",
     )
   )
     return;
