@@ -619,7 +619,7 @@ label {
   background: var(--surface-subtle);
   padding: 16px;
   border-radius: 9px;
-  margin-bottom: 24px;
+  margin: 16px 0 24px;
 }
 .preview-schedule {
   margin: 20px 0;

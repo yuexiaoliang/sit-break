@@ -17,13 +17,13 @@ Add a schedule, give it a name, and choose its repeat rule:
 
 Each schedule has its own enabled switch. Keep separate weekday and weekend plans if useful. Active periods in enabled schedules must not overlap. If they conflict, saving identifies the relevant schedules, dates or weekdays, and periods; the previous valid settings remain active. Adjacent periods may touch.
 
-Each period has explicit start/end times and default lengths. Work must be an integer from 1–240 minutes, and breaks from 1–60. End times support `24:00`. Split an overnight plan into periods on separate days.
+Each period has explicit start/end times and default lengths. Work must be an integer from 1–240 minutes, and breaks from 1–60. End times support `24:00`. Split an overnight plan into periods on separate days. The plan, calculated from the period's start, must fit at least one complete round of work and break. A break may end exactly at the period boundary.
 
-Periods include their start time and exclude their end time. When first launching or entering a new period, the app starts its first complete round even if the period has already begun. It does not infer completed rounds. Reopening during the same period on the same day follows the recovery rules below.
+Periods include their start time and exclude their end time. When first launching or entering a new period, the app starts timing from round one even if the period has already begun. It does not infer completed rounds. Reopening during the same period on the same day follows the recovery rules below.
 
 ## Adjust Individual Rounds
 
-Expand Round adjustments (optional), enter a round number, and override only the fields that differ. Empty lengths inherit the period defaults. Removing an adjustment restores inheritance. Each period numbers its rounds from 1.
+Expand Round adjustments (optional), enter a round number, and override only the fields that differ. Empty lengths inherit the period defaults. Removing an adjustment restores inheritance. Each period numbers its rounds from 1. If the period is full when you select Add round adjustment, a message appears beside the button. If a shorter round can fit, the editor shows the minutes available for work and break. The editor highlights any adjusted rounds that extend past the period as you edit.
 
 For a morning period with defaults of 55 minutes of work and a 5-minute break:
 
@@ -37,11 +37,11 @@ Break content can describe multiple activities. Line breaks and special characte
 
 ## Preview the Plan
 
-Select Preview schedule beside the page heading. The dialog shows the draft's name, repeat rule, periods, gaps, and estimated rounds. Previewing neither saves the draft nor starts a timer. Close it with its button, `Esc`, or by clicking outside. Focus returns to the preview button; expanded adjustments and edits remain intact.
+Select Preview schedule beside the page heading to open Draft plan. The dialog shows the draft's name, repeat rule, periods, gaps, and complete rounds calculated from the start of each period. Close it with its button, `Esc`, or by clicking outside. Focus returns to the preview button and your edits and expanded adjustments stay in place.
 
-The current round uses its already effective lengths and content. Future rounds use the applicable draft configuration. If the plan cannot match current progress, it is shown from the period's start; this does not imply earlier rounds were completed. When paused, estimates explicitly assume resuming now.
+Switch to Current progress for the running round and upcoming estimates. The running round uses its applied lengths and content. Future rounds use the applicable draft configuration. When there is no applicable progress, the preview shows the plan from the start of the period. While paused, estimates assume resuming now.
 
-Estimated times change with waiting, snoozing, starting or ending a break, and resetting. They are not enforced deadlines. Only the dialog content scrolls, leaving the close control visible. Use `Tab` to move between the close control and content, and arrow keys to scroll.
+Estimated times change with waiting, snoozing, starting or ending a break, and resetting. If work is expected to run up to the period boundary, the round shows its remaining work window. The close button stays visible as you scroll the dialog content. Use `Tab` to move focus, then use the arrow keys to switch views or scroll the content. Save settings to apply the draft.
 
 ## Rest When You Are Ready
 

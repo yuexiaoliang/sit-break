@@ -384,7 +384,16 @@ impl TimerApp {
         draft: &Settings,
         now: impl Into<TimerTime>,
     ) -> Result<crate::preview::SchedulePreview, Vec<ValidationError>> {
-        let errors = draft.validate();
+        self.preview_with_mode(draft, now, crate::preview::PreviewMode::Progress)
+    }
+
+    pub fn preview_with_mode(
+        &self,
+        draft: &Settings,
+        now: impl Into<TimerTime>,
+        mode: crate::preview::PreviewMode,
+    ) -> Result<crate::preview::SchedulePreview, Vec<ValidationError>> {
+        let errors = draft.validate_for_preview();
         if !errors.is_empty() {
             return Err(errors);
         }
@@ -394,6 +403,7 @@ impl TimerApp {
             &self.info,
             now.into().local.as_ref(),
             self.restart_after_break,
+            mode,
         ))
     }
 

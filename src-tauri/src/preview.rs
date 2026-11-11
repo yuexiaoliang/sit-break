@@ -1,9 +1,16 @@
-//! 只读预计安排。当前轮快照与未来草稿共用后端时长继承规则。
-use serde::Serialize;
+//! 只读预计安排。草稿计划与按当前进度的预计安排共用时长继承规则。
+use serde::{Deserialize, Serialize};
 
-use crate::schedule::{minute_of_day, Period, Repeat};
+use crate::schedule::{minute_of_day, EstimatedRound, Repeat};
 use crate::timer::{LocalTime, Mode, TimerInfo};
 use crate::Settings;
+
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreviewMode {
+    Plan,
+    Progress,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SchedulePreview {
@@ -58,31 +65,20 @@ pub struct PreviewGap {
     pub end: i64,
 }
 
-fn rounds(period: &Period, mut cursor: i64, mut number: u32) -> Vec<PreviewRound> {
-    let end = i64::from(minute_of_day(&period.end, true).unwrap()) * 60;
-    let mut result = Vec::new();
-    while cursor < end {
-        let definition = period.round_definition(number);
-        let break_start = cursor + definition.work_seconds as i64;
-        let starts_in_period = break_start < end;
-        let break_end = break_start + definition.break_seconds as i64;
-        result.push(PreviewRound {
-            number,
-            work_start: cursor,
-            break_start: starts_in_period.then_some(break_start),
-            break_end: starts_in_period.then_some(break_end),
-            work_seconds: definition.work_seconds,
-            break_seconds: definition.break_seconds,
-            content: definition.content,
-            guidance: definition.guidance,
-        });
-        if !starts_in_period || number == u32::MAX {
-            break;
+impl PreviewRound {
+    fn from_estimate(round: EstimatedRound, period_end: i64) -> Self {
+        let starts_in_period = round.break_start < period_end;
+        Self {
+            number: round.number,
+            work_start: round.work_start,
+            break_start: starts_in_period.then_some(round.break_start),
+            break_end: starts_in_period.then_some(round.break_end),
+            work_seconds: round.definition.work_seconds,
+            break_seconds: round.definition.break_seconds,
+            content: round.definition.content,
+            guidance: round.definition.guidance,
         }
-        cursor = break_end;
-        number += 1;
     }
-    result
 }
 
 pub(crate) fn build(
@@ -91,6 +87,7 @@ pub(crate) fn build(
     info: &TimerInfo,
     local: Option<&LocalTime>,
     restart_after_break: bool,
+    mode: PreviewMode,
 ) -> SchedulePreview {
     let local_date = local.map(|time| time.date.clone()).unwrap_or_default();
     let actual_end = info
@@ -111,7 +108,9 @@ pub(crate) fn build(
         })
         .map(|minute| i64::from(minute) * 60);
     let current = local
-        .filter(|_| info.round.is_some() || info.mode == Mode::Break)
+        .filter(|_| {
+            mode == PreviewMode::Progress && (info.round.is_some() || info.mode == Mode::Break)
+        })
         .filter(|_| info.mode != Mode::Idle)
         .map(|local| {
             let now = i64::from(local.seconds_of_day);
@@ -160,7 +159,9 @@ pub(crate) fn build(
             let periods = ordered
                 .into_iter()
                 .map(|period| {
-                    let mut cursor = i64::from(minute_of_day(&period.start, false).unwrap()) * 60;
+                    let start = i64::from(minute_of_day(&period.start, false).unwrap()) * 60;
+                    let end = i64::from(minute_of_day(&period.end, true).unwrap()) * 60;
+                    let mut cursor = start;
                     let mut number = 1;
                     if uses_progress {
                         cursor = cursor.max(
@@ -192,11 +193,20 @@ pub(crate) fn build(
                                 .saturating_add(1)
                         };
                     }
+                    let project = |round| PreviewRound::from_estimate(round, end);
+                    let rounds = if uses_progress {
+                        period
+                            .rounds_from(cursor, end, number)
+                            .map(project)
+                            .collect()
+                    } else {
+                        period.complete_rounds(start, end).map(project).collect()
+                    };
                     PreviewPeriod {
                         id: period.id.clone(),
                         start: period.start.clone(),
                         end: period.end.clone(),
-                        rounds: rounds(period, cursor, number),
+                        rounds,
                     }
                 })
                 .collect();

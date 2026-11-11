@@ -600,7 +600,11 @@ fn disabled_deleted_shortened_or_changed_period_identity_discards_old_progress_w
             "deleted" => {
                 edited.schedules[0].periods.remove(0);
             }
-            "shortened" => edited.schedules[0].periods[0].end = "10:00".into(),
+            "shortened" => {
+                let period = &mut edited.schedules[0].periods[0];
+                period.end = "10:00".into();
+                period.overrides.truncate(1);
+            }
             "new-identity" => edited.schedules[0].periods[0].id = "new-period".into(),
             "simple-mode" => edited.use_schedule = false,
             _ => unreachable!(),

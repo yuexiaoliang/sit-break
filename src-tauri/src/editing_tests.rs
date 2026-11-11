@@ -105,12 +105,16 @@ fn closing_then_restoring_the_active_plan_or_period_during_a_break_restarts_roun
         if disable_plan {
             changed.schedules[0].enabled = false;
         } else {
-            changed.schedules[0].periods[0].end = "09:55".into();
+            let period = &mut changed.schedules[0].periods[0];
+            period.start = "08:30".into();
+            period.end = "09:55".into();
         }
-        app.dispatch(Action::SaveSettings(changed), at(9, 56));
+        let output = app.dispatch(Action::SaveSettings(changed), at(9, 56));
+        assert!(output.validation_errors.is_empty());
         assert_eq!(app.info(), before);
         let mut restored = app.settings().clone();
         restored.schedules[0].enabled = true;
+        restored.schedules[0].periods[0].start = "09:00".into();
         restored.schedules[0].periods[0].end = "12:00".into();
         app.dispatch(Action::SaveSettings(restored), at(9, 56));
         assert_eq!(app.info(), before);
@@ -310,7 +314,9 @@ fn disabling_or_expiring_work_and_reminder_closes_them_without_unpausing() {
             if disable_plan {
                 changed.schedules[0].enabled = false;
             } else {
-                changed.schedules[0].periods[0].end = "09:55".into();
+                let period = &mut changed.schedules[0].periods[0];
+                period.start = "08:30".into();
+                period.end = "09:55".into();
             }
             let output = app.dispatch(Action::SaveSettings(changed), at(9, 55));
             assert_eq!(app.info().mode, Mode::Idle);
@@ -319,6 +325,7 @@ fn disabling_or_expiring_work_and_reminder_closes_them_without_unpausing() {
             assert!(output.events.is_empty());
             let mut restored = app.settings().clone();
             restored.schedules[0].enabled = true;
+            restored.schedules[0].periods[0].start = "09:00".into();
             restored.schedules[0].periods[0].end = "12:00".into();
             app.dispatch(Action::SaveSettings(restored), at(9, 55));
             assert_eq!(app.info().round.unwrap().number, 1);
@@ -470,7 +477,9 @@ fn finishing_a_break_after_its_plan_is_disabled_or_shortened_stays_paused_idle()
         if disable_plan {
             changed.schedules[0].enabled = false;
         } else {
-            changed.schedules[0].periods[0].end = "09:55".into();
+            let period = &mut changed.schedules[0].periods[0];
+            period.start = "08:30".into();
+            period.end = "09:55".into();
         }
         app.dispatch(Action::SaveSettings(changed), at(9, 56));
         assert_eq!(app.info(), before);

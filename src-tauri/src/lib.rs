@@ -248,6 +248,10 @@ impl Settings {
         if !errors.is_empty() {
             return Err(serde_json::to_string(&errors).unwrap());
         }
+        self.write_to(path)
+    }
+
+    fn write_to(&self, path: &std::path::Path) -> Result<(), String> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
@@ -393,7 +397,8 @@ fn load_settings_from_disk(app: &AppHandle) -> Settings {
 
 fn persist(app: &AppHandle, settings: &Settings) {
     if let Some(path) = settings_path(app) {
-        let _ = settings.save_to(&path);
+        // 计时器已校验本次修改。快捷时长也能保存到含旧版日程的配置中。
+        let _ = settings.write_to(&path);
     }
 }
 
@@ -802,15 +807,26 @@ fn fit_reminder_height(window: WebviewWindow, app: AppHandle, height: u32) -> Re
 }
 
 #[tauri::command]
+fn schedule_period_capacities(
+    periods: Vec<schedule::Period>,
+) -> Vec<Option<schedule::RoundCapacity>> {
+    periods
+        .iter()
+        .map(schedule::Period::round_capacity)
+        .collect()
+}
+
+#[tauri::command]
 fn preview_schedule(
     app: AppHandle,
     draft: Settings,
+    mode: Option<preview::PreviewMode>,
 ) -> Result<preview::SchedulePreview, serde_json::Value> {
     let now = timer_time(&app);
     app.state::<Mutex<TimerApp>>()
         .lock()
         .unwrap()
-        .preview(&draft, now)
+        .preview_with_mode(&draft, now, mode.unwrap_or(preview::PreviewMode::Plan))
         .map_err(|errors| json!({ "kind": "validation", "errors": errors }))
 }
 
@@ -1078,6 +1094,7 @@ pub fn run() {
             get_settings,
             timer_info,
             fit_reminder_height,
+            schedule_period_capacities,
             preview_schedule,
             save_settings,
             apply_interval,

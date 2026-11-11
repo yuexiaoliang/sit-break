@@ -14,7 +14,12 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.5.0 release notes](docs/releases/v0.5.0.en.md) · [Schedule guide](docs/schedules.en.md)
+[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.5.1 release notes](docs/releases/v0.5.1.en.md) · [Schedule guide](docs/schedules.en.md)
+
+## Schedule Fixes in v0.5.1
+
+- The preview opens the full draft from each period's start. Switch to Current progress to see estimates from the running timer.
+- Adding a round checks the time available immediately and shows a message beside the button if the period is full.
 
 ## What's New in v0.5.0
 
@@ -75,8 +80,8 @@ Choose Scheduled timer on the same page. Use Add schedule or Edit schedules to o
 
 1. Name the schedule and choose a one-time date or repeating weekdays.
 2. Add time periods with start/end times and default work/break lengths. End times support `24:00`; split overnight periods across two days.
-3. Expand Round adjustments (optional) and add only the rounds that need different lengths, break content, or local videos. An empty length inherits the period's default.
-4. Select Preview schedule to review estimates, then save. Previewing does not save the draft or start a timer.
+3. Expand Round adjustments (optional) and add only the rounds that need different lengths, break content, or local videos. An empty length inherits the period's default. Each period must fit at least one complete work and break round. If the period is full when you select Add round adjustment, a message appears beside the button.
+4. Select Preview schedule to see the full draft from each period's start. Switch to Current progress to see estimates based on the running timer. Save settings to apply the draft.
 
 | Timer mode | Timing rules | Without an active scheduled period |
 | --- | --- | --- |
