@@ -22,11 +22,18 @@ export default function PanelApp() {
       setFailure(S.operationFailed);
     }
   }
+  const scheduled = settings.use_schedule;
   const status = timer.paused
-    ? S.paused
-    : { work: S.working, break: S.onBreak, remind: S.reminding, idle: S.idle }[
-        timer.mode
-      ];
+    ? scheduled ? S.remindersPaused : S.paused
+    : {
+        work: S.working,
+        break: S.onBreak,
+        remind: scheduled ? S.scheduledBreak : S.reminding,
+        idle: S.idle,
+      }[timer.mode];
+  const pauseLabel = timer.paused
+    ? scheduled ? S.resumeReminders : S.resume
+    : scheduled ? S.pauseReminders : S.pause;
   function chips(values: number[], current: number, name: string, id: string) {
     return (
       <Group id={id} gap={5} wrap="nowrap" className="panel-presets">
@@ -79,17 +86,19 @@ export default function PanelApp() {
           }
           onClick={() => void command("toggle_pause")}
         >
-          <span id="pPauseText">{timer.paused ? S.resume : S.pause}</span>
+          <span id="pPauseText">{pauseLabel}</span>
         </Button>
-        <Button
-          variant="default"
-          size="compact-sm"
-          id="pReset"
-          leftSection={<ArrowCounterClockwiseIcon size={15} />}
-          onClick={() => void command("reset_timer")}
-        >
-          {S.reset}
-        </Button>
+        {!scheduled && (
+          <Button
+            variant="default"
+            size="compact-sm"
+            id="pReset"
+            leftSection={<ArrowCounterClockwiseIcon size={15} />}
+            onClick={() => void command("reset_timer")}
+          >
+            {S.reset}
+          </Button>
+        )}
       </Group>
       <div className="panel-section">
         <Group justify="space-between" gap={3}>

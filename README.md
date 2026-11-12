@@ -14,12 +14,12 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.5.1 release notes](docs/releases/v0.5.1.en.md) · [Schedule guide](docs/schedules.en.md)
+[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.6.0 release notes](docs/releases/v0.6.0.en.md) · [Schedule guide](docs/schedules.en.md)
 
-## Schedule Fixes in v0.5.1
+## Scheduled Timer in v0.6.0
 
-- The preview opens the full draft from each period's start. Switch to Current progress to see estimates from the running timer.
-- Adding a round checks the time available immediately and shows a message beside the button if the period is full.
+- Rounds follow the local clock. Opening the app late, reopening it, or waking the computer joins the round scheduled for that time.
+- Snoozing or ending a break early leaves the next round at its scheduled time. Current progress shows the active round and the saved schedule.
 
 ## What's New in v0.5.0
 
@@ -81,16 +81,16 @@ Choose Scheduled timer on the same page. Use Add schedule or Edit schedules to o
 1. Name the schedule and choose a one-time date or repeating weekdays.
 2. Add time periods with start/end times and default work/break lengths. End times support `24:00`; split overnight periods across two days.
 3. Expand Round adjustments (optional) and add only the rounds that need different lengths, break content, or local videos. An empty length inherits the period's default. Each period must fit at least one complete work and break round. If the period is full when you select Add round adjustment, a message appears beside the button.
-4. Select Preview schedule to see the full draft from each period's start. Switch to Current progress to see estimates based on the running timer. Save settings to apply the draft.
+4. Select Preview schedule to see the full draft from each period's start. Switch to Current progress to see the active round and saved upcoming rounds. Save settings to apply the draft.
 
 | Timer mode | Timing rules | Without an active scheduled period |
 | --- | --- | --- |
 | Simple timer | Repeat one set of global work/break lengths | Keep using the simple timer |
-| Scheduled timer | Follow enabled schedules, their periods, defaults, and round adjustments | Stay idle; do not fall back to the simple timer |
+| Scheduled timer | Follow enabled schedules by local clock time | Stay idle; do not fall back to the simple timer |
 
-The overview shows enabled schedules and their configuration. Each mode retains its own settings. Edit schedules and the sidebar only navigate; they do not select a timer mode. Sound, auto-reset when away, and reminder content are shared.
+The overview shows enabled schedules and their configuration. Each mode retains its own settings. Edit schedules and the sidebar only navigate; they do not select a timer mode. Sound and reminder content are shared. Auto-reset when away applies to Simple timer.
 
-For example, schedule `09:00–12:00` and `13:30–18:00` on weekdays, leaving lunch unscheduled. Gaps stay quiet. At a period's end, work timers and pending reminders stop; a break already in progress can finish. See the [schedule guide](docs/schedules.en.md) for round progression, conflicts, recovery, and sleep behavior.
+For example, schedule `09:00–12:00` and `13:30–18:00` on weekdays, leaving lunch unscheduled. Gaps stay quiet. Rounds start and end by local clock time. With 55 minutes of work and a five-minute break, opening at 10:20 puts you in round 2 and round 3 starts at 11:00. See the [schedule guide](docs/schedules.en.md) for round progression, conflicts, recovery, and sleep behavior.
 
 ### Text and Local Videos
 
@@ -109,9 +109,9 @@ After you start the break, videos loop muted by default. Play/pause, seeking, an
 
 Choose Light, Dark, or System from the sidebar footer or General settings. Saving applies the appearance across windows. Changing the theme preserves drafts and video playback. System reduced-motion preferences reduce nonessential transitions.
 
-- **Pause and reset:** Pause remains until you resume. Reset restarts the current round's work; ending a break early advances to the next round.
-- **Auto-reset when away:** Uses the current break length as its threshold and can be disabled. A long enough absence during work resets that round; after a reminder, it counts as having rested.
-- **Resume after quitting:** A normal exit can preserve the round and pause state when reopening in the same schedule period on the same day. Time while the app is closed does not advance timers.
+- **Pause and reset:** Simple timer can pause or reset its countdown. Scheduled timer can pause reminders while rounds still follow the clock.
+- **Auto-reset when away:** In Simple timer, being away for the break length resets work or dismisses the reminder.
+- **Resume after quitting:** Scheduled timer joins the current round on reopening and remembers your pause preference and choices in the current break window.
 - **Local preferences:** Configure launch at login, sound, and a Chinese or English interface. Windows also supports showing, hiding, and resizing the floating timer.
 - **Drafts and shortcuts:** Switching sidebar pages or timer modes preserves drafts. Save with `⌘S` or `Ctrl+S`. `Esc` closes an open dropdown or dialog first.
 

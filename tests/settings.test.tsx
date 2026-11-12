@@ -59,11 +59,11 @@ beforeEach(() => {
   backend.preview = null;
 });
 describe("设置主要交互", () => {
-  it("日程预览默认从时段起点展示草稿，切换进度后按实际边界显示", async () => {
+  it("预览草稿和当前进度都显示固定的工作与休息时刻", async () => {
     const date = "2026-11-11";
-    const period = { id: "p1", start: "23:00", end: "24:00" };
+    const period = { id: "p1", start: "22:00", end: "24:00" };
     const round = {
-      number: 1,
+      number: 2,
       work_start: 82800,
       break_start: 86100,
       break_end: 86400,
@@ -90,8 +90,8 @@ describe("设置主要交互", () => {
                 ...timer,
                 round: { schedule_id: "s1", period_id: "p1", date, number: 1 },
               },
-              break_start: 85380,
-              break_end: 85680,
+              break_start: 82500,
+              break_end: 82800,
             }
           : null,
         schedules: [
@@ -105,9 +105,7 @@ describe("设置主要交互", () => {
                   ? [{
                       ...round,
                       number: 2,
-                      work_start: 85680,
-                      break_start: null,
-                      break_end: null,
+                      work_start: 82800,
                       content: "本轮休息内容",
                     }]
                   : [round],
@@ -126,12 +124,12 @@ describe("设置主要交互", () => {
     await user.click(openPreview);
     const dialog = within(screen.getByRole("dialog"));
     await dialog.findByText("核心训练");
-    expect(dialog.getByText("预计休息 23:55–24:00")).toBeTruthy();
+    expect(dialog.getByText("休息 23:55–24:00")).toBeTruthy();
     dialog.getByRole("radio", { name: "草稿计划" }).focus();
     await user.keyboard("{ArrowRight}");
-    await dialog.findByText("预计工作 23:48–24:00");
-    expect(dialog.getByText("时段结束时停止工作，本轮无休息。")).toBeTruthy();
-    expect(dialog.queryByText("本轮休息内容")).toBeNull();
+    await dialog.findByText("工作 23:00–23:55");
+    expect(dialog.getByText("休息 22:55–23:00")).toBeTruthy();
+    expect(dialog.getByText("本轮休息内容")).toBeTruthy();
 
     await user.keyboard("{Escape}");
     await waitFor(() => expect(document.activeElement).toBe(openPreview));
@@ -257,7 +255,7 @@ describe("设置主要交互", () => {
       screen.getByRole("region", { name: "日程概览" }).textContent,
     ).toContain("10:00–24:00");
     expect(screen.getByRole("switch", { name: "提示音" })).toBeTruthy();
-    expect(screen.getByRole("switch", { name: "离开自动重置" })).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "离开自动重置" })).toBeNull();
   });
   it("日程空状态可以直接添加日程，并保留选中的计时方式", async () => {
     backend.settings.schedules = [];

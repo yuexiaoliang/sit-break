@@ -108,17 +108,21 @@ export default function WidgetApp() {
       clearTimeout(save);
     };
   }, []);
-  const total =
-    timer.mode === "break" ? timer.break_seconds : timer.work_seconds;
+  const inRest =
+    timer.mode === "break" || (timer.mode === "remind" && timer.round);
+  const total = inRest ? timer.break_seconds : timer.work_seconds;
   const progress = Math.max(
     0,
     Math.min(100, total ? (timer.remaining / total) * 100 : 0),
   );
   const status = [
-    timer.paused ? S.paused : "",
-    { work: S.working, remind: S.reminding, break: S.onBreak, idle: S.idle }[
-      timer.mode
-    ],
+    timer.paused ? (settings.use_schedule ? S.remindersPaused : S.paused) : "",
+    {
+      work: S.working,
+      remind: timer.round ? S.scheduledBreak : S.reminding,
+      break: S.onBreak,
+      idle: S.idle,
+    }[timer.mode],
     timer.round ? fmt(S.roundNumber, { n: timer.round.number }) : "",
     timer.mode === "idle"
       ? ""

@@ -367,7 +367,7 @@ fn every_day_repeats_on_sunday_and_weekly_internal_overlap_remains_invalid() {
 }
 
 #[test]
-fn overnight_split_executes_the_correct_local_day_and_finishes_started_break_first() {
+fn overnight_split_switches_to_the_next_local_day_even_in_a_started_break() {
     for (monday, tuesday) in [
         (
             serde_json::json!({"kind":"once","date":"2026-10-12"}),
@@ -397,22 +397,16 @@ fn overnight_split_executes_the_correct_local_day_and_finishes_started_break_fir
             time("2026-10-12", 23, 55),
         );
         app.dispatch(Action::StartBreak, time("2026-10-12", 23, 55));
-        app.dispatch(
+        assert_eq!(app.info().mode, Mode::Break);
+        let boundary = app.dispatch(
             Action::Tick {
-                elapsed_secs: 300,
+                elapsed_secs: 1,
                 idle_secs: 0,
             },
             time("2026-10-13", 0, 0),
         );
-        assert_eq!(app.info().mode, Mode::Break);
-        assert_eq!(app.info().round.unwrap().schedule_id, "before-midnight");
-        app.dispatch(
-            Action::Tick {
-                elapsed_secs: 300,
-                idle_secs: 0,
-            },
-            time("2026-10-13", 0, 5),
-        );
+        assert!(boundary.update_windows);
+        assert!(!app.reminder_visible());
         let round = app.info().round.unwrap();
         assert_eq!(
             (

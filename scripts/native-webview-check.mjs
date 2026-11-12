@@ -20,6 +20,7 @@ const executable = resolve(process.argv[2]);
 const output = resolve(process.argv[3]);
 const identifier = 'com.sitbreak.nativecheck';
 const dataDirectory = join(process.env.APPDATA, identifier);
+const clockFile = join(output, 'clock.json');
 const nativeProbe = fileURLToPath(new URL('./native-window.ps1', import.meta.url));
 const runFile = promisify(execFile);
 const delay = (milliseconds) => new Promise((done) => setTimeout(done, milliseconds));
@@ -29,7 +30,11 @@ let application;
 let originalTheme;
 let runNumber = 0;
 let applicationWasValidated = false;
-let launchStartedAt;
+async function setClock(hour, minute, second = 0) {
+  const local = { date: '2026-10-14', seconds_of_day: hour * 3600 + minute * 60 + second };
+  await writeFile(`${clockFile}.tmp`, JSON.stringify(local));
+  await rename(`${clockFile}.tmp`, clockFile);
+}
 
 async function waitFor(description, check, timeout = 20_000) {
   const deadline = Date.now() + timeout;
@@ -125,9 +130,9 @@ async function launch() {
   const port = await freePort();
   runNumber += 1;
   applicationWasValidated = false;
-  launchStartedAt = Date.now();
   application = spawn(executable, [], { env: { ...process.env,
     SIT_BREAK_NATIVE_CHECK_PORT: String(port),
+    SIT_BREAK_NATIVE_CHECK_CLOCK: clockFile,
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-debugging-address=127.0.0.1`,
   }, stdio: ['ignore', 'pipe', 'pipe'] });
   const log = createWriteStream(join(output, `application-${runNumber}.log`));
@@ -342,6 +347,7 @@ try {
   await mkdir(output, { recursive: true });
   // 专用构建必须使用新目录；绝不删除已有设置来让测试通过。
   await assert.rejects(access(dataDirectory), { code: 'ENOENT' }, `${dataDirectory} 已存在，请使用干净的测试用户/runner`);
+  await setClock(9, 0, 50);
   let app = await launch();
   originalTheme = (await powershell()).lightTheme;
   const settings = await app.settings.invoke('get_settings');
@@ -352,24 +358,19 @@ try {
     tips: [{ id: 'native-check-tip', text: marker }],
     schedules: [{ id: 'native-check-schedule', name: '原生验收日程', enabled: true,
       repeat: { kind: 'weekly', weekdays: [1, 2, 3, 4, 5, 6, 7] },
-      periods: [{ id: 'native-check-period', start: '00:00', end: '24:00', work_minutes: 1, break_minutes: 1, overrides: [] }] }],
+      periods: [{ id: 'native-check-period', start: '09:00', end: '12:00', work_minutes: 1, break_minutes: 1, overrides: [] }] }],
   } });
-  await app.settings.invoke('reset_timer');
   const working = await app.settings.invoke('timer_info');
   assert.equal(working.mode, 'work');
   assert.equal(working.round.number, 1);
+  assert.equal(working.remaining, 10);
   assert.equal(working.tip, marker);
   await quit(app.settings);
 
-  // 从真实应用保存的快照缩短等待；保留其余字段，随后仍由真实恢复入口读取。
-  const progressPath = join(dataDirectory, 'progress.json');
-  const progress = JSON.parse(await readFile(progressPath, 'utf8'));
-  assert.equal(progress.info.mode, 'work');
-  progress.info.remaining = 1;
-  await writeFile(`${progressPath}.check`, JSON.stringify(progress), 'utf8');
-  await rename(`${progressPath}.check`, progressPath);
+  // 关闭时跨过工作截止；重开只显示当前休息窗口。
+  await setClock(9, 1);
   app = await launch();
-  await waitFor('恢复当前轮后触发真实提醒', async () => (await app.reminder.invoke('timer_info')).mode === 'remind');
+  await waitFor('按当前钟点进入休息提醒', async () => (await app.reminder.invoke('timer_info')).mode === 'remind');
   await waitFor('真实提醒显示用户文字', () => app.reminder.evaluate(`document.getElementById('tipText')?.textContent === ${JSON.stringify(marker)} && !document.getElementById('cardRemind').hidden`));
   const remind = await inspectLayout(app.reminder, 'btnBreak');
   await app.reminder.screenshot('01-reminder');
@@ -378,9 +379,12 @@ try {
   await app.reminder.evaluate('document.getElementById("btnBreak").click()');
   await waitFor('实际休息按钮启动休息', async () => (await app.reminder.invoke('timer_info')).mode === 'break');
   const before = await app.reminder.invoke('timer_info');
-  await delay(2200);
-  const after = await app.reminder.invoke('timer_info');
-  assert.ok(after.remaining < before.remaining && after.remaining > 0, '真实休息倒计时必须推进');
+  assert.equal(before.remaining, 60);
+  await setClock(9, 1, 3);
+  const after = await waitFor('休息按钟点显示剩余时间', async () => {
+    const state = await app.reminder.invoke('timer_info');
+    return state.remaining === 57 && state;
+  });
   assert.equal(after.tip, marker);
   const resting = await inspectLayout(app.reminder, 'btnEnd');
   const textLayout = () => app.reminder.evaluate(`(() => {
@@ -428,37 +432,39 @@ try {
   report.checks.push({ name: '真实系统亮暗主题切换', themes });
   const saved = await app.reminder.invoke('timer_info');
   await quit(app.reminder);
+  await setClock(9, 1, 15);
   app = await launch();
   const restored = await app.reminder.invoke('timer_info');
   assert.equal(restored.mode, 'break');
   assert.deepEqual(restored.round, saved.round);
   assert.equal(restored.tip, marker);
-  const startupSeconds = Math.ceil((Date.now() - launchStartedAt) / 1000);
-  assert.ok(restored.remaining <= saved.remaining && restored.remaining >= saved.remaining - startupSeconds - 3, '重新打开保留已保存的休息进度');
+  assert.equal(restored.remaining, 45, '重开按钟点计算剩余休息时间');
   await inspectLayout(app.reminder, 'btnEnd');
   await app.reminder.screenshot('03-restored-break');
   await app.reminder.evaluate('document.getElementById("btnEnd").click()');
-  await waitFor('实际提前结束按钮完成本轮', async () => {
+  await waitFor('提前结束收起浮窗但不提前换轮', async () => {
     const state = await app.reminder.invoke('timer_info');
-    return state.mode === 'work' && state.round.number === 2;
+    const { windows } = await powershell();
+    return state.mode === 'remind' && state.round.number === 1
+      && !windows.some((item) => item.visible && /Reminder|提醒/.test(item.title));
   });
-  report.checks.push({ name: '真实退出重开及提前结束操作', saved, restored });
+  await setClock(9, 2);
+  await waitFor('到点自动切换第 2 轮', async () => {
+    const state = await app.reminder.invoke('timer_info');
+    return state.mode === 'work' && state.round.number === 2 && state.remaining === 60;
+  });
+  report.checks.push({ name: '真实退出重开、提前结束与按钟点换轮', saved, restored });
   const baseline = await app.settings.invoke('get_settings');
-  // 简单工作计时按既有规则重开后重新开始；使用日程快照复用真实恢复路径。
+  // 第二轮使用新的单行日程，验证同一时刻的提醒布局。
   const compactSettings = { ...baseline, use_schedule: true, language: 'zh',
     tips: [{ id: 'native-check-single-line', text: '转转头' }],
     schedules: baseline.schedules.map(schedule => ({ ...schedule, id: `compact-${schedule.id}`,
       periods: schedule.periods.map(period => ({ ...period, id: `compact-${period.id}` })) })),
   };
   await app.settings.invoke('save_settings', { settings: compactSettings });
-  await app.settings.invoke('reset_timer');
   assert.equal((await app.settings.invoke('timer_info')).tip, '转转头', '新日程实际选中单行测试文字');
   await quit(app.settings);
-  const compactProgress = JSON.parse(await readFile(progressPath, 'utf8'));
-  assert.equal(compactProgress.info.mode, 'work');
-  compactProgress.info.remaining = 1;
-  await writeFile(`${progressPath}.check`, JSON.stringify(compactProgress), 'utf8');
-  await rename(`${progressPath}.check`, progressPath);
+  await setClock(9, 3);
   app = await launch();
   await waitFor('单行提醒实际进入待休息', async () => (await app.reminder.invoke('timer_info')).mode === 'remind');
   await app.reminder.evaluate('document.getElementById("btnBreak").click()');
@@ -478,10 +484,11 @@ try {
   });
   report.checks.push({ name: '单行纯文字：实测正文高度收紧窗口、设置刷新后保持与无外投影', compact, ...compactLayout });
   await app.reminder.evaluate('document.getElementById("btnEnd").click()');
-  await waitFor('单行休息结束', async () => (await app.reminder.invoke('timer_info')).mode === 'work');
+  await waitFor('单行休息结束', async () => (await app.reminder.invoke('timer_info')).mode === 'remind');
+  await setClock(9, 4);
   await app.settings.invoke('save_settings', { settings: baseline });
   await checkSimpleLocalVideo(app);
-  app = await checkLocalVideo({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, videoSample, delay, onApp: (next) => { app = next; } });
+  app = await checkLocalVideo({ app, report, launch, quit, dataDirectory, waitFor, inspectLayout, videoSample, delay, setClock, onApp: (next) => { app = next; } });
   report.status = 'passed';
 } catch (error) {
   report.status = 'failed';

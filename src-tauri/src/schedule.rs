@@ -58,19 +58,22 @@ pub struct RoundOverride {
     pub guidance: Option<crate::Guidance>,
 }
 
-pub(crate) struct RoundDefinition {
-    pub work_seconds: u64,
-    pub break_seconds: u64,
-    pub content: Option<String>,
-    pub guidance: Option<crate::Guidance>,
-}
-
-pub(crate) struct EstimatedRound {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct PlannedRound {
     pub number: u32,
     pub work_start: i64,
     pub break_start: i64,
     pub break_end: i64,
-    pub definition: RoundDefinition,
+}
+
+impl PlannedRound {
+    pub fn work_seconds(self) -> u64 {
+        (self.break_start - self.work_start) as u64
+    }
+
+    pub fn break_seconds(self) -> u64 {
+        (self.break_end - self.break_start) as u64
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
@@ -81,59 +84,59 @@ pub(crate) struct RoundCapacity {
 }
 
 impl Period {
-    pub(crate) fn round_definition(&self, number: u32) -> RoundDefinition {
-        let adjustment = self.overrides.iter().find(|item| item.round == number);
-        RoundDefinition {
-            work_seconds: u64::from(
-                adjustment
-                    .and_then(|item| item.work_minutes)
-                    .unwrap_or(self.work_minutes),
-            ) * 60,
-            break_seconds: u64::from(
-                adjustment
-                    .and_then(|item| item.break_minutes)
-                    .unwrap_or(self.break_minutes),
-            ) * 60,
-            content: adjustment
-                .and_then(|item| item.content.as_deref())
-                .filter(|content| !content.trim().is_empty())
-                .map(str::to_owned),
-            guidance: adjustment.and_then(|item| item.guidance.clone()),
-        }
+    fn round_override(&self, number: u32) -> Option<&RoundOverride> {
+        self.overrides.iter().find(|item| item.round == number)
     }
 
-    pub(crate) fn rounds_from(
-        &self,
-        start: i64,
-        end: i64,
-        number: u32,
-    ) -> impl Iterator<Item = EstimatedRound> + '_ {
-        (number..=u32::MAX).scan(start, move |cursor, number| {
-            let work_start = *cursor;
-            if work_start >= end {
-                return None;
-            }
-            let definition = self.round_definition(number);
-            let break_start = work_start + definition.work_seconds as i64;
-            let break_end = break_start + definition.break_seconds as i64;
-            *cursor = break_end;
-            Some(EstimatedRound {
-                number,
-                work_start,
-                break_start,
-                break_end,
-                definition,
-            })
-        })
+    pub(crate) fn round_content(&self, number: u32) -> (Option<String>, Option<crate::Guidance>) {
+        let Some(adjustment) = self.round_override(number) else {
+            return (None, None);
+        };
+        let content = adjustment
+            .content
+            .as_deref()
+            .filter(|content| !content.trim().is_empty())
+            .map(str::to_owned);
+        (content, adjustment.guidance.clone())
     }
 
     pub(crate) fn complete_rounds(
         &self,
         start: i64,
         end: i64,
-    ) -> impl Iterator<Item = EstimatedRound> + '_ {
-        self.rounds_from(start, end, 1)
-            .take_while(move |round| round.break_end <= end)
+    ) -> impl Iterator<Item = PlannedRound> + '_ {
+        (1..).scan(start, move |cursor, number| {
+            let adjustment = self.round_override(number);
+            let work = adjustment
+                .and_then(|item| item.work_minutes)
+                .unwrap_or(self.work_minutes);
+            let rest = adjustment
+                .and_then(|item| item.break_minutes)
+                .unwrap_or(self.break_minutes);
+            let work_start = *cursor;
+            let break_start = work_start + i64::from(work) * 60;
+            let break_end = break_start + i64::from(rest) * 60;
+            if work == 0 || rest == 0 || break_end > end {
+                return None;
+            }
+            *cursor = break_end;
+            Some(PlannedRound {
+                number,
+                work_start,
+                break_start,
+                break_end,
+            })
+        })
+    }
+
+    pub(crate) fn round_at(&self, seconds: i64) -> Option<PlannedRound> {
+        let (start, end) = period_range(self)?;
+        let (start, end) = (i64::from(start) * 60, i64::from(end) * 60);
+        if !(start..end).contains(&seconds) {
+            return None;
+        }
+        self.complete_rounds(start, end)
+            .find(|round| seconds < round.break_end)
     }
 
     pub(crate) fn round_capacity(&self) -> Option<RoundCapacity> {

@@ -1,8 +1,8 @@
-//! 只读预计安排。草稿计划与按当前进度的预计安排共用时长继承规则。
+//! 只读日程预览。草稿和生效安排使用相同的计划时刻。
 use serde::{Deserialize, Serialize};
 
-use crate::schedule::{minute_of_day, EstimatedRound, Repeat};
-use crate::timer::{LocalTime, Mode, TimerInfo};
+use crate::schedule::{minute_of_day, Period, PlannedRound, Repeat};
+use crate::timer::{LocalTime, TimerInfo};
 use crate::Settings;
 
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -22,8 +22,8 @@ pub struct SchedulePreview {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CurrentPreview {
     pub state: TimerInfo,
-    pub break_start: Option<i64>,
-    pub break_end: Option<i64>,
+    pub break_start: i64,
+    pub break_end: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -51,8 +51,8 @@ pub struct PreviewPeriod {
 pub struct PreviewRound {
     pub number: u32,
     pub work_start: i64,
-    pub break_start: Option<i64>,
-    pub break_end: Option<i64>,
+    pub break_start: i64,
+    pub break_end: i64,
     pub work_seconds: u64,
     pub break_seconds: u64,
     pub content: Option<String>,
@@ -66,17 +66,17 @@ pub struct PreviewGap {
 }
 
 impl PreviewRound {
-    fn from_estimate(round: EstimatedRound, period_end: i64) -> Self {
-        let starts_in_period = round.break_start < period_end;
+    fn from_plan(period: &Period, round: PlannedRound) -> Self {
+        let (content, guidance) = period.round_content(round.number);
         Self {
             number: round.number,
             work_start: round.work_start,
-            break_start: starts_in_period.then_some(round.break_start),
-            break_end: starts_in_period.then_some(round.break_end),
-            work_seconds: round.definition.work_seconds,
-            break_seconds: round.definition.break_seconds,
-            content: round.definition.content,
-            guidance: round.definition.guidance,
+            break_start: round.break_start,
+            break_end: round.break_end,
+            work_seconds: round.work_seconds(),
+            break_seconds: round.break_seconds(),
+            content,
+            guidance,
         }
     }
 }
@@ -85,55 +85,24 @@ pub(crate) fn build(
     draft: &Settings,
     saved: &Settings,
     info: &TimerInfo,
+    planned_round: Option<PlannedRound>,
     local: Option<&LocalTime>,
-    restart_after_break: bool,
     mode: PreviewMode,
 ) -> SchedulePreview {
     let local_date = local.map(|time| time.date.clone()).unwrap_or_default();
-    let actual_end = info
-        .round
-        .as_ref()
-        .and_then(|round| {
-            saved
-                .schedules
-                .iter()
-                .find(|schedule| schedule.id == round.schedule_id)
-                .and_then(|schedule| {
-                    schedule
-                        .periods
-                        .iter()
-                        .find(|period| period.id == round.period_id)
-                })
-                .and_then(|period| minute_of_day(&period.end, true))
-        })
-        .map(|minute| i64::from(minute) * 60);
-    let current = local
-        .filter(|_| {
-            mode == PreviewMode::Progress && (info.round.is_some() || info.mode == Mode::Break)
-        })
-        .filter(|_| info.mode != Mode::Idle)
-        .map(|local| {
-            let now = i64::from(local.seconds_of_day);
-            let break_start = match info.mode {
-                Mode::Work => Some(now + info.remaining as i64),
-                Mode::Remind => Some(now),
-                // 快照不记录实际开始时刻或暂停历程，只预计剩余休息的结束。
-                Mode::Break => None,
-                Mode::Idle => None,
-            }
-            .filter(|start| info.mode == Mode::Break || actual_end.is_none_or(|end| *start < end));
-            let break_end = if info.mode == Mode::Break {
-                Some(now + info.remaining as i64)
-            } else {
-                break_start.map(|start| start + info.break_seconds as i64)
-            };
-            CurrentPreview {
-                state: info.clone(),
-                break_start,
-                break_end,
-            }
+    let seconds = local.map(|time| i64::from(time.seconds_of_day));
+    let current = planned_round
+        .filter(|_| mode == PreviewMode::Progress)
+        .map(|round| CurrentPreview {
+            state: info.clone(),
+            break_start: round.break_start,
+            break_end: round.break_end,
         });
-    let schedules = draft
+    let settings = match mode {
+        PreviewMode::Plan => draft,
+        PreviewMode::Progress => saved,
+    };
+    let schedules = settings
         .schedules
         .iter()
         .map(|schedule| {
@@ -141,8 +110,8 @@ pub(crate) fn build(
                 Repeat::Once { date } => date.clone(),
                 Repeat::Weekly { .. } => local_date.clone(),
             };
-            let uses_progress = current.is_some()
-                && draft.use_schedule
+            let uses_progress = mode == PreviewMode::Progress
+                && settings.use_schedule
                 && schedule.enabled
                 && date == local_date
                 && schedule.repeat.applies_on(&local_date);
@@ -161,47 +130,13 @@ pub(crate) fn build(
                 .map(|period| {
                     let start = i64::from(minute_of_day(&period.start, false).unwrap()) * 60;
                     let end = i64::from(minute_of_day(&period.end, true).unwrap()) * 60;
-                    let mut cursor = start;
-                    let mut number = 1;
-                    if uses_progress {
-                        cursor = cursor.max(
-                            current
-                                .as_ref()
-                                .and_then(|active| active.break_end)
-                                .or(actual_end)
-                                .unwrap_or_else(|| i64::from(local.unwrap().seconds_of_day)),
-                        );
-                    }
-                    if let Some(active) =
-                        current.as_ref().filter(|_| uses_progress).filter(|active| {
-                            active.state.round.as_ref().is_some_and(|round| {
-                                round.schedule_id == schedule.id
-                                    && round.period_id == period.id
-                                    && round.date == date
-                            })
+                    let rounds = period
+                        .complete_rounds(start, end)
+                        .filter(|round| {
+                            !uses_progress || seconds.is_none_or(|now| round.work_start > now)
                         })
-                    {
-                        number = if restart_after_break {
-                            1
-                        } else {
-                            active
-                                .state
-                                .round
-                                .as_ref()
-                                .unwrap()
-                                .number
-                                .saturating_add(1)
-                        };
-                    }
-                    let project = |round| PreviewRound::from_estimate(round, end);
-                    let rounds = if uses_progress {
-                        period
-                            .rounds_from(cursor, end, number)
-                            .map(project)
-                            .collect()
-                    } else {
-                        period.complete_rounds(start, end).map(project).collect()
-                    };
+                        .map(|round| PreviewRound::from_plan(period, round))
+                        .collect();
                     PreviewPeriod {
                         id: period.id.clone(),
                         start: period.start.clone(),

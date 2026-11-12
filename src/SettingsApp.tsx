@@ -455,14 +455,16 @@ export default function SettingsApp() {
                         checked={draft.sound}
                         onChange={(value) => change("sound", value)}
                       />
-                      <PreferenceRow
-                        icon={<ArrowCounterClockwiseIcon />}
-                        id="swIdleReset"
-                        title={S.idleReset}
-                        description={S.idleDescription}
-                        checked={draft.idle_reset}
-                        onChange={(value) => change("idle_reset", value)}
-                      />
+                      {!draft.use_schedule && (
+                        <PreferenceRow
+                          icon={<ArrowCounterClockwiseIcon />}
+                          id="swIdleReset"
+                          title={S.idleReset}
+                          description={S.idleDescription}
+                          checked={draft.idle_reset}
+                          onChange={(value) => change("idle_reset", value)}
+                        />
+                      )}
                     </div>
                     <div className="next-reminder">
                       <FileVideoIcon size={23} />

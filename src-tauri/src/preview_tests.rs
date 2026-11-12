@@ -50,22 +50,19 @@ fn preview_reads_unsaved_draft_periods_gaps_and_rounds_without_applying_it() {
             morning.rounds[0].break_start,
             morning.rounds[0].break_end
         ),
-        (32400, Some(35400), Some(36000))
+        (32400, 35400, 36000)
     );
     assert_eq!(morning.rounds[0].content.as_deref(), Some("爬楼"));
     assert_eq!(morning.rounds[1].content.as_deref(), Some("深蹲"));
     assert_eq!(preview.schedules[0].gaps[0].start, 43200);
     assert_eq!(preview.schedules[0].gaps[0].end, 48600);
-    assert_eq!(
-        preview.schedules[0].periods[1].rounds[0].break_start,
-        Some(52200)
-    );
+    assert_eq!(preview.schedules[0].periods[1].rounds[0].break_start, 52200);
     assert_eq!(app.info(), before);
     assert_eq!(serde_json::to_value(app.settings()).unwrap(), saved);
 }
 
 #[test]
-fn preview_includes_the_full_draft_while_the_live_round_runs_late() {
+fn preview_lists_all_draft_rounds_and_only_upcoming_live_rounds() {
     let mut settings = arrangement();
     let morning = &mut settings.schedules[0].periods[0];
     morning.overrides = serde_json::from_value(serde_json::json!([
@@ -82,24 +79,7 @@ fn preview_includes_the_full_draft_while_the_live_round_runs_late() {
         {"round":5,"content":"核心"}
     ]))
     .unwrap();
-    let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(15, 18));
-    for hour in [16, 17] {
-        app.dispatch(
-            Action::Tick {
-                elapsed_secs: 3300,
-                idle_secs: 0,
-            },
-            at(hour, 13),
-        );
-        app.dispatch(Action::StartBreak, at(hour, 13));
-        app.dispatch(
-            Action::Tick {
-                elapsed_secs: 300,
-                idle_secs: 0,
-            },
-            at(hour, 18),
-        );
-    }
+    let app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(17, 18));
     let preview = app.preview(app.settings(), at(17, 18)).unwrap();
     assert_eq!(
         preview
@@ -111,14 +91,14 @@ fn preview_includes_the_full_draft_while_the_live_round_runs_late() {
             .as_ref()
             .unwrap()
             .number,
-        3
+        4
     );
-    assert_eq!(preview.current.as_ref().unwrap().break_start, Some(65580));
+    assert_eq!(preview.current.as_ref().unwrap().break_start, 62700);
     let periods = &preview.schedules[0].periods;
     assert!(periods[0].rounds.is_empty());
     assert_eq!(periods[1].rounds.len(), 1);
-    assert_eq!(periods[1].rounds[0].number, 4);
-    assert_eq!(periods[1].rounds[0].break_start, None);
+    assert_eq!(periods[1].rounds[0].number, 5);
+    assert_eq!(periods[1].rounds[0].break_start, 66300);
 
     let preview = app
         .preview_with_mode(app.settings(), at(17, 18), Plan)
@@ -126,9 +106,9 @@ fn preview_includes_the_full_draft_while_the_live_round_runs_late() {
     assert!(preview.current.is_none());
     let periods = &preview.schedules[0].periods;
     assert_eq!(periods[0].rounds.len(), 3);
-    assert_eq!(periods[0].rounds[2].break_end, Some(43200));
+    assert_eq!(periods[0].rounds[2].break_end, 43200);
     assert_eq!(periods[1].rounds.len(), 5);
-    assert_eq!(periods[1].rounds[4].break_end, Some(66600));
+    assert_eq!(periods[1].rounds[4].break_end, 66600);
     assert_eq!(periods[1].rounds[4].content.as_deref(), Some("核心"));
 
     let capacities = crate::schedule_period_capacities(app.settings().schedules[0].periods.clone());
@@ -195,7 +175,7 @@ fn a_shorter_adjusted_round_can_finish_at_day_end_but_not_after() {
     let preview = app.preview_with_mode(&draft, at(20, 0), Plan).unwrap();
     let rounds = &preview.schedules[0].periods[1].rounds;
     assert_eq!(rounds.len(), 2);
-    assert_eq!(rounds[1].break_end, Some(86400));
+    assert_eq!(rounds[1].break_end, 86400);
     assert!(app
         .dispatch(Action::SaveSettings(draft.clone()), at(20, 0))
         .persist_settings
@@ -277,222 +257,36 @@ fn preview_distinguishes_guidance_only_rounds_from_random_reminders_without_sele
 }
 
 #[test]
-fn preview_keeps_current_snapshot_and_moves_future_draft_times_with_waiting_and_breaks() {
-    let mut app = TimerApp::new_at(arrangement(), fastrand::Rng::with_seed(42), at(9, 0));
+fn progress_uses_saved_times_even_with_unsaved_edits_and_snoozing() {
+    let mut app = TimerApp::new_at(arrangement(), fastrand::Rng::with_seed(42), at(9, 50));
     let mut draft = app.settings().clone();
-    let morning = &mut draft.schedules[0].periods[0];
-    morning.overrides[0].work_minutes = Some(15);
-    morning.overrides[0].content = Some("未保存首轮".into());
-    morning.overrides[1].work_minutes = Some(30);
-    morning.overrides[1].break_minutes = Some(8);
-    morning.overrides[1].content = Some("深蹲\n喝水 <原文>".into());
-    let preview = app.preview(&draft, at(9, 0)).unwrap();
-    let current = preview.current.unwrap();
-    assert_eq!(current.state.work_seconds, 3000);
-    assert_eq!(current.state.tip.as_deref(), Some("爬楼"));
-    assert_eq!(
-        (current.break_start, current.break_end),
-        (Some(35400), Some(36000))
-    );
-    let future = &preview.schedules[0].periods[0].rounds[0];
-    assert_eq!(
-        (future.number, future.work_start, future.break_start),
-        (2, 36000, Some(37800))
-    );
-    assert_eq!(future.content.as_deref(), Some("深蹲\n喝水 <原文>"));
-    app.dispatch(
-        Action::Tick {
-            elapsed_secs: 3000,
-            idle_secs: 0,
-        },
-        at(9, 50),
-    );
-    app.dispatch(
-        Action::Tick {
-            elapsed_secs: 300,
-            idle_secs: 0,
-        },
-        at(9, 55),
-    );
-    let preview = app.preview(&draft, at(9, 55)).unwrap();
-    assert_eq!(preview.current.unwrap().break_end, Some(36300));
-    assert_eq!(preview.schedules[0].periods[0].rounds[0].work_start, 36300);
-    app.dispatch(Action::StartBreak, at(9, 55));
-    let preview = app.preview(&draft, at(9, 55)).unwrap();
-    assert_eq!(preview.current.as_ref().unwrap().break_start, None);
-    assert_eq!(preview.current.unwrap().state.mode, Mode::Break);
-    assert_eq!(preview.schedules[0].periods[0].rounds[0].work_start, 36300);
-    app.dispatch(
-        Action::Tick {
-            elapsed_secs: 600,
-            idle_secs: 0,
-        },
-        at(10, 5),
-    );
-    let preview = app.preview(&draft, at(10, 5)).unwrap();
-    assert_eq!(preview.current.unwrap().state.round.unwrap().number, 2);
-    assert_eq!(app.info().work_seconds, 3300);
-    assert_eq!(
-        app.settings().schedules[0].periods[0].overrides[0].work_minutes,
-        Some(50)
-    );
-}
+    draft.schedules[0].periods[0].overrides[0].break_minutes = Some(5);
+    let plan = app.preview_with_mode(&draft, at(9, 50), Plan).unwrap();
+    assert_eq!(plan.schedules[0].periods[0].rounds[1].work_start, 35700);
+    let preview = app.preview(&draft, at(9, 50)).unwrap();
+    assert_eq!(preview.current.as_ref().unwrap().break_end, 36000);
+    assert_eq!(preview.schedules[0].periods[0].rounds[0].work_start, 36000);
 
-#[test]
-fn preview_uses_first_round_after_a_pending_restart_while_finishing_the_old_break() {
-    let mut app = TimerApp::new_at(arrangement(), fastrand::Rng::with_seed(42), at(9, 0));
-    app.dispatch(
-        Action::Tick {
-            elapsed_secs: 3000,
-            idle_secs: 0,
-        },
-        at(9, 50),
-    );
-    app.dispatch(Action::StartBreak, at(9, 55));
-    let mut settings = app.settings().clone();
-    settings.use_schedule = false;
-    app.dispatch(Action::SaveSettings(settings), at(9, 55));
-    let mut settings = app.settings().clone();
-    settings.use_schedule = true;
-    app.dispatch(Action::SaveSettings(settings), at(9, 55));
-    let mut draft = app.settings().clone();
-    draft.schedules[0].periods[0].overrides[0].work_minutes = Some(40);
-    draft.schedules[0].periods[0].overrides[0].break_minutes = Some(4);
-    let preview = app.preview(&draft, at(9, 55)).unwrap();
-    assert_eq!(preview.current.unwrap().state.break_seconds, 600);
-    let next = &preview.schedules[0].periods[0].rounds[0];
-    assert_eq!(
-        (
-            next.number,
-            next.work_start,
-            next.work_seconds,
-            next.break_seconds
-        ),
-        (1, 36300, 2400, 240)
-    );
-}
-
-#[test]
-fn preview_waits_for_the_started_break_before_the_new_periods_first_round() {
-    let mut settings = arrangement();
-    settings.schedules[0].periods[1].start = "12:05".into();
-    let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(11, 0));
-    app.dispatch(
-        Action::Tick {
-            elapsed_secs: 3000,
-            idle_secs: 0,
-        },
-        at(11, 50),
-    );
-    app.dispatch(Action::StartBreak, at(11, 59));
-    app.dispatch(
-        Action::Tick {
-            elapsed_secs: 360,
-            idle_secs: 0,
-        },
-        at(12, 5),
-    );
-    let before = app.info();
-    let preview = app.preview(app.settings(), at(12, 5)).unwrap();
-    assert_eq!(preview.current.unwrap().break_end, Some(43740));
-    let next = &preview.schedules[0].periods[1].rounds[0];
-    assert_eq!(
-        (next.number, next.work_start, next.break_start),
-        (1, 43740, Some(47340))
-    );
-    assert!(preview.schedules[0].periods[0].rounds.is_empty());
-    assert_eq!(app.info(), before);
-    app.dispatch(
-        Action::Tick {
-            elapsed_secs: 240,
-            idle_secs: 0,
-        },
-        at(12, 9),
-    );
-    assert_eq!(app.info().round.unwrap().period_id, "afternoon");
-    assert_eq!(app.info().round.unwrap().number, 1);
-}
-
-#[test]
-fn preview_preserves_paused_current_round_when_unsaved_draft_deletes_or_shortens_its_period() {
-    let mut app = TimerApp::new_at(arrangement(), fastrand::Rng::with_seed(42), at(9, 0));
-    app.dispatch(
-        Action::Tick {
-            elapsed_secs: 900,
-            idle_secs: 0,
-        },
-        at(9, 15),
-    );
-    app.dispatch(Action::TogglePause, at(9, 15));
-    let before = app.info();
-    let saved = serde_json::to_value(app.settings()).unwrap();
-    let mut draft = app.settings().clone();
-    let period = &mut draft.schedules[0].periods[0];
-    period.end = "09:30".into();
-    period.overrides[0].work_minutes = Some(15);
-    period.overrides[0].break_minutes = Some(5);
-    period.overrides[1].work_minutes = Some(5);
-    let preview = app.preview(&draft, at(9, 20)).unwrap();
-    let current = preview.current.unwrap();
-    assert!(current.state.paused);
-    assert_eq!(current.state, before);
-    assert_eq!(current.break_start, Some(35700));
-    assert!(preview.schedules[0].periods[0].rounds.is_empty());
-    draft.schedules[0].periods.remove(0);
-    assert_eq!(
-        app.preview(&draft, at(9, 20))
-            .unwrap()
-            .current
-            .unwrap()
-            .state,
-        before
-    );
-    draft.schedules.clear();
-    let preview = app.preview(&draft, at(9, 20)).unwrap();
-    assert!(preview.schedules.is_empty());
-    assert_eq!(preview.current.unwrap().state, before);
-    assert_eq!(app.info(), before);
-    assert_eq!(serde_json::to_value(app.settings()).unwrap(), saved);
-}
-
-#[test]
-fn preview_updates_after_postpone_reset_and_ending_a_break_without_consuming_a_round() {
-    let mut app = TimerApp::new_at(arrangement(), fastrand::Rng::with_seed(42), at(9, 0));
-    app.dispatch(
-        Action::Tick {
-            elapsed_secs: 3000,
-            idle_secs: 0,
-        },
-        at(9, 50),
-    );
     app.dispatch(Action::Postpone, at(9, 50));
-    assert_eq!(
-        app.preview(app.settings(), at(9, 50))
-            .unwrap()
-            .current
-            .unwrap()
-            .break_start,
-        Some(35700)
-    );
-    app.dispatch(Action::Reset, at(9, 50));
-    let preview = app.preview(app.settings(), at(9, 50)).unwrap();
-    assert_eq!(preview.current.unwrap().break_end, Some(39000));
-    assert_eq!(preview.schedules[0].periods[0].rounds[0].number, 2);
-    assert_eq!(app.info().round.unwrap().number, 1);
-    app.dispatch(
-        Action::Tick {
-            elapsed_secs: 3000,
-            idle_secs: 0,
-        },
-        at(10, 40),
-    );
-    app.dispatch(Action::StartBreak, at(10, 40));
-    app.dispatch(Action::EndBreak, at(10, 42));
-    let preview = app.preview(app.settings(), at(10, 42)).unwrap();
-    assert_eq!(preview.current.unwrap().break_end, Some(42120));
-    assert_eq!(preview.schedules[0].periods[0].rounds[0].number, 3);
-    assert_eq!(preview.schedules[0].periods[0].rounds[0].work_start, 42120);
-    assert_eq!(app.info().round.unwrap().number, 2);
+    app.dispatch(Action::TogglePause, at(9, 53));
+    draft.schedules.clear();
+    let paused = app.preview(&draft, at(9, 53)).unwrap();
+    assert_eq!(paused.schedules, preview.schedules);
+    let current = paused.current.unwrap();
+    assert!(current.state.paused);
+    assert_eq!(current.break_start, 35400);
+    assert_eq!(current.break_end, 36000);
+}
+
+#[test]
+fn progress_in_a_quiet_gap_lists_only_later_rounds() {
+    let app = TimerApp::new_at(arrangement(), fastrand::Rng::with_seed(42), at(12, 30));
+    assert_eq!(app.info().mode, Mode::Idle);
+    let preview = app.preview(app.settings(), at(12, 30)).unwrap();
+    assert!(preview.current.is_none());
+    let periods = &preview.schedules[0].periods;
+    assert!(periods[0].rounds.is_empty());
+    assert_eq!(periods[1].rounds[0].work_start, 48600);
 }
 
 #[test]
@@ -528,21 +322,13 @@ fn repeated_preview_does_not_change_future_random_tips_or_the_saved_configuratio
 }
 
 #[test]
-fn invalid_draft_and_a_break_at_the_end_boundary_do_not_change_the_live_timer() {
-    let mut settings = arrangement();
-    settings.schedules[0].periods[0].end = "10:00".into();
-    settings.schedules[0].periods[0].overrides.truncate(1);
-    let app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(9, 10));
+fn invalid_draft_is_rejected_without_affecting_progress_preview_or_live_state() {
+    let app = TimerApp::new_at(arrangement(), fastrand::Rng::with_seed(42), at(9, 55));
     let before = app.info();
-    let preview = app.preview(app.settings(), at(9, 10)).unwrap();
-    assert_eq!(preview.current.unwrap().break_start, None);
-    assert!(preview.schedules[0].periods[0].rounds.is_empty());
-    let mut draft = app.settings().clone();
-    draft.schedules[0].periods[0].end = "08:00".into();
-    assert!(app
-        .preview_with_mode(&draft, at(12, 1), Plan)
-        .unwrap_err()
-        .iter()
-        .any(|issue| issue.field == "end"));
+    let mut invalid = app.settings().clone();
+    invalid.schedules[0].periods[0].end = "08:00".into();
+    assert!(app.preview_with_mode(&invalid, at(9, 55), Plan).is_err());
+    let preview = app.preview(&invalid, at(9, 55)).unwrap();
+    assert_eq!(preview.current.unwrap().state, before);
     assert_eq!(app.info(), before);
 }

@@ -38,7 +38,9 @@ export default function ReminderApp() {
   const content = useRef<HTMLDivElement>(null),
     viewport = useRef<HTMLDivElement>(null);
   const [failure, setFailure] = useState("");
-  const plain = timer.mode === "break" && !timer.guidance;
+  const scheduled = Boolean(timer.round);
+  const hideForPause = scheduled && timer.paused;
+  const plain = timer.mode === "break" && !timer.guidance && !hideForPause;
   const round = timer.round
     ? `${fmt(S.roundNumber, { n: timer.round.number })} · `
     : "";
@@ -85,13 +87,18 @@ export default function ReminderApp() {
       setFailure(S.operationFailed);
     }
   }
+  if (hideForPause) return null;
   if (timer.mode !== "break")
     return (
       <div className="reminder-surface reminder-prompt" id="cardRemind">
         <Badge
           variant="light"
           leftSection={<ClockIcon size={15} />}
-        >{`${timer.paused ? `${S.paused} · ` : ""}${round}${fmt(S.satFor, { n: timer.work_seconds / 60 })}`}</Badge>
+        >{`${timer.paused ? `${S.paused} · ` : ""}${round}${
+          scheduled
+            ? fmt(S.untilBack, { t: formatTime(timer.remaining) })
+            : fmt(S.satFor, { n: timer.work_seconds / 60 })
+        }`}</Badge>
         <h1>{S.timeToMove}</h1>
         <Text size="sm" c="dimmed" className="reminder-subtitle">
           {S.standUp}
@@ -111,7 +118,9 @@ export default function ReminderApp() {
         )}
         <div className="reminder-actions">
           <Button id="btnBreak" onClick={() => void command("start_break")}>
-            {fmt(S.startBreak, { n: timer.break_seconds / 60 })}
+            {scheduled
+              ? S.startScheduledBreak
+              : fmt(S.startBreak, { n: timer.break_seconds / 60 })}
           </Button>
           <Button
             variant="subtle"

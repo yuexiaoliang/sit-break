@@ -557,41 +557,43 @@ fn update_windows(app: &AppHandle) {
     let state = app.state::<Mutex<TimerApp>>();
     let st = state.lock().unwrap();
     let info = st.info();
-    let mode = info.mode;
+    let show_break = st.reminder_visible();
     let show_widget = st.settings().show_widget;
     drop(st);
 
-    let widget = app.get_webview_window("widget");
-    let reminder = app.get_webview_window("reminder");
-    match mode {
-        Mode::Work | Mode::Idle => {
-            if let Some(w) = &widget {
-                if show_widget {
-                    let _ = w.show();
-                } else {
-                    let _ = w.hide();
-                }
-            }
-            if let Some(r) = &reminder {
-                let _ = r.hide();
-            }
+    if let Some(widget) = app.get_webview_window("widget") {
+        if show_widget && !show_break {
+            let _ = widget.show();
+        } else {
+            let _ = widget.hide();
         }
-        Mode::Remind | Mode::Break => {
-            if let Some(w) = &widget {
-                let _ = w.hide();
-            }
-            if let Some(r) = &reminder {
-                let media = mode == Mode::Break && info.guidance.is_some();
-                let _ = show_reminder(r, media);
-            }
+    }
+    if let Some(reminder) = app.get_webview_window("reminder") {
+        if show_break {
+            let media = info.mode == Mode::Break && info.guidance.is_some();
+            let _ = show_reminder(&reminder, media);
+        } else {
+            let _ = reminder.hide();
         }
     }
 }
 
 fn timer_time(app: &AppHandle) -> TimerTime {
+    let local = platform::local_time();
+    // 独立原生验收包可驱动固定钟点；普通 debug 和正式包均读取系统时间。
+    #[cfg(debug_assertions)]
+    let local = if app.config().identifier == "com.sitbreak.nativecheck" {
+        std::env::var_os("SIT_BREAK_NATIVE_CHECK_CLOCK")
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str::<timer::LocalTime>(&text).ok())
+            .filter(|time| time.seconds_of_day < 86_400 && schedule::valid_date(&time.date))
+            .unwrap_or(local)
+    } else {
+        local
+    };
     TimerTime {
         monotonic: app.state::<TimerClock>().0.elapsed(),
-        local: Some(platform::local_time()),
+        local: Some(local),
     }
 }
 
@@ -645,8 +647,8 @@ fn menu_bar_title(mode: Mode, remaining: u64, paused: bool, zh: bool) -> String 
     let time = format!("{:02}:{:02}", remaining / 60, remaining % 60);
     let title = match mode {
         Mode::Work => time,
-        Mode::Break => format!("{} {time}", if zh { "休息" } else { "Break" }),
-        Mode::Remind => if zh { "起身" } else { "Move" }.to_string(),
+        Mode::Remind if remaining == 0 => if zh { "起身" } else { "Move" }.to_string(),
+        Mode::Break | Mode::Remind => format!("{} {time}", if zh { "休息" } else { "Break" }),
         Mode::Idle => if zh { "待机" } else { "Idle" }.to_string(),
     };
     if paused {
@@ -694,6 +696,16 @@ fn update_tray(app: &AppHandle) {
                 format!("Sit Break · 休息中，剩余 {}", fmt_mmss(info.remaining))
             } else {
                 format!("Sit Break · On a break, {} left", fmt_mmss(info.remaining))
+            }
+        }
+        Mode::Remind if info.round.is_some() => {
+            if is_zh(st.settings()) {
+                format!("Sit Break · 休息时段，剩余 {}", fmt_mmss(info.remaining))
+            } else {
+                format!(
+                    "Sit Break · Scheduled break, {} left",
+                    fmt_mmss(info.remaining)
+                )
             }
         }
         Mode::Remind => {
