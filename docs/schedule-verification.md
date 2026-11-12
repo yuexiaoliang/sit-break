@@ -8,7 +8,7 @@
 
 独立 macOS debug 包使用 `com.sitbreak.nativecheck` 和受控本地时间，读取真实应用的持久化状态。09:00–12:00、每轮 55/5 分钟：10:20 启动是第 2 轮工作、剩 35 分钟；10:55 显示第 2 轮提醒；不处理提醒，11:00 自动进入第 3 轮；11:56 重开显示第 3 轮休息窗口、剩 4 分钟；12:00 待机。此结果不包含物理睡眠或窗口外观验收，也未操作用户已安装的应用。
 
-Windows 原生验收脚本已改用受控钟点，不再改写进度文件中的剩余秒数；本次未在 Windows 图形会话中运行该脚本。
+发布前，计时改动的提交 `7b55dcc` 通过了 [macOS 和 Windows CI](https://github.com/yuexiaoliang/sit-break/actions/runs/43164511463) 及 [Windows WebView2 原生验收](https://github.com/yuexiaoliang/sit-break/actions/runs/43164513170)。Windows 验收用受控钟点验证了休息浮窗、剩余时间、退出重开、提前结束和到点换轮。
 
 以下为 v0.4.0 时期的历史记录，使用当时按实际休息推进的规则。
 
