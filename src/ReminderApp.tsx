@@ -88,16 +88,12 @@ export default function ReminderApp() {
   }
   if (timer.mode !== "break")
     return (
-      <div
-        className="reminder-surface reminder-prompt"
-        id="cardRemind"
-        onMouseDown={dragWindow}
-      >
+      <div className="reminder-surface reminder-prompt" id="cardRemind">
         <Badge
           variant="light"
           leftSection={<ClockIcon size={15} />}
         >{`${timer.paused ? `${S.paused} · ` : ""}${round}${fmt(S.satFor, { n: timer.work_seconds / 60 })}`}</Badge>
-        <h1>{S.timeToMove}</h1>
+        <h1 onMouseDown={dragWindow}>{S.timeToMove}</h1>
         <Text size="sm" c="dimmed" className="reminder-subtitle">
           {S.standUp}
         </Text>
@@ -132,7 +128,6 @@ export default function ReminderApp() {
     <div
       className={`reminder-surface break-card${timer.guidance ? " has-guidance" : ""}`}
       id="cardBreak"
-      onMouseDown={dragWindow}
     >
       {timer.guidance && (
         <div className="guidance-content" id="guidanceContent">
@@ -140,7 +135,7 @@ export default function ReminderApp() {
         </div>
       )}
       <div className="break-details">
-        <div className="break-header">
+        <div className="break-header" onMouseDown={dragWindow}>
           <Badge variant="light" leftSection={<CoffeeIcon size={17} />}>
             {S.onBreak}
             {timer.paused ? ` · ${S.paused}` : ""}
