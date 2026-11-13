@@ -15,6 +15,8 @@ pub struct LocalTime {
 #[derive(Debug, Clone)]
 pub struct TimerTime {
     pub monotonic: Duration,
+    /// 用于退出重开时恢复倒计时的 Unix 时间。
+    pub unix_time: Duration,
     pub local: Option<LocalTime>,
 }
 
@@ -22,8 +24,24 @@ impl From<Duration> for TimerTime {
     fn from(monotonic: Duration) -> Self {
         Self {
             monotonic,
+            unix_time: Duration::ZERO,
             local: None,
         }
+    }
+}
+
+impl TimerTime {
+    #[cfg(any(test, debug_assertions))]
+    pub(crate) fn at_local(local: LocalTime) -> Option<Self> {
+        let date = chrono::NaiveDate::parse_from_str(&local.date, "%Y-%m-%d").ok()?;
+        let time = chrono::NaiveTime::from_num_seconds_from_midnight_opt(local.seconds_of_day, 0)?;
+        let timestamp = date.and_time(time).and_utc().timestamp().try_into().ok()?;
+        let unix_time = Duration::from_secs(timestamp);
+        Some(Self {
+            monotonic: unix_time,
+            unix_time,
+            local: Some(local),
+        })
     }
 }
 
@@ -121,6 +139,8 @@ struct SavedProgress {
     planned_round: Option<PlannedRound>,
     #[serde(default)]
     scheduled_rest: ScheduledRest,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    break_ends_at: Option<Duration>,
 }
 
 impl SavedProgress {
@@ -188,6 +208,7 @@ pub struct TimerApp {
     previous_guidance: Option<Guidance>,
     planned_round: Option<PlannedRound>,
     scheduled_rest: ScheduledRest,
+    scheduled_break_until: Option<Duration>,
     suspended_idle: Option<u64>,
 }
 
@@ -206,6 +227,9 @@ impl TimerApp {
             previous_guidance: None,
             planned_round: self.planned_round,
             scheduled_rest: self.scheduled_rest,
+            break_ends_at: self
+                .scheduled_break_until
+                .map(|until| now.unix_time + until.saturating_sub(now.monotonic)),
         };
         if let Some(parent) = path
             .parent()
@@ -237,20 +261,52 @@ impl TimerApp {
             return app;
         }
         app.info.paused = saved.info.paused;
-        // 旧版剩余时间按实际进度累计。升级后只沿用暂停状态，按钟点选轮。
-        if saved.version == 2
-            && saved.use_schedule
-            && app.settings.use_schedule
-            && app.info.round.is_some()
-            && app.info.round == saved.info.round
-            && app.planned_round == saved.planned_round
+        // v0.5 及以前的进度按轮次累计，升级时只沿用暂停状态。
+        if saved.version != 2 || !saved.use_schedule || !app.settings.use_schedule {
+            return app;
+        }
+        let same_round = app.info.round.is_some() && app.info.round == saved.info.round;
+        let same_plan = same_round && app.planned_round == saved.planned_round;
+        if saved.info.mode == Mode::Break
+            && saved.scheduled_rest == ScheduledRest::Started
+            && saved.planned_round.is_some()
+            && saved
+                .info
+                .round
+                .as_ref()
+                .is_some_and(|round| app.round_period_is_enabled(round))
         {
+            let remaining = if let Some(ends_at) = saved.break_ends_at {
+                ends_at
+                    .saturating_sub(now.unix_time)
+                    .min(Duration::from_secs(saved.info.remaining))
+            } else if same_plan && app.info.mode == Mode::Remind {
+                // v0.6.0 保存的休息仍以原计划窗口为截止。
+                Duration::from_secs(app.info.remaining)
+            } else {
+                Duration::ZERO
+            };
+            if !remaining.is_zero() {
+                app.info = saved.info;
+                app.planned_round = saved.planned_round;
+                app.previous_tip = app.info.tip.clone();
+                app.previous_guidance = app.info.guidance.clone();
+                app.scheduled_rest = ScheduledRest::Started;
+                app.scheduled_break_until = Some(now.monotonic + remaining);
+                app.refresh_schedule(&now);
+                return app;
+            }
+        }
+        if same_plan || (same_round && saved.break_ends_at.is_some()) {
             app.info.tip = saved.info.tip;
             app.info.guidance = saved.info.guidance;
             app.previous_tip = app.info.tip.clone();
             app.previous_guidance = app.info.guidance.clone();
-            app.scheduled_rest = saved.scheduled_rest;
-            app.refresh_schedule(now.local.as_ref());
+            app.scheduled_rest = match saved.scheduled_rest {
+                ScheduledRest::Started => ScheduledRest::Dismissed,
+                rest => rest,
+            };
+            app.refresh_schedule(&now);
         }
         app
     }
@@ -282,11 +338,12 @@ impl TimerApp {
             previous_guidance: None,
             planned_round: None,
             scheduled_rest: ScheduledRest::Waiting,
+            scheduled_break_until: None,
             suspended_idle: None,
         };
         let now = now.into();
         if app.settings.use_schedule {
-            app.refresh_schedule(now.local.as_ref());
+            app.refresh_schedule(&now);
         } else {
             app.start_simple_work();
         }
@@ -364,7 +421,7 @@ impl TimerApp {
             Action::ApplyInterval(minutes) if (1..=240).contains(&minutes) => {
                 self.settings.work_minutes = minutes;
                 if self.settings.use_schedule {
-                    self.refresh_schedule(now.local.as_ref());
+                    self.refresh_schedule(&now);
                 } else if self.info.mode != Mode::Break {
                     self.info.work_seconds = u64::from(minutes) * 60;
                     if self.info.mode == Mode::Work {
@@ -377,7 +434,7 @@ impl TimerApp {
             Action::ApplyBreak(minutes) if (1..=60).contains(&minutes) => {
                 self.settings.break_minutes = minutes;
                 if self.settings.use_schedule {
-                    self.refresh_schedule(now.local.as_ref());
+                    self.refresh_schedule(&now);
                 } else if self.info.mode != Mode::Break {
                     self.info.break_seconds = u64::from(minutes) * 60;
                 }
@@ -411,7 +468,16 @@ impl TimerApp {
             self.break_ended_at = None;
         }
         if self.settings.use_schedule {
-            self.refresh_schedule(now.local.as_ref());
+            if self.scheduled_break_until.is_some()
+                && self
+                    .info
+                    .round
+                    .as_ref()
+                    .is_some_and(|round| !self.round_period_is_enabled(round))
+            {
+                self.scheduled_break_until = None;
+            }
+            self.refresh_schedule(now);
         } else if mode_changed {
             self.start_simple_work();
         } else if self.info.mode != Mode::Break {
@@ -508,9 +574,14 @@ impl TimerApp {
 
     fn dispatch_scheduled(&mut self, action: Action, now: &TimerTime, output: &mut TimerOutput) {
         let previous_round = self.info.round.clone();
-        self.refresh_schedule(now.local.as_ref());
-        // 旧浮窗上的点击不能改变刚切换到的新一轮。
-        let can_act_on_rest = previous_round == self.info.round && self.reminder_visible();
+        let previous_mode = self.info.mode;
+        let was_visible = self.reminder_visible();
+        self.refresh_schedule(now);
+        // 旧浮窗上的点击不能改变刚切换到的阶段或轮次。
+        let can_act_on_rest = was_visible
+            && previous_mode == self.info.mode
+            && previous_round == self.info.round
+            && self.reminder_visible();
         match action {
             Action::TogglePause => self.info.paused = !self.info.paused,
             Action::Suspend { idle_secs } => {
@@ -519,7 +590,10 @@ impl TimerApp {
             Action::Resume { .. } => self.suspended_idle = None,
             Action::StartBreak if can_act_on_rest && self.info.mode == Mode::Remind => {
                 self.scheduled_rest = ScheduledRest::Started;
+                self.scheduled_break_until =
+                    Some(now.monotonic + Duration::from_secs(self.info.break_seconds));
                 self.info.mode = Mode::Break;
+                self.info.remaining = self.info.break_seconds;
                 output.events.push(TimerEvent::BreakStarted {
                     seconds: self.info.remaining,
                 });
@@ -531,8 +605,9 @@ impl TimerApp {
                     ScheduledRest::SnoozedUntil((seconds + POSTPONE_SECS as i64).min(end));
             }
             Action::EndBreak if can_act_on_rest && self.info.mode == Mode::Break => {
+                self.scheduled_break_until = None;
                 self.scheduled_rest = ScheduledRest::Dismissed;
-                self.info.mode = Mode::Remind;
+                self.refresh_schedule(now);
             }
             _ => {}
         }
@@ -557,8 +632,29 @@ impl TimerApp {
         })
     }
 
-    fn refresh_schedule(&mut self, local: Option<&LocalTime>) {
-        let Some(local) = local else {
+    fn round_period_is_enabled(&self, round: &RoundInfo) -> bool {
+        self.settings.schedules.iter().any(|schedule| {
+            schedule.enabled
+                && schedule.id == round.schedule_id
+                && schedule
+                    .periods
+                    .iter()
+                    .any(|period| period.id == round.period_id)
+        })
+    }
+
+    fn refresh_schedule(&mut self, now: &TimerTime) {
+        if let Some(until) = self.scheduled_break_until {
+            let remaining = until.saturating_sub(now.monotonic);
+            if !remaining.is_zero() {
+                self.info.remaining = remaining.as_secs() + u64::from(remaining.subsec_nanos() > 0);
+                return;
+            }
+            self.scheduled_break_until = None;
+            self.scheduled_rest = ScheduledRest::Dismissed;
+        }
+
+        let Some(local) = now.local.as_ref() else {
             self.set_idle();
             return;
         };
@@ -602,7 +698,10 @@ impl TimerApp {
                 self.select_reminder_entry();
             }
         }
-        if !same_round || self.planned_round != Some(planned) {
+        if !same_round
+            || (self.planned_round != Some(planned)
+                && self.scheduled_rest != ScheduledRest::Dismissed)
+        {
             self.scheduled_rest = ScheduledRest::Waiting;
         }
         self.planned_round = Some(planned);
@@ -617,11 +716,7 @@ impl TimerApp {
             {
                 self.scheduled_rest = ScheduledRest::Waiting;
             }
-            self.info.mode = if self.scheduled_rest == ScheduledRest::Started {
-                Mode::Break
-            } else {
-                Mode::Remind
-            };
+            self.info.mode = Mode::Remind;
             self.info.remaining = (planned.break_end - seconds) as u64;
         }
     }
@@ -675,6 +770,7 @@ impl TimerApp {
     }
 
     fn start_simple_work(&mut self) {
+        self.scheduled_break_until = None;
         self.planned_round = None;
         self.scheduled_rest = ScheduledRest::Waiting;
         self.info.mode = Mode::Work;

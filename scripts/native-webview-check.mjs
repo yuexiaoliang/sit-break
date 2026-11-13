@@ -368,22 +368,24 @@ try {
   await quit(app.settings);
 
   // 关闭时跨过工作截止；重开只显示当前休息窗口。
-  await setClock(9, 1);
+  await setClock(9, 1, 50);
   app = await launch();
   await waitFor('按当前钟点进入休息提醒', async () => (await app.reminder.invoke('timer_info')).mode === 'remind');
   await waitFor('真实提醒显示用户文字', () => app.reminder.evaluate(`document.getElementById('tipText')?.textContent === ${JSON.stringify(marker)} && !document.getElementById('cardRemind').hidden`));
   const remind = await inspectLayout(app.reminder, 'btnBreak');
+  const startLabel = await app.reminder.evaluate('document.getElementById("btnBreak").textContent');
+  assert.match(startLabel, /1 min/, '提醒上显示可获得的完整休息时长');
   await app.reminder.screenshot('01-reminder');
   report.checks.push({ name: '保存设置、退出恢复及真实提醒', ...remind });
 
   await app.reminder.evaluate('document.getElementById("btnBreak").click()');
   await waitFor('实际休息按钮启动休息', async () => (await app.reminder.invoke('timer_info')).mode === 'break');
   const before = await app.reminder.invoke('timer_info');
-  assert.equal(before.remaining, 60);
-  await setClock(9, 1, 3);
-  const after = await waitFor('休息按钟点显示剩余时间', async () => {
+  assert.equal(before.remaining, 60, '迟点开始仍获得整分钟休息');
+  await setClock(9, 2, 5);
+  const after = await waitFor('休息跨过原定换轮时刻后继续倒计时', async () => {
     const state = await app.reminder.invoke('timer_info');
-    return state.remaining === 57 && state;
+    return state.mode === 'break' && state.round.number === 1 && state.remaining === 45 && state;
   });
   assert.equal(after.tip, marker);
   const resting = await inspectLayout(app.reminder, 'btnEnd');
@@ -432,28 +434,23 @@ try {
   report.checks.push({ name: '真实系统亮暗主题切换', themes });
   const saved = await app.reminder.invoke('timer_info');
   await quit(app.reminder);
-  await setClock(9, 1, 15);
+  await setClock(9, 2, 15);
   app = await launch();
   const restored = await app.reminder.invoke('timer_info');
   assert.equal(restored.mode, 'break');
   assert.deepEqual(restored.round, saved.round);
   assert.equal(restored.tip, marker);
-  assert.equal(restored.remaining, 45, '重开按钟点计算剩余休息时间');
+  assert.equal(restored.remaining, 35, '跨轮重开后接续已开始的休息');
   await inspectLayout(app.reminder, 'btnEnd');
   await app.reminder.screenshot('03-restored-break');
   await app.reminder.evaluate('document.getElementById("btnEnd").click()');
-  await waitFor('提前结束收起浮窗但不提前换轮', async () => {
+  await waitFor('提前结束收起浮窗并接回当前轮次', async () => {
     const state = await app.reminder.invoke('timer_info');
     const { windows } = await powershell();
-    return state.mode === 'remind' && state.round.number === 1
+    return state.mode === 'work' && state.round.number === 2 && state.remaining === 45
       && !windows.some((item) => item.visible && /Reminder|提醒/.test(item.title));
   });
-  await setClock(9, 2);
-  await waitFor('到点自动切换第 2 轮', async () => {
-    const state = await app.reminder.invoke('timer_info');
-    return state.mode === 'work' && state.round.number === 2 && state.remaining === 60;
-  });
-  report.checks.push({ name: '真实退出重开、提前结束与按钟点换轮', saved, restored });
+  report.checks.push({ name: '跨轮退出重开、提前结束与按钟点接回日程', saved, restored });
   const baseline = await app.settings.invoke('get_settings');
   // 第二轮使用新的单行日程，验证同一时刻的提醒布局。
   const compactSettings = { ...baseline, use_schedule: true, language: 'zh',

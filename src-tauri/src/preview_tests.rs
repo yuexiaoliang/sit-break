@@ -1,17 +1,13 @@
-use std::time::Duration;
-
 use crate::preview::PreviewMode::{Plan, Progress};
 use crate::timer::{Action, LocalTime, Mode, TimerApp, TimerTime};
 use crate::Settings;
 
 fn at(hour: u32, minute: u32) -> TimerTime {
-    TimerTime {
-        monotonic: Duration::from_secs(u64::from(hour * 3600 + minute * 60)),
-        local: Some(LocalTime {
-            date: "2026-10-14".into(),
-            seconds_of_day: hour * 3600 + minute * 60,
-        }),
-    }
+    TimerTime::at_local(LocalTime {
+        date: "2026-10-14".into(),
+        seconds_of_day: hour * 3600 + minute * 60,
+    })
+    .unwrap()
 }
 
 fn arrangement() -> Settings {

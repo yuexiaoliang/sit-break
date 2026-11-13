@@ -59,7 +59,7 @@ beforeEach(() => {
   backend.preview = null;
 });
 describe("设置主要交互", () => {
-  it("预览草稿和当前进度都显示固定的工作与休息时刻", async () => {
+  it("草稿显示提醒时段，当前进度显示已开始的休息倒计时", async () => {
     const date = "2026-11-11";
     const period = { id: "p1", start: "22:00", end: "24:00" };
     const round = {
@@ -88,6 +88,8 @@ describe("设置主要交互", () => {
           ? {
               state: {
                 ...timer,
+                mode: "break",
+                remaining: 120,
                 round: { schedule_id: "s1", period_id: "p1", date, number: 1 },
               },
               break_start: 82500,
@@ -124,11 +126,11 @@ describe("设置主要交互", () => {
     await user.click(openPreview);
     const dialog = within(screen.getByRole("dialog"));
     await dialog.findByText("核心训练");
-    expect(dialog.getByText("休息 23:55–24:00")).toBeTruthy();
+    expect(dialog.getByText("休息提醒 23:55–24:00")).toBeTruthy();
     dialog.getByRole("radio", { name: "草稿计划" }).focus();
     await user.keyboard("{ArrowRight}");
     await dialog.findByText("工作 23:00–23:55");
-    expect(dialog.getByText("休息 22:55–23:00")).toBeTruthy();
+    expect(dialog.getByText("剩余 2:00")).toBeTruthy();
     expect(dialog.getByText("本轮休息内容")).toBeTruthy();
 
     await user.keyboard("{Escape}");

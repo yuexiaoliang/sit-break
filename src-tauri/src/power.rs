@@ -49,6 +49,7 @@ impl PowerPort {
     }
 }
 
+pub(crate) use native::ContinuousClock;
 pub use native::PowerMonitor;
 
 #[cfg(target_os = "macos")]
@@ -74,10 +75,10 @@ mod native {
         fn mach_continuous_time() -> u64;
     }
 
-    pub(super) struct ContinuousClock(Timebase);
+    pub(crate) struct ContinuousClock(Timebase);
 
     impl ContinuousClock {
-        pub(super) fn new() -> Result<Self, String> {
+        pub(crate) fn new() -> Result<Self, String> {
             let mut info = Timebase { numer: 0, denom: 0 };
             // SAFETY: libSystem 只向有效的输出指针写入两个 u32 字段。
             let result = unsafe { mach_timebase_info(&mut info) };
@@ -87,7 +88,7 @@ mod native {
             Ok(Self(info))
         }
 
-        pub(super) fn now(&self) -> Duration {
+        pub(crate) fn now(&self) -> Duration {
             // SAFETY: 系统时钟查询无参数，也不保留任何指针。
             let ticks = unsafe { mach_continuous_time() };
             let ns = u128::from(ticks) * u128::from(self.0.numer) / u128::from(self.0.denom);
@@ -165,14 +166,14 @@ mod native {
 
     static PORT: OnceLock<Mutex<Option<Arc<PowerPort>>>> = OnceLock::new();
 
-    pub(super) struct ContinuousClock;
+    pub(crate) struct ContinuousClock;
 
     impl ContinuousClock {
-        pub(super) fn new() -> Result<Self, String> {
+        pub(crate) fn new() -> Result<Self, String> {
             Ok(Self)
         }
 
-        pub(super) fn now(&self) -> Duration {
+        pub(crate) fn now(&self) -> Duration {
             // SAFETY: GetTickCount64 无参数，返回值包含系统睡眠经过时间。
             Duration::from_millis(unsafe { GetTickCount64() })
         }
@@ -259,13 +260,13 @@ mod native {
 mod native {
     use super::*;
 
-    pub(super) struct ContinuousClock(std::time::Instant);
+    pub(crate) struct ContinuousClock(std::time::Instant);
 
     impl ContinuousClock {
-        pub(super) fn new() -> Result<Self, String> {
+        pub(crate) fn new() -> Result<Self, String> {
             Ok(Self(std::time::Instant::now()))
         }
-        pub(super) fn now(&self) -> Duration {
+        pub(crate) fn now(&self) -> Duration {
             self.0.elapsed()
         }
     }

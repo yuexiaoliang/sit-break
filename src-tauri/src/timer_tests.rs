@@ -830,39 +830,69 @@ fn scheduled_settings(end: &str) -> Settings {
 }
 
 fn at(hour: u32, minute: u32) -> crate::timer::TimerTime {
-    crate::timer::TimerTime {
-        monotonic: Duration::from_secs(u64::from(hour * 3600 + minute * 60)),
-        local: Some(crate::timer::LocalTime {
-            date: "2026-10-14".into(),
-            seconds_of_day: hour * 3600 + minute * 60,
-        }),
-    }
+    crate::timer::TimerTime::at_local(crate::timer::LocalTime {
+        date: "2026-10-14".into(),
+        seconds_of_day: hour * 3600 + minute * 60,
+    })
+    .unwrap()
 }
 
 #[test]
-fn a_late_started_break_ends_at_the_planned_clock_time() {
+fn a_late_started_break_gets_the_full_duration_and_then_rejoins_the_schedule() {
+    let mut settings = scheduled_settings("12:00");
+    settings.schedules[0].periods[0].work_minutes = 55;
+    settings.schedules[0].periods[0].break_minutes = 5;
+    let mut app = TimerApp::new_at(settings, fastrand::Rng::with_seed(42), at(9, 57));
+    assert!(app.reminder_visible());
+
+    let started = app.dispatch(Action::StartBreak, at(9, 57));
+    assert_eq!(started.events, [TimerEvent::BreakStarted { seconds: 300 }]);
+    assert_eq!(basic(app.info()), (Mode::Break, 5 * 60, false));
+
+    app.dispatch(
+        Action::Tick {
+            elapsed_secs: 180,
+            idle_secs: 0,
+        },
+        at(10, 0),
+    );
+    assert_eq!(basic(app.info()), (Mode::Break, 2 * 60, false));
+    assert_eq!(app.info().round.unwrap().number, 1);
+    assert!(app.reminder_visible());
+
+    let finished = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 120,
+            idle_secs: 0,
+        },
+        at(10, 2),
+    );
+    assert_eq!(basic(app.info()), (Mode::Work, 53 * 60, false));
+    assert_eq!(app.info().round.unwrap().number, 2);
+    assert!(finished.update_windows);
+    assert!(!app.reminder_visible());
+    assert!(finished.events.is_empty());
+}
+
+#[test]
+fn an_active_break_counts_elapsed_time_even_if_the_local_clock_jumps() {
     let mut app = TimerApp::new_at(
         scheduled_settings("12:00"),
         fastrand::Rng::with_seed(42),
         at(9, 55),
     );
-    assert_eq!(basic(app.info()), (Mode::Remind, 5 * 60, false));
-    assert!(app.reminder_visible());
-    let started = app.dispatch(Action::StartBreak, at(9, 55));
-    assert_eq!(started.events, [TimerEvent::BreakStarted { seconds: 300 }]);
-    assert_eq!(basic(app.info()), (Mode::Break, 5 * 60, false));
-    let boundary = app.dispatch(
+    app.dispatch(Action::StartBreak, at(9, 55));
+    let mut clock_jump = at(10, 55);
+    clock_jump.monotonic = at(9, 56).monotonic;
+    app.dispatch(
         Action::Tick {
-            elapsed_secs: 0,
+            elapsed_secs: 60,
             idle_secs: 0,
         },
-        at(10, 0),
+        clock_jump,
     );
-    assert_eq!(basic(app.info()), (Mode::Work, 50 * 60, false));
-    assert_eq!(app.info().round.unwrap().number, 2);
-    assert!(boundary.update_windows);
-    assert!(!app.reminder_visible());
-    assert!(boundary.events.is_empty());
+    assert_eq!(basic(app.info()), (Mode::Break, 9 * 60, false));
+    assert_eq!(app.info().round.unwrap().number, 1);
 }
 
 #[test]
@@ -973,7 +1003,7 @@ fn snooze_reopens_only_within_the_same_break_window() {
 }
 
 #[test]
-fn a_period_tail_that_cannot_fit_a_full_round_stays_idle() {
+fn a_late_break_finishes_before_idling_in_the_period_tail() {
     let mut app = TimerApp::new_at(
         scheduled_settings("10:55"),
         fastrand::Rng::with_seed(42),
@@ -981,12 +1011,22 @@ fn a_period_tail_that_cannot_fit_a_full_round_stays_idle() {
     );
     app.dispatch(Action::StartBreak, at(9, 55));
     assert!(app.reminder_visible());
-    let tail = app.dispatch(
+    let boundary = app.dispatch(
         Action::Tick {
-            elapsed_secs: 1,
+            elapsed_secs: 300,
             idle_secs: 0,
         },
         at(10, 0),
+    );
+    assert_eq!(basic(app.info()), (Mode::Break, 300, false));
+    assert!(app.reminder_visible());
+    assert!(!boundary.update_windows);
+    let tail = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 300,
+            idle_secs: 0,
+        },
+        at(10, 5),
     );
     assert_eq!(basic(app.info()), (Mode::Idle, 0, false));
     assert!(app.info().round.is_none());
@@ -1522,13 +1562,13 @@ fn custom_round_content_survives_save_language_change_and_snoozing() {
     );
     app.dispatch(Action::StartBreak, at(9, 56));
     assert_eq!(app.info().tip.as_deref(), Some(content));
-    assert_eq!(app.info().remaining, 240);
+    assert_eq!(app.info().remaining, 600);
     app.dispatch(
         Action::Tick {
-            elapsed_secs: 240,
+            elapsed_secs: 600,
             idle_secs: 0,
         },
-        at(10, 0),
+        at(10, 6),
     );
     assert_eq!(app.info().round.unwrap().number, 2);
     assert_eq!(app.info().tip.as_deref(), Some("深蹲"));
@@ -1764,9 +1804,19 @@ fn pausing_silences_reminders_while_the_scheduled_clock_keeps_running() {
         },
         at(10, 0),
     );
-    assert_eq!(basic(app.info()), (Mode::Work, 3000, true));
-    assert_eq!(app.info().round.unwrap().number, 2);
+    assert_eq!(basic(app.info()), (Mode::Break, 300, true));
+    assert!(!app.reminder_visible());
     assert!(boundary.events.is_empty());
+    let finished = app.dispatch(
+        Action::Tick {
+            elapsed_secs: 0,
+            idle_secs: 0,
+        },
+        at(10, 5),
+    );
+    assert_eq!(basic(app.info()), (Mode::Work, 2700, true));
+    assert_eq!(app.info().round.unwrap().number, 2);
+    assert!(finished.events.is_empty());
 }
 
 #[test]

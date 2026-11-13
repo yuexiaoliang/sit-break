@@ -297,8 +297,6 @@ fn choose_tip(settings: &Settings, previous: Option<&str>, rng: &mut fastrand::R
     candidates[rng.usize(..candidates.len())].to_string()
 }
 
-struct TimerClock(Instant);
-
 struct GuidanceResourceState(Option<guidance_resources::GuidanceResources>);
 
 #[derive(Default)]
@@ -579,31 +577,26 @@ fn update_windows(app: &AppHandle) {
 }
 
 fn timer_time(app: &AppHandle) -> TimerTime {
-    let local = platform::local_time();
     // 独立原生验收包可驱动固定钟点；普通 debug 和正式包均读取系统时间。
     #[cfg(debug_assertions)]
-    let local = if app.config().identifier == "com.sitbreak.nativecheck" {
-        std::env::var_os("SIT_BREAK_NATIVE_CHECK_CLOCK")
+    if app.config().identifier == "com.sitbreak.nativecheck" {
+        if let Some(time) = std::env::var_os("SIT_BREAK_NATIVE_CHECK_CLOCK")
             .and_then(|path| std::fs::read_to_string(path).ok())
-            .and_then(|text| serde_json::from_str::<timer::LocalTime>(&text).ok())
-            .filter(|time| time.seconds_of_day < 86_400 && schedule::valid_date(&time.date))
-            .unwrap_or(local)
-    } else {
-        local
-    };
-    TimerTime {
-        monotonic: app.state::<TimerClock>().0.elapsed(),
-        local: Some(local),
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .and_then(TimerTime::at_local)
+        {
+            return time;
+        }
     }
+    platform::timer_time(app.state::<power::ContinuousClock>().now())
 }
 
 fn dispatch_timer(app: &AppHandle, action: Action) {
-    let now = timer_time(app);
     let output = app
         .state::<Mutex<TimerApp>>()
         .lock()
         .unwrap()
-        .dispatch(action, now);
+        .dispatch(action, timer_time(app));
     apply_timer_output(app, output);
 }
 
@@ -958,12 +951,11 @@ fn run_timer(app: AppHandle, power_events: mpsc::Receiver<power::PowerEvent>) {
                     }
                 }
             }
-            let now = timer_time(&app);
             let mut output = app
                 .state::<Mutex<TimerApp>>()
                 .lock()
                 .unwrap()
-                .dispatch(action, now);
+                .dispatch(action, timer_time(&app));
             // 菜单栏每秒更新；Windows 工作中的 tooltip 仍按分钟更新。
             if let Some(info) = &output.state {
                 let minute = info.remaining / 60;
@@ -1127,7 +1119,7 @@ pub fn run() {
             let mut settings = load_settings_from_disk(&handle);
             let autostart_enabled = autostart_is_enabled(&handle);
             settings.autostart = autostart_enabled;
-            handle.manage(TimerClock(Instant::now()));
+            handle.manage(power::ContinuousClock::new()?);
             let now = timer_time(&handle);
             let timer = if let Some(path) = progress_path(&handle) {
                 TimerApp::restore_from(settings.clone(), &path, fastrand::Rng::new(), now)

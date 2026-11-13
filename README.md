@@ -14,12 +14,12 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.6.0 release notes](docs/releases/v0.6.0.en.md) · [Schedule guide](docs/schedules.en.md)
+[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.6.1 release notes](docs/releases/v0.6.1.en.md) · [Schedule guide](docs/schedules.en.md)
 
-## Scheduled Timer in v0.6.0
+## Scheduled Timer in v0.6.1
 
-- Rounds follow the local clock. Opening the app late, reopening it, or waking the computer joins the round scheduled for that time.
-- Snoozing or ending a break early leaves the next round at its scheduled time. Current progress shows the active round and the saved schedule.
+- Work and reminders follow the local clock. Select Take a break to start a countdown for the full configured duration. When the break ends, the timer rejoins the schedule at the current time.
+- Reopening the app or waking the computer resumes a break that is still in progress or joins the round scheduled for that time. Current progress shows the active break countdown and saved upcoming rounds.
 
 ## What's New in v0.5.0
 
@@ -86,11 +86,11 @@ Choose Scheduled timer on the same page. Use Add schedule or Edit schedules to o
 | Timer mode | Timing rules | Without an active scheduled period |
 | --- | --- | --- |
 | Simple timer | Repeat one set of global work/break lengths | Keep using the simple timer |
-| Scheduled timer | Follow enabled schedules by local clock time | Stay idle; do not fall back to the simple timer |
+| Scheduled timer | Schedule work and reminders by local time. Start each confirmed break with its full duration. | Stay idle after any break already in progress ends |
 
 The overview shows enabled schedules and their configuration. Each mode retains its own settings. Edit schedules and the sidebar only navigate; they do not select a timer mode. Sound and reminder content are shared. Auto-reset when away applies to Simple timer.
 
-For example, schedule `09:00–12:00` and `13:30–18:00` on weekdays, leaving lunch unscheduled. Gaps stay quiet. Rounds start and end by local clock time. With 55 minutes of work and a five-minute break, opening at 10:20 puts you in round 2 and round 3 starts at 11:00. See the [schedule guide](docs/schedules.en.md) for round progression, conflicts, recovery, and sleep behavior.
+For example, schedule `09:00–12:00` and `13:30–18:00` on weekdays, leaving lunch unscheduled. Gaps stay quiet. With 55 minutes of work and a five-minute break, opening at 10:20 puts you in round 2. If you start a break at 10:57, it runs until 11:02, then the timer joins round 3. See the [schedule guide](docs/schedules.en.md) for round progression, conflicts, recovery, and sleep behavior.
 
 ### Text and Local Videos
 
@@ -109,9 +109,9 @@ After you start the break, videos loop muted by default. Play/pause, seeking, an
 
 Choose Light, Dark, or System from the sidebar footer or General settings. Saving applies the appearance across windows. Changing the theme preserves drafts and video playback. System reduced-motion preferences reduce nonessential transitions.
 
-- **Pause and reset:** Simple timer can pause or reset its countdown. Scheduled timer can pause reminders while rounds still follow the clock.
+- **Pause and reset:** Simple timer can pause or reset its countdown. Scheduled timer can hide and mute reminders while a break countdown keeps running.
 - **Auto-reset when away:** In Simple timer, being away for the break length resets work or dismisses the reminder.
-- **Resume after quitting:** Scheduled timer joins the current round on reopening and remembers your pause preference and choices in the current break window.
+- **Resume after quitting:** Scheduled timer remembers your pause preference on reopening. A break still in progress continues and then rejoins the schedule.
 - **Local preferences:** Configure launch at login, sound, and a Chinese or English interface. Windows also supports showing, hiding, and resizing the floating timer.
 - **Drafts and shortcuts:** Switching sidebar pages or timer modes preserves drafts. Save with `⌘S` or `Ctrl+S`. `Esc` closes an open dropdown or dialog first.
 
