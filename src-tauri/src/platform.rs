@@ -1,10 +1,17 @@
-/// 系统适配层负责读取本地日历，计时规则本身不读取系统时钟。
-pub fn local_time() -> crate::timer::LocalTime {
+/// 系统适配层负责读取时钟，计时规则使用调用方提供的时间。
+pub fn timer_time(monotonic: std::time::Duration) -> crate::timer::TimerTime {
     use chrono::Timelike;
     let now = chrono::Local::now();
-    crate::timer::LocalTime {
-        date: now.format("%Y-%m-%d").to_string(),
-        seconds_of_day: now.num_seconds_from_midnight(),
+    crate::timer::TimerTime {
+        monotonic,
+        unix_time: std::time::Duration::new(
+            now.timestamp().try_into().unwrap_or(0),
+            now.timestamp_subsec_nanos(),
+        ),
+        local: Some(crate::timer::LocalTime {
+            date: now.format("%Y-%m-%d").to_string(),
+            seconds_of_day: now.num_seconds_from_midnight(),
+        }),
     }
 }
 

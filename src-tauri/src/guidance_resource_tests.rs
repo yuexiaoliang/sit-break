@@ -80,12 +80,14 @@ fn replacing_and_removing_guidance_keeps_current_and_valid_restored_copies_until
     assert_ne!(old, replacement);
     assert_eq!(resources.read(&old).unwrap().bytes, original);
     assert_eq!(resources.read(&replacement).unwrap().bytes, updated);
-    let now = |date: &str, seconds: u32, monotonic: u64| TimerTime {
-        local: Some(LocalTime {
+    let now = |date: &str, seconds_of_day: u32, monotonic: u64| {
+        let mut time = TimerTime::at_local(LocalTime {
             date: date.into(),
-            seconds_of_day: seconds,
-        }),
-        monotonic: Duration::from_secs(monotonic),
+            seconds_of_day,
+        })
+        .unwrap();
+        time.monotonic = Duration::from_secs(monotonic);
+        time
     };
     let mut settings = Settings {
         use_schedule: true,

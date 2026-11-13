@@ -1,22 +1,12 @@
-use std::time::Duration;
-
 use crate::timer::{Action, LocalTime, Mode, TimerApp, TimerTime};
 use crate::Settings;
 
 fn time(date: &str, hour: u32, minute: u32) -> TimerTime {
-    let elapsed_days = chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d")
-        .unwrap()
-        .signed_duration_since(chrono::NaiveDate::from_ymd_opt(2000, 1, 1).unwrap())
-        .num_days() as u64;
-    TimerTime {
-        monotonic: Duration::from_secs(
-            elapsed_days * 86_400 + u64::from(hour * 3600 + minute * 60),
-        ),
-        local: Some(LocalTime {
-            date: date.into(),
-            seconds_of_day: hour * 3600 + minute * 60,
-        }),
-    }
+    TimerTime::at_local(LocalTime {
+        date: date.into(),
+        seconds_of_day: hour * 3600 + minute * 60,
+    })
+    .unwrap()
 }
 
 fn scheduled(value: serde_json::Value) -> Settings {
@@ -367,7 +357,7 @@ fn every_day_repeats_on_sunday_and_weekly_internal_overlap_remains_invalid() {
 }
 
 #[test]
-fn overnight_split_executes_the_correct_local_day_and_finishes_started_break_first() {
+fn an_active_break_can_cross_midnight_before_joining_the_next_day() {
     for (monday, tuesday) in [
         (
             serde_json::json!({"kind":"once","date":"2026-10-12"}),
@@ -397,22 +387,29 @@ fn overnight_split_executes_the_correct_local_day_and_finishes_started_break_fir
             time("2026-10-12", 23, 55),
         );
         app.dispatch(Action::StartBreak, time("2026-10-12", 23, 55));
-        app.dispatch(
+        assert_eq!(app.info().mode, Mode::Break);
+        let midnight = app.dispatch(
             Action::Tick {
-                elapsed_secs: 300,
+                elapsed_secs: 1,
                 idle_secs: 0,
             },
             time("2026-10-13", 0, 0),
         );
+        assert!(!midnight.update_windows);
+        assert!(app.reminder_visible());
         assert_eq!(app.info().mode, Mode::Break);
-        assert_eq!(app.info().round.unwrap().schedule_id, "before-midnight");
-        app.dispatch(
+        assert_eq!(app.info().remaining, 300);
+        assert_eq!(app.info().round.unwrap().date, "2026-10-12");
+
+        let finished = app.dispatch(
             Action::Tick {
                 elapsed_secs: 300,
                 idle_secs: 0,
             },
             time("2026-10-13", 0, 5),
         );
+        assert!(finished.update_windows);
+        assert!(!app.reminder_visible());
         let round = app.info().round.unwrap();
         assert_eq!(
             (
@@ -422,7 +419,7 @@ fn overnight_split_executes_the_correct_local_day_and_finishes_started_break_fir
             ),
             ("after-midnight", "2026-10-13", 1)
         );
-        assert_eq!(app.info().remaining, 3000);
+        assert_eq!(app.info().remaining, 2700);
         app.dispatch(
             Action::Tick {
                 elapsed_secs: 1,

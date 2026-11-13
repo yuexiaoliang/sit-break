@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { preimportedVideo, restartWorkForBreak } from './native-resource-fixture.mjs';
+import { preimportedVideo } from './native-resource-fixture.mjs';
 
 /** Windows 只验证已导入副本；不打开文件选择器，不发送任何原生按键。 */
 export async function checkLocalVideo(context) {
@@ -13,15 +13,24 @@ export async function checkLocalVideo(context) {
   const bytes = await readFile(new URL('../src/assets/guidance/squat-demo.mp4', import.meta.url));
   const firstGuidance = await preimportedVideo(context.dataDirectory, bytes);
   report.localVideo.firstGuidance = firstGuidance;
+  await context.setClock(10, 0);
   await app.settings.invoke('save_settings', { settings: { ...previousSettings,
     use_schedule: true, language: 'en', sound: false, idle_reset: false,
     tips: [{ id: 'native-local-video', text: longText, guidance: firstGuidance }],
     schedules: [{ id: 'native-local-schedule', name: '本地副本原生验证', enabled: true,
       repeat: { kind: 'weekly', weekdays: [1, 2, 3, 4, 5, 6, 7] },
-      periods: [{ id: 'native-local-period', start: '00:00', end: '24:00', work_minutes: 1, break_minutes: 2, overrides: [] }] }],
+      periods: [{ id: 'native-local-period', start: '10:00', end: '12:00', work_minutes: 1, break_minutes: 2, overrides: [] }] }],
   } });
-  await app.settings.invoke('reset_timer');
-  app = await restartWorkForBreak(context);
+  async function startScheduledBreak(minute) {
+    await context.setClock(10, minute);
+    await waitFor('钟点进入本地指引提醒', async () => {
+      const info = await app.reminder.invoke('timer_info');
+      return info.mode === 'remind' && await app.reminder.evaluate('Boolean(document.getElementById("btnBreak"))');
+    });
+    await app.reminder.evaluate('document.getElementById("btnBreak").click()');
+    await waitFor('实际按钮开始本地指引休息', async () => (await app.reminder.invoke('timer_info')).mode === 'break');
+  }
+  await startScheduledBreak(1);
 
   async function decoded(expected) {
     await waitFor('真实 WebView2 解码受控本地副本', () => app.reminder.evaluate(`(() => { const v=document.querySelector('#guidanceContent video'); return v?.readyState >= 2 && v.videoWidth > 0 && v.currentSrc.includes(${JSON.stringify(expected.source.id)}); })()`));
@@ -105,24 +114,29 @@ export async function checkLocalVideo(context) {
   }
 
   await context.quit(app.settings);
+  await context.setClock(10, 1, 15);
   app = await context.launch();
   context.app = app;
   context.onApp?.(app);
   await decoded(firstGuidance);
   await app.reminder.screenshot('local-video-fixture-restored');
   await app.reminder.evaluate('document.getElementById("btnEnd").click()');
-  await waitFor('结束旧本地指引后下一轮选用新副本', async () => {
+  await waitFor('结束旧指引但保留当前轮次', async () => {
+    const state = await app.reminder.invoke('timer_info');
+    return state.mode === 'remind' && state.round.number === 1;
+  });
+  await context.setClock(10, 3);
+  await waitFor('下一轮按钟点选用新副本', async () => {
     const state = await app.reminder.invoke('timer_info');
     return state.mode === 'work' && state.guidance?.source.id === replacement.source.id;
   });
-  app = await restartWorkForBreak(context);
+  await startScheduledBreak(4);
   const nextRound = await decoded(replacement);
   await app.reminder.screenshot('local-video-fixture-replacement');
   await app.reminder.evaluate('window.__nativeLocalVideo = document.querySelector("#guidanceContent video"); document.getElementById("btnEnd").click()');
   await waitFor('结束本地指引清理旧媒体', () => app.reminder.evaluate('!window.__nativeLocalVideo.isConnected && window.__nativeLocalVideo.paused && !window.__nativeLocalVideo.getAttribute("src") && window.__nativeLocalVideo.readyState===0'));
   report.checks.push({ name: '已导入本地副本 fixture：替换后退出恢复旧引用、下一轮采用新引用与结束释放', fixtureMode: 'preimported-copy', firstGuidance, replacement, nextRound });
   await app.settings.invoke('save_settings', { settings: previousSettings });
-  await app.settings.invoke('reset_timer');
   report.localVideo.status = 'passed';
   return app;
 }

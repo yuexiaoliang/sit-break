@@ -1,6 +1,11 @@
 //! 保存的日程定义；日期和时间均表示电脑本地日历。
+use std::ops::RangeInclusive;
+
 use chrono::Datelike;
 use serde::{Deserialize, Serialize};
+
+const WORK_MINUTES: RangeInclusive<u32> = 1..=240;
+const BREAK_MINUTES: RangeInclusive<u32> = 1..=60;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Schedule {
@@ -53,33 +58,119 @@ pub struct RoundOverride {
     pub guidance: Option<crate::Guidance>,
 }
 
-pub(crate) struct RoundDefinition {
-    pub work_seconds: u64,
-    pub break_seconds: u64,
-    pub content: Option<String>,
-    pub guidance: Option<crate::Guidance>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct PlannedRound {
+    pub number: u32,
+    pub work_start: i64,
+    pub break_start: i64,
+    pub break_end: i64,
+}
+
+impl PlannedRound {
+    pub fn work_seconds(self) -> u64 {
+        (self.break_start - self.work_start) as u64
+    }
+
+    pub fn break_seconds(self) -> u64 {
+        (self.break_end - self.break_start) as u64
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct RoundCapacity {
+    pub complete_rounds: u32,
+    pub last_adjustable_round: u32,
+    pub remaining_minutes: u32,
 }
 
 impl Period {
-    pub(crate) fn round_definition(&self, number: u32) -> RoundDefinition {
-        let adjustment = self.overrides.iter().find(|item| item.round == number);
-        RoundDefinition {
-            work_seconds: u64::from(
-                adjustment
-                    .and_then(|item| item.work_minutes)
-                    .unwrap_or(self.work_minutes),
-            ) * 60,
-            break_seconds: u64::from(
-                adjustment
-                    .and_then(|item| item.break_minutes)
-                    .unwrap_or(self.break_minutes),
-            ) * 60,
-            content: adjustment
-                .and_then(|item| item.content.as_deref())
-                .filter(|content| !content.trim().is_empty())
-                .map(str::to_owned),
-            guidance: adjustment.and_then(|item| item.guidance.clone()),
+    fn round_override(&self, number: u32) -> Option<&RoundOverride> {
+        self.overrides.iter().find(|item| item.round == number)
+    }
+
+    pub(crate) fn round_content(&self, number: u32) -> (Option<String>, Option<crate::Guidance>) {
+        let Some(adjustment) = self.round_override(number) else {
+            return (None, None);
+        };
+        let content = adjustment
+            .content
+            .as_deref()
+            .filter(|content| !content.trim().is_empty())
+            .map(str::to_owned);
+        (content, adjustment.guidance.clone())
+    }
+
+    pub(crate) fn complete_rounds(
+        &self,
+        start: i64,
+        end: i64,
+    ) -> impl Iterator<Item = PlannedRound> + '_ {
+        (1..).scan(start, move |cursor, number| {
+            let adjustment = self.round_override(number);
+            let work = adjustment
+                .and_then(|item| item.work_minutes)
+                .unwrap_or(self.work_minutes);
+            let rest = adjustment
+                .and_then(|item| item.break_minutes)
+                .unwrap_or(self.break_minutes);
+            let work_start = *cursor;
+            let break_start = work_start + i64::from(work) * 60;
+            let break_end = break_start + i64::from(rest) * 60;
+            if work == 0 || rest == 0 || break_end > end {
+                return None;
+            }
+            *cursor = break_end;
+            Some(PlannedRound {
+                number,
+                work_start,
+                break_start,
+                break_end,
+            })
+        })
+    }
+
+    pub(crate) fn round_at(&self, seconds: i64) -> Option<PlannedRound> {
+        let (start, end) = period_range(self)?;
+        let (start, end) = (i64::from(start) * 60, i64::from(end) * 60);
+        if !(start..end).contains(&seconds) {
+            return None;
         }
+        self.complete_rounds(start, end)
+            .find(|round| seconds < round.break_end)
+    }
+
+    pub(crate) fn round_capacity(&self) -> Option<RoundCapacity> {
+        let (start, end) = period_range(self)?;
+        if !WORK_MINUTES.contains(&self.work_minutes)
+            || !BREAK_MINUTES.contains(&self.break_minutes)
+            || self.overrides.iter().any(|round| {
+                round.round == 0
+                    || round
+                        .work_minutes
+                        .is_some_and(|work| !WORK_MINUTES.contains(&work))
+                    || round
+                        .break_minutes
+                        .is_some_and(|rest| !BREAK_MINUTES.contains(&rest))
+            })
+        {
+            return None;
+        }
+        let start = i64::from(start) * 60;
+        let end = i64::from(end) * 60;
+        let mut complete_rounds = 0;
+        let mut last_end = start;
+        for round in self.complete_rounds(start, end) {
+            complete_rounds = round.number;
+            last_end = round.break_end;
+        }
+        let remaining_minutes = ((end - last_end) / 60) as u32;
+        // 工作与休息各至少 1 分钟，余量足够时可以自定义最后一轮。
+        let last_adjustable_round = complete_rounds + u32::from(remaining_minutes >= 2);
+        Some(RoundCapacity {
+            complete_rounds,
+            last_adjustable_round,
+            remaining_minutes,
+        })
     }
 }
 
@@ -154,6 +245,14 @@ fn period_range(period: &Period) -> Option<(u32, u32)> {
 impl crate::Settings {
     /// 所有设置写入及运行进度变更前共用的校验。
     pub fn validate(&self) -> Vec<ValidationError> {
+        self.validate_settings(true)
+    }
+
+    pub(crate) fn validate_for_preview(&self) -> Vec<ValidationError> {
+        self.validate_settings(false)
+    }
+
+    fn validate_settings(&self, check_round_capacity: bool) -> Vec<ValidationError> {
         let mut errors = Vec::new();
         let mut report =
             |schedule_id: Option<&str>, period_id: Option<&str>, field: &str, code: &str| {
@@ -165,10 +264,10 @@ impl crate::Settings {
                     conflict: None,
                 });
             };
-        if !(1..=240).contains(&self.work_minutes) {
+        if !WORK_MINUTES.contains(&self.work_minutes) {
             report(None, None, "work_minutes", "work_range");
         }
-        if !(1..=60).contains(&self.break_minutes) {
+        if !BREAK_MINUTES.contains(&self.break_minutes) {
             report(None, None, "break_minutes", "break_range");
         }
         let mut reminder_ids = std::collections::HashSet::new();
@@ -237,12 +336,15 @@ impl crate::Settings {
                 if start.zip(end).is_some_and(|(start, end)| start >= end) {
                     report(sid, pid, "end", "end_before_start");
                 }
-                if !(1..=240).contains(&period.work_minutes) {
+                let valid_work = WORK_MINUTES.contains(&period.work_minutes);
+                let valid_break = BREAK_MINUTES.contains(&period.break_minutes);
+                if !valid_work {
                     report(sid, pid, "work_minutes", "work_range");
                 }
-                if !(1..=60).contains(&period.break_minutes) {
+                if !valid_break {
                     report(sid, pid, "break_minutes", "break_range");
                 }
+                let mut valid_rounds = valid_work && valid_break;
                 let mut adjusted_rounds = std::collections::HashSet::new();
                 for (index, adjustment) in period.overrides.iter().enumerate() {
                     if adjustment
@@ -258,6 +360,7 @@ impl crate::Settings {
                         );
                     }
                     if adjustment.round == 0 {
+                        valid_rounds = false;
                         report(
                             sid,
                             pid,
@@ -265,6 +368,7 @@ impl crate::Settings {
                             "round_number",
                         );
                     } else if !adjusted_rounds.insert(adjustment.round) {
+                        valid_rounds = false;
                         report(
                             sid,
                             pid,
@@ -274,8 +378,9 @@ impl crate::Settings {
                     }
                     if adjustment
                         .work_minutes
-                        .is_some_and(|minutes| !(1..=240).contains(&minutes))
+                        .is_some_and(|minutes| !WORK_MINUTES.contains(&minutes))
                     {
+                        valid_rounds = false;
                         report(
                             sid,
                             pid,
@@ -285,14 +390,38 @@ impl crate::Settings {
                     }
                     if adjustment
                         .break_minutes
-                        .is_some_and(|minutes| !(1..=60).contains(&minutes))
+                        .is_some_and(|minutes| !BREAK_MINUTES.contains(&minutes))
                     {
+                        valid_rounds = false;
                         report(
                             sid,
                             pid,
                             &format!("overrides.{index}.break_minutes"),
                             "break_range",
                         );
+                    }
+                }
+                if let Some((start, end)) = start
+                    .zip(end)
+                    .filter(|(s, e)| s < e && valid_rounds && check_round_capacity)
+                {
+                    let last_adjustment = adjusted_rounds.iter().copied().max().unwrap_or(1);
+                    let complete = period
+                        .complete_rounds(i64::from(start) * 60, i64::from(end) * 60)
+                        .take(last_adjustment as usize)
+                        .count() as u32;
+                    if complete == 0 && !adjusted_rounds.contains(&1) {
+                        report(sid, pid, "work_minutes", "period_round_does_not_fit");
+                    }
+                    for (index, adjustment) in period.overrides.iter().enumerate() {
+                        if adjustment.round > complete {
+                            report(
+                                sid,
+                                pid,
+                                &format!("overrides.{index}.round"),
+                                "round_outside_period",
+                            );
+                        }
                     }
                 }
             }

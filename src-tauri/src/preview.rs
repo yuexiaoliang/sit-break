@@ -1,9 +1,16 @@
-//! 只读预计安排。当前轮快照与未来草稿共用后端时长继承规则。
-use serde::Serialize;
+//! 只读日程预览。草稿和生效安排使用相同的计划时刻。
+use serde::{Deserialize, Serialize};
 
-use crate::schedule::{minute_of_day, Period, Repeat};
-use crate::timer::{LocalTime, Mode, TimerInfo};
+use crate::schedule::{minute_of_day, Period, PlannedRound, Repeat};
+use crate::timer::{LocalTime, TimerInfo};
 use crate::Settings;
+
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreviewMode {
+    Plan,
+    Progress,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SchedulePreview {
@@ -15,8 +22,8 @@ pub struct SchedulePreview {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CurrentPreview {
     pub state: TimerInfo,
-    pub break_start: Option<i64>,
-    pub break_end: Option<i64>,
+    pub break_start: i64,
+    pub break_end: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -44,8 +51,8 @@ pub struct PreviewPeriod {
 pub struct PreviewRound {
     pub number: u32,
     pub work_start: i64,
-    pub break_start: Option<i64>,
-    pub break_end: Option<i64>,
+    pub break_start: i64,
+    pub break_end: i64,
     pub work_seconds: u64,
     pub break_seconds: u64,
     pub content: Option<String>,
@@ -58,83 +65,44 @@ pub struct PreviewGap {
     pub end: i64,
 }
 
-fn rounds(period: &Period, mut cursor: i64, mut number: u32) -> Vec<PreviewRound> {
-    let end = i64::from(minute_of_day(&period.end, true).unwrap()) * 60;
-    let mut result = Vec::new();
-    while cursor < end {
-        let definition = period.round_definition(number);
-        let break_start = cursor + definition.work_seconds as i64;
-        let starts_in_period = break_start < end;
-        let break_end = break_start + definition.break_seconds as i64;
-        result.push(PreviewRound {
-            number,
-            work_start: cursor,
-            break_start: starts_in_period.then_some(break_start),
-            break_end: starts_in_period.then_some(break_end),
-            work_seconds: definition.work_seconds,
-            break_seconds: definition.break_seconds,
-            content: definition.content,
-            guidance: definition.guidance,
-        });
-        if !starts_in_period || number == u32::MAX {
-            break;
+impl PreviewRound {
+    fn from_plan(period: &Period, round: PlannedRound) -> Self {
+        let (content, guidance) = period.round_content(round.number);
+        Self {
+            number: round.number,
+            work_start: round.work_start,
+            break_start: round.break_start,
+            break_end: round.break_end,
+            work_seconds: round.work_seconds(),
+            break_seconds: round.break_seconds(),
+            content,
+            guidance,
         }
-        cursor = break_end;
-        number += 1;
     }
-    result
 }
 
 pub(crate) fn build(
     draft: &Settings,
     saved: &Settings,
     info: &TimerInfo,
+    planned_round: Option<PlannedRound>,
     local: Option<&LocalTime>,
-    restart_after_break: bool,
+    mode: PreviewMode,
 ) -> SchedulePreview {
     let local_date = local.map(|time| time.date.clone()).unwrap_or_default();
-    let actual_end = info
-        .round
-        .as_ref()
-        .and_then(|round| {
-            saved
-                .schedules
-                .iter()
-                .find(|schedule| schedule.id == round.schedule_id)
-                .and_then(|schedule| {
-                    schedule
-                        .periods
-                        .iter()
-                        .find(|period| period.id == round.period_id)
-                })
-                .and_then(|period| minute_of_day(&period.end, true))
-        })
-        .map(|minute| i64::from(minute) * 60);
-    let current = local
-        .filter(|_| info.round.is_some() || info.mode == Mode::Break)
-        .filter(|_| info.mode != Mode::Idle)
-        .map(|local| {
-            let now = i64::from(local.seconds_of_day);
-            let break_start = match info.mode {
-                Mode::Work => Some(now + info.remaining as i64),
-                Mode::Remind => Some(now),
-                // 快照不记录实际开始时刻或暂停历程，只预计剩余休息的结束。
-                Mode::Break => None,
-                Mode::Idle => None,
-            }
-            .filter(|start| info.mode == Mode::Break || actual_end.is_none_or(|end| *start < end));
-            let break_end = if info.mode == Mode::Break {
-                Some(now + info.remaining as i64)
-            } else {
-                break_start.map(|start| start + info.break_seconds as i64)
-            };
-            CurrentPreview {
-                state: info.clone(),
-                break_start,
-                break_end,
-            }
+    let seconds = local.map(|time| i64::from(time.seconds_of_day));
+    let current = planned_round
+        .filter(|_| mode == PreviewMode::Progress)
+        .map(|round| CurrentPreview {
+            state: info.clone(),
+            break_start: round.break_start,
+            break_end: round.break_end,
         });
-    let schedules = draft
+    let settings = match mode {
+        PreviewMode::Plan => draft,
+        PreviewMode::Progress => saved,
+    };
+    let schedules = settings
         .schedules
         .iter()
         .map(|schedule| {
@@ -142,8 +110,8 @@ pub(crate) fn build(
                 Repeat::Once { date } => date.clone(),
                 Repeat::Weekly { .. } => local_date.clone(),
             };
-            let uses_progress = current.is_some()
-                && draft.use_schedule
+            let uses_progress = mode == PreviewMode::Progress
+                && settings.use_schedule
                 && schedule.enabled
                 && date == local_date
                 && schedule.repeat.applies_on(&local_date);
@@ -160,43 +128,20 @@ pub(crate) fn build(
             let periods = ordered
                 .into_iter()
                 .map(|period| {
-                    let mut cursor = i64::from(minute_of_day(&period.start, false).unwrap()) * 60;
-                    let mut number = 1;
-                    if uses_progress {
-                        cursor = cursor.max(
-                            current
-                                .as_ref()
-                                .and_then(|active| active.break_end)
-                                .or(actual_end)
-                                .unwrap_or_else(|| i64::from(local.unwrap().seconds_of_day)),
-                        );
-                    }
-                    if let Some(active) =
-                        current.as_ref().filter(|_| uses_progress).filter(|active| {
-                            active.state.round.as_ref().is_some_and(|round| {
-                                round.schedule_id == schedule.id
-                                    && round.period_id == period.id
-                                    && round.date == date
-                            })
+                    let start = i64::from(minute_of_day(&period.start, false).unwrap()) * 60;
+                    let end = i64::from(minute_of_day(&period.end, true).unwrap()) * 60;
+                    let rounds = period
+                        .complete_rounds(start, end)
+                        .filter(|round| {
+                            !uses_progress || seconds.is_none_or(|now| round.work_start > now)
                         })
-                    {
-                        number = if restart_after_break {
-                            1
-                        } else {
-                            active
-                                .state
-                                .round
-                                .as_ref()
-                                .unwrap()
-                                .number
-                                .saturating_add(1)
-                        };
-                    }
+                        .map(|round| PreviewRound::from_plan(period, round))
+                        .collect();
                     PreviewPeriod {
                         id: period.id.clone(),
                         start: period.start.clone(),
                         end: period.end.clone(),
-                        rounds: rounds(period, cursor, number),
+                        rounds,
                     }
                 })
                 .collect();

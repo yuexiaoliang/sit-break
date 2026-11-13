@@ -248,6 +248,10 @@ impl Settings {
         if !errors.is_empty() {
             return Err(serde_json::to_string(&errors).unwrap());
         }
+        self.write_to(path)
+    }
+
+    fn write_to(&self, path: &std::path::Path) -> Result<(), String> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         }
@@ -292,8 +296,6 @@ fn choose_tip(settings: &Settings, previous: Option<&str>, rng: &mut fastrand::R
     };
     candidates[rng.usize(..candidates.len())].to_string()
 }
-
-struct TimerClock(Instant);
 
 struct GuidanceResourceState(Option<guidance_resources::GuidanceResources>);
 
@@ -393,7 +395,8 @@ fn load_settings_from_disk(app: &AppHandle) -> Settings {
 
 fn persist(app: &AppHandle, settings: &Settings) {
     if let Some(path) = settings_path(app) {
-        let _ = settings.save_to(&path);
+        // 计时器已校验本次修改。快捷时长也能保存到含旧版日程的配置中。
+        let _ = settings.write_to(&path);
     }
 }
 
@@ -552,51 +555,48 @@ fn update_windows(app: &AppHandle) {
     let state = app.state::<Mutex<TimerApp>>();
     let st = state.lock().unwrap();
     let info = st.info();
-    let mode = info.mode;
+    let show_break = st.reminder_visible();
     let show_widget = st.settings().show_widget;
     drop(st);
 
-    let widget = app.get_webview_window("widget");
-    let reminder = app.get_webview_window("reminder");
-    match mode {
-        Mode::Work | Mode::Idle => {
-            if let Some(w) = &widget {
-                if show_widget {
-                    let _ = w.show();
-                } else {
-                    let _ = w.hide();
-                }
-            }
-            if let Some(r) = &reminder {
-                let _ = r.hide();
-            }
+    if let Some(widget) = app.get_webview_window("widget") {
+        if show_widget && !show_break {
+            let _ = widget.show();
+        } else {
+            let _ = widget.hide();
         }
-        Mode::Remind | Mode::Break => {
-            if let Some(w) = &widget {
-                let _ = w.hide();
-            }
-            if let Some(r) = &reminder {
-                let media = mode == Mode::Break && info.guidance.is_some();
-                let _ = show_reminder(r, media);
-            }
+    }
+    if let Some(reminder) = app.get_webview_window("reminder") {
+        if show_break {
+            let media = info.mode == Mode::Break && info.guidance.is_some();
+            let _ = show_reminder(&reminder, media);
+        } else {
+            let _ = reminder.hide();
         }
     }
 }
 
 fn timer_time(app: &AppHandle) -> TimerTime {
-    TimerTime {
-        monotonic: app.state::<TimerClock>().0.elapsed(),
-        local: Some(platform::local_time()),
+    // 独立原生验收包可驱动固定钟点；普通 debug 和正式包均读取系统时间。
+    #[cfg(debug_assertions)]
+    if app.config().identifier == "com.sitbreak.nativecheck" {
+        if let Some(time) = std::env::var_os("SIT_BREAK_NATIVE_CHECK_CLOCK")
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .and_then(TimerTime::at_local)
+        {
+            return time;
+        }
     }
+    platform::timer_time(app.state::<power::ContinuousClock>().now())
 }
 
 fn dispatch_timer(app: &AppHandle, action: Action) {
-    let now = timer_time(app);
     let output = app
         .state::<Mutex<TimerApp>>()
         .lock()
         .unwrap()
-        .dispatch(action, now);
+        .dispatch(action, timer_time(app));
     apply_timer_output(app, output);
 }
 
@@ -640,8 +640,8 @@ fn menu_bar_title(mode: Mode, remaining: u64, paused: bool, zh: bool) -> String 
     let time = format!("{:02}:{:02}", remaining / 60, remaining % 60);
     let title = match mode {
         Mode::Work => time,
-        Mode::Break => format!("{} {time}", if zh { "休息" } else { "Break" }),
-        Mode::Remind => if zh { "起身" } else { "Move" }.to_string(),
+        Mode::Remind if remaining == 0 => if zh { "起身" } else { "Move" }.to_string(),
+        Mode::Break | Mode::Remind => format!("{} {time}", if zh { "休息" } else { "Break" }),
         Mode::Idle => if zh { "待机" } else { "Idle" }.to_string(),
     };
     if paused {
@@ -689,6 +689,16 @@ fn update_tray(app: &AppHandle) {
                 format!("Sit Break · 休息中，剩余 {}", fmt_mmss(info.remaining))
             } else {
                 format!("Sit Break · On a break, {} left", fmt_mmss(info.remaining))
+            }
+        }
+        Mode::Remind if info.round.is_some() => {
+            if is_zh(st.settings()) {
+                format!("Sit Break · 休息时段，剩余 {}", fmt_mmss(info.remaining))
+            } else {
+                format!(
+                    "Sit Break · Scheduled break, {} left",
+                    fmt_mmss(info.remaining)
+                )
             }
         }
         Mode::Remind => {
@@ -802,15 +812,26 @@ fn fit_reminder_height(window: WebviewWindow, app: AppHandle, height: u32) -> Re
 }
 
 #[tauri::command]
+fn schedule_period_capacities(
+    periods: Vec<schedule::Period>,
+) -> Vec<Option<schedule::RoundCapacity>> {
+    periods
+        .iter()
+        .map(schedule::Period::round_capacity)
+        .collect()
+}
+
+#[tauri::command]
 fn preview_schedule(
     app: AppHandle,
     draft: Settings,
+    mode: Option<preview::PreviewMode>,
 ) -> Result<preview::SchedulePreview, serde_json::Value> {
     let now = timer_time(&app);
     app.state::<Mutex<TimerApp>>()
         .lock()
         .unwrap()
-        .preview(&draft, now)
+        .preview_with_mode(&draft, now, mode.unwrap_or(preview::PreviewMode::Plan))
         .map_err(|errors| json!({ "kind": "validation", "errors": errors }))
 }
 
@@ -930,12 +951,11 @@ fn run_timer(app: AppHandle, power_events: mpsc::Receiver<power::PowerEvent>) {
                     }
                 }
             }
-            let now = timer_time(&app);
             let mut output = app
                 .state::<Mutex<TimerApp>>()
                 .lock()
                 .unwrap()
-                .dispatch(action, now);
+                .dispatch(action, timer_time(&app));
             // 菜单栏每秒更新；Windows 工作中的 tooltip 仍按分钟更新。
             if let Some(info) = &output.state {
                 let minute = info.remaining / 60;
@@ -1078,6 +1098,7 @@ pub fn run() {
             get_settings,
             timer_info,
             fit_reminder_height,
+            schedule_period_capacities,
             preview_schedule,
             save_settings,
             apply_interval,
@@ -1098,7 +1119,7 @@ pub fn run() {
             let mut settings = load_settings_from_disk(&handle);
             let autostart_enabled = autostart_is_enabled(&handle);
             settings.autostart = autostart_enabled;
-            handle.manage(TimerClock(Instant::now()));
+            handle.manage(power::ContinuousClock::new()?);
             let now = timer_time(&handle);
             let timer = if let Some(path) = progress_path(&handle) {
                 TimerApp::restore_from(settings.clone(), &path, fastrand::Rng::new(), now)

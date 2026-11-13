@@ -5,6 +5,7 @@ import {
   Loader,
   Modal,
   ScrollArea,
+  SegmentedControl,
   Stack,
   Text,
   Title,
@@ -15,12 +16,15 @@ import { fmt } from "./i18n";
 import type { Strings } from "./components";
 import type { Settings, Guidance, RepeatDraft } from "./model";
 import type { TimerState } from "./timer-state";
+import { formatTime } from "./runtime";
+
+type PreviewMode = "plan" | "progress";
 
 interface PreviewRound {
   number: number;
   work_start: number;
-  break_start: number | null;
-  break_end: number | null;
+  break_start: number;
+  break_end: number;
   work_seconds: number;
   break_seconds: number;
   content: string | null;
@@ -29,8 +33,8 @@ interface PreviewRound {
 interface PreviewData {
   current: {
     state: TimerState;
-    break_start: number | null;
-    break_end: number | null;
+    break_start: number;
+    break_end: number;
   } | null;
   schedules: {
     id: string;
@@ -49,11 +53,10 @@ interface PreviewData {
     gaps: { start: number; end: number }[];
   }[];
 }
-function clock(seconds: number | null) {
-  if (seconds === null) return "—";
-  const days = Math.floor(seconds / 86400),
-    day = ((seconds % 86400) + 86400) % 86400;
-  return `${String(Math.floor(day / 3600)).padStart(2, "0")}:${String(Math.floor(day / 60) % 60).padStart(2, "0")}${days ? ` (${days > 0 ? "+" : ""}${days})` : ""}`;
+function clock(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor(seconds / 60) % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 export function SchedulePreview({
   opened,
@@ -66,6 +69,7 @@ export function SchedulePreview({
   getDraft: () => Settings;
   S: Strings;
 }) {
+  const [mode, setMode] = useState<PreviewMode>("plan");
   const [data, setData] = useState<PreviewData | null>(null),
     [error, setError] = useState("");
   const getter = useRef(getDraft);
@@ -81,6 +85,7 @@ export function SchedulePreview({
       try {
         const next = await invoke<PreviewData>("preview_schedule", {
           draft: getter.current(),
+          mode,
         });
         if (active && revision === request) {
           setData(next);
@@ -88,6 +93,7 @@ export function SchedulePreview({
         }
       } catch (failure) {
         if (active && revision === request) {
+          setData(null);
           const response = failure as {
             errors?: { code: string }[];
             message?: string;
@@ -103,20 +109,22 @@ export function SchedulePreview({
       }
     }
     void refresh();
-    const off = listen("tick", () => {
-      void refresh();
-    });
+    const off = mode === "progress" ? listen("tick", refresh) : undefined;
     return () => {
       active = false;
-      void off.then((fn) => fn());
+      void off?.then((fn) => fn());
     };
-  }, [opened, S]);
+  }, [opened, mode, S]);
   const rhythm = (work: number, rest: number) =>
     fmt(S.previewRhythm, { work: work / 60, rest: rest / 60 });
+  const current = data?.current;
   return (
     <Modal
       opened={opened}
-      onClose={onClose}
+      onClose={() => {
+        onClose();
+        setMode("plan");
+      }}
       title={
         <div>
           <Title order={3}>{S.previewTitle}</Title>
@@ -130,6 +138,21 @@ export function SchedulePreview({
       classNames={{ content: "schedule-preview", body: "preview-body" }}
       closeButtonProps={{ "aria-label": S.closePreview }}
     >
+      <SegmentedControl
+        fullWidth
+        size="sm"
+        aria-label={S.previewTitle}
+        value={mode}
+        onChange={(value) => {
+          setData(null);
+          setError("");
+          setMode(value as PreviewMode);
+        }}
+        data={[
+          { value: "plan", label: S.previewPlan },
+          { value: "progress", label: S.previewProgress },
+        ]}
+      />
       {!data && !error && (
         <Stack align="center" p="xl">
           <Loader size={24} />
@@ -139,55 +162,48 @@ export function SchedulePreview({
         </Stack>
       )}
       {error && (
-        <Alert color="red" title={S.previewUnavailable} role="alert">
+        <Alert color="red" title={S.previewUnavailable} role="alert" mt={16}>
           {error}
         </Alert>
       )}
       {data && (
-        <div id="previewBody" className="preview-content">
-          {data.current && (
+        <div
+          id="previewBody"
+          className="preview-content"
+          role="region"
+          aria-label={S.previewContent}
+          tabIndex={0}
+        >
+          {current && (
             <section className="preview-current">
               <Title order={4}>
                 {S.previewCurrentRound} ·{" "}
-                {data.current.state.round
-                  ? fmt(S.roundNumber, { n: data.current.state.round.number })
+                {current.state.round
+                  ? fmt(S.roundNumber, { n: current.state.round.number })
                   : S.simpleTitle}
               </Title>
               <Text size="sm" mt={5}>
-                {data.current.state.paused
-                  ? S.paused
-                  : data.current.state.mode === "break"
-                    ? S.onBreak
-                    : data.current.state.mode === "remind"
-                      ? S.reminding
-                      : S.working}{" "}
-                ·{" "}
-                {rhythm(
-                  data.current.state.work_seconds,
-                  data.current.state.break_seconds,
-                )}
+                {current.state.mode === "break"
+                  ? S.onBreak
+                  : current.state.mode === "remind"
+                    ? S.scheduledBreak
+                    : S.working}
+                {` · ${rhythm(current.state.work_seconds, current.state.break_seconds)}`}
               </Text>
               <Text size="sm" c="plum" mt={6}>
-                {data.current.state.mode === "break"
-                  ? fmt(S.previewBreakEnds, {
-                      end: clock(data.current.break_end),
-                    })
+                {current.state.mode === "break"
+                  ? fmt(S.untilBack, { t: formatTime(current.state.remaining) })
                   : fmt(S.previewBreakTimes, {
-                      start: clock(data.current.break_start),
-                      end: clock(data.current.break_end),
+                      start: clock(current.break_start),
+                      end: clock(current.break_end),
                     })}
               </Text>
-              {data.current.state.mode === "remind" && (
-                <Text size="xs" c="dimmed" mt={5}>
-                  {S.previewWaiting}
-                </Text>
-              )}
-              {data.current.state.tip && (
+              {current.state.tip && (
                 <Text size="sm" className="pre-wrap" mt={8}>
-                  {data.current.state.tip}
+                  {current.state.tip}
                 </Text>
               )}
-              {!data.current.state.tip && !data.current.state.guidance && (
+              {!current.state.tip && !current.state.guidance && (
                 <Text size="sm" mt={8}>
                   {S.previewRandomTip}
                 </Text>
@@ -207,14 +223,16 @@ export function SchedulePreview({
                   ? `${S.repeatOnce} · ${schedule.repeat.date}`
                   : `${S.repeatWeekly} · ${(schedule.repeat.weekdays ?? []).map((day) => S[`weekday${day}`]).join(" / ")}`}
               </Text>
-              <Text size="xs" c="plum" mt={5}>
-                {!schedule.enabled
-                  ? S.previewDisabled
-                  : schedule.uses_progress
-                    ? S.previewUsingProgress
-                    : S.previewFromStart}
-              </Text>
-              {schedule.repeat.kind === "weekly" && (
+              {(!schedule.enabled || mode === "progress") && (
+                <Text size="xs" c="plum" mt={5}>
+                  {!schedule.enabled
+                    ? S.previewDisabled
+                    : schedule.uses_progress
+                      ? S.previewUsingProgress
+                      : S.previewFromStart}
+                </Text>
+              )}
+              {mode === "progress" && schedule.repeat.kind === "weekly" && (
                 <Text size="xs" c="dimmed" mt={4}>
                   {schedule.date}
                   {schedule.applies_today ? "" : ` · ${S.previewNotToday}`}
@@ -225,75 +243,64 @@ export function SchedulePreview({
                   {S.emptyPeriodsDescription}
                 </Text>
               )}
-              {schedule.periods.map((period) => {
-                const round = data.current?.state.round;
-                const currentHere =
-                  schedule.uses_progress &&
-                  round?.schedule_id === schedule.id &&
-                  round.period_id === period.id &&
-                  round.date === schedule.date;
-                const firstBreak = currentHere
-                  ? data.current!.break_start
-                  : period.rounds[0]?.break_start;
-                return (
-                  <section className="preview-period" key={period.id}>
-                    <Text fw={600} size="sm">
-                      {period.start}–{period.end} · {S.executionPeriod}
+              {schedule.periods.map((period) => (
+                <section className="preview-period" key={period.id}>
+                  <Text fw={600} size="sm">
+                    {period.start}–{period.end} · {S.executionPeriod}
+                  </Text>
+                  {!period.rounds.length && (
+                    <Text size="xs" c="dimmed" mt={8}>
+                      {schedule.uses_progress
+                        ? S.previewNoUpcoming
+                        : S.previewNoCompleteRounds}
                     </Text>
-                    {firstBreak !== undefined && firstBreak !== null && (
-                      <Text c="plum" size="xs" mt={6}>
-                        {currentHere ? S.previewNextBreak : S.previewFirstBreak}{" "}
-                        · {clock(firstBreak)}
+                  )}
+                  {period.rounds.map((item) => (
+                    <div className="preview-round" key={item.number}>
+                      <Text fw={600} size="sm">
+                        {fmt(S.roundNumber, { n: item.number })}
                       </Text>
-                    )}
-                    {!period.rounds.length && (
-                      <Text size="xs" c="dimmed" mt={8}>
-                        {S.previewNoUpcoming}
+                      <Text size="xs" c="dimmed" mt={4}>
+                        {fmt(S.previewWorkTimes, {
+                          start: clock(item.work_start),
+                          end: clock(item.break_start),
+                        })}
                       </Text>
-                    )}
-                    {period.rounds.map((item) => (
-                      <div className="preview-round" key={item.number}>
-                        <Text fw={600} size="sm">
-                          {fmt(S.roundNumber, { n: item.number })}
-                        </Text>
-                        <Text size="xs" c="dimmed" mt={4}>
-                          {S.previewWorkStarts} {clock(item.work_start)} ·{" "}
-                          {rhythm(item.work_seconds, item.break_seconds)}
-                        </Text>
-                        <Text size="xs" c="plum" mt={4}>
-                          {item.break_start === null
-                            ? S.previewNoBreakBeforeEnd
-                            : fmt(S.previewBreakTimes, {
-                                start: clock(item.break_start),
-                                end: clock(item.break_end),
-                              })}
-                        </Text>
-                        <Text size="sm" mt={8} className="pre-wrap">
-                          {item.content ||
-                            (item.guidance ? S.guidance : S.previewRandomTip)}
-                        </Text>
-                      </div>
+                      <Text size="xs" c="plum" mt={4}>
+                        {fmt(S.previewBreakTimes, {
+                          start: clock(item.break_start),
+                          end: clock(item.break_end),
+                        })}
+                      </Text>
+                      <Text size="sm" mt={8} className="pre-wrap">
+                        {item.content ||
+                          (item.guidance ? S.guidance : S.previewRandomTip)}
+                      </Text>
+                    </div>
+                  ))}
+                  {schedule.gaps
+                    .filter((gap) => clock(gap.start) === period.end)
+                    .map((gap) => (
+                      <Text key={gap.start} size="xs" c="dimmed" mt={10}>
+                        {fmt(S.quietPeriod, {
+                          start: clock(gap.start),
+                          end: clock(gap.end),
+                        })}
+                      </Text>
                     ))}
-                    {schedule.gaps
-                      .filter((gap) => clock(gap.start) === period.end)
-                      .map((gap) => (
-                        <Text key={gap.start} size="xs" c="dimmed" mt={10}>
-                          {fmt(S.quietPeriod, {
-                            start: clock(gap.start),
-                            end: clock(gap.end),
-                          })}
-                        </Text>
-                      ))}
-                  </section>
-                );
-              })}
+                </section>
+              ))}
             </section>
           ))}
-          <Divider my={18} />
-          <Text size="xs" c="dimmed" id="previewNote">
-            {S.previewNote}
-            {data.current?.state.paused ? ` ${S.previewPaused}` : ""}
-          </Text>
+          {mode === "progress" && (
+            <>
+              <Divider my={18} />
+              <Text size="xs" c="dimmed" id="previewNote">
+                {S.previewNote}
+                {current?.state.paused ? ` ${S.previewPaused}` : ""}
+              </Text>
+            </>
+          )}
         </div>
       )}
     </Modal>

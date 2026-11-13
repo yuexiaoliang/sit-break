@@ -4,7 +4,7 @@
 
 ## Simple Timer Is the Default
 
-On first launch, Simple timer works without creating schedules. Open Work & breaks, choose Simple timer, and enter work/break lengths or use the presets. Work length excludes the break. Language, sound, launch at login, auto-reset when away, and reminder content are shared. macOS uses the menu bar; Windows also lets you show, hide, and resize the floating timer.
+On first launch, Simple timer works without creating schedules. Open Work & breaks, choose Simple timer, and enter work/break lengths or use the presets. Work length excludes the break. Language, sound, launch at login, and reminder content are shared. Auto-reset when away applies only to Simple timer. macOS uses the menu bar; Windows also lets you show, hide, and resize the floating timer.
 
 Choose Scheduled timer and save to follow detailed schedules. Its overview lists enabled schedules, repeat dates, time periods, and default lengths. Open the editor through Edit schedules or the Schedules sidebar page. Switching modes preserves both drafts; saving applies the choice. With no active period, Scheduled timer stays idle and does not fall back to Simple timer. Upgrades preserve the selected mode and configuration; theme changes also preserve drafts.
 
@@ -17,13 +17,13 @@ Add a schedule, give it a name, and choose its repeat rule:
 
 Each schedule has its own enabled switch. Keep separate weekday and weekend plans if useful. Active periods in enabled schedules must not overlap. If they conflict, saving identifies the relevant schedules, dates or weekdays, and periods; the previous valid settings remain active. Adjacent periods may touch.
 
-Each period has explicit start/end times and default lengths. Work must be an integer from 1–240 minutes, and breaks from 1–60. End times support `24:00`. Split an overnight plan into periods on separate days.
+Each period has explicit start/end times and default lengths. Work must be an integer from 1–240 minutes, and breaks from 1–60. End times support `24:00`. Split an overnight plan into periods on separate days. The plan, calculated from the period's start, must fit at least one complete round of work and break. A break reminder window may end exactly at the period boundary.
 
-Periods include their start time and exclude their end time. When first launching or entering a new period, the app starts its first complete round even if the period has already begun. It does not infer completed rounds. Reopening during the same period on the same day follows the recovery rules below.
+Periods include their start time and exclude their end time. The app schedules rounds from each period’s start and joins the current round and phase when you open it. For a 09:00–12:00 period with 55 minutes of work and 5 minutes of rest per round, opening at 10:20 puts you in round 2. Round 3 is scheduled to start at 11:00. Any time left over that cannot fit a full round stays idle.
 
 ## Adjust Individual Rounds
 
-Expand Round adjustments (optional), enter a round number, and override only the fields that differ. Empty lengths inherit the period defaults. Removing an adjustment restores inheritance. Each period numbers its rounds from 1.
+Expand Round adjustments (optional), enter a round number, and override only the fields that differ. Empty lengths inherit the period defaults. Removing an adjustment restores inheritance. Each period numbers its rounds from 1. If the period is full when you select Add round adjustment, a message appears beside the button. If a shorter round can fit, the editor shows the minutes available for work and break. The editor highlights any adjusted rounds that extend past the period as you edit.
 
 For a morning period with defaults of 55 minutes of work and a 5-minute break:
 
@@ -37,46 +37,22 @@ Break content can describe multiple activities. Line breaks and special characte
 
 ## Preview the Plan
 
-Select Preview schedule beside the page heading. The dialog shows the draft's name, repeat rule, periods, gaps, and estimated rounds. Previewing neither saves the draft nor starts a timer. Close it with its button, `Esc`, or by clicking outside. Focus returns to the preview button; expanded adjustments and edits remain intact.
+Select Preview schedule beside the page heading to open Draft plan, which shows the draft’s complete rounds and gaps. Switch to Current progress to see the active round and the saved upcoming rounds. It shows the countdown once a break starts. Unsaved changes do not affect the timer. Use `Tab` and the arrow keys to switch views or scroll. Close with the close button, `Esc`, or by clicking outside. Focus returns to the preview button and your edits stay in place.
 
-The current round uses its already effective lengths and content. Future rounds use the applicable draft configuration. If the plan cannot match current progress, it is shown from the period's start; this does not imply earlier rounds were completed. When paused, estimates explicitly assume resuming now.
+## Start or Snooze Within the Break Window
 
-Estimated times change with waiting, snoozing, starting or ending a break, and resetting. They are not enforced deadlines. Only the dialog content scrolls, leaving the close control visible. Use `Tab` to move between the close control and content, and arrow keys to scroll.
+A reminder appears at the scheduled break time. It shows how long you have to start and how long the break will last. If a five-minute break is due at 09:55 and you start it at 09:57, it counts down from 5:00 and ends at 10:02. The timer then rejoins the schedule. If round 2 was scheduled to begin at 10:00 with 55 minutes of work, it has 53 minutes of work left. Later reminders keep their scheduled times. A break in progress can finish across a period boundary or midnight.
 
-## Rest When You Are Ready
+Snooze hides the reminder for up to five minutes. It appears again if the reminder window is still open. Starting it after snoozing also gives you the full duration. End break closes the break window early and rejoins the schedule at the current time.
 
-When work ends, a reminder appears first. Snooze stays in the same round. Each snooze lasts at most 5 minutes, no more than the round's work length, and at least 1 minute. The round number and content remain unchanged.
+Pause reminders mutes and hides reminders while the schedule and countdown keep running. Resume reminders lets you use the current break window if it is still open. Gaps and expired rounds do not send catch-up reminders.
 
-The full break starts only after you select Take a break. For example, a 10-minute break reminded at 09:50 but started at 09:55 ends at 10:05. The next round follows. Ending a break early completes that round; Reset restarts the current round's work without consuming a round. Manual pause lasts until you resume.
+## Save Changes, Reopen, and Wake
 
-## Lunch Gaps and Period Boundaries
+Saving new durations or period boundaries applies the updated schedule. A break already in progress keeps its duration, text, and video. Disabling its schedule, removing its period, or switching timer modes ends that scheduled break immediately.
 
-Gaps do not start work or new reminders. At a period's end, a work countdown stops and a pending break reminder closes. A break already in progress can finish.
+An active break counts time spent while the app is closed or the computer is asleep. When you reopen the app or wake the computer, the app shows any remaining break time and the original break content. If the break has finished, the timer rejoins the schedule at the current time. Reopening also remembers your pause preference and any snooze or early ending in the current reminder window.
 
-If a break continues into the next period, complete it first, then start the first round of the period active at that time. Without an active period, stay idle. Unfinished rounds from the previous period are not caught up.
+Simple timer still counts actual elapsed time. You can pause its countdown, reset work, and enable Auto-reset when away. Computer sleep does not count toward work; a break already in progress counts the elapsed time.
 
-With Auto-reset when away enabled, the threshold is the current round's break length. Being away long enough during work resets that round. Being away long enough after a reminder counts as having rested and advances the round. A continuous absence does not skip several rounds. It records an absence from the computer, not completion of any activity described in the break content.
-
-## Edit While Running
-
-Changing default lengths, round lengths, or content preserves the current round's effective snapshot. Later rounds use the updated configuration. Adjustments to a round that has already started or passed take effect the next time that round runs. Saving shared preferences or using global duration shortcuts does not rewrite the current scheduled round.
-
-Disabling the active schedule or moving its boundaries so that the current time no longer applies stops work or closes a pending reminder immediately. A break already started finishes first, then follows the latest mode or stays idle. Switching modes or disabling and reenabling scheduled timing starts a fresh sequence. Manual pause remains in effect.
-
-## Quit and Reopen
-
-Scheduled timer saves progress on a normal exit. Reopening on the same day, in the same enabled schedule and active period, restores the round, work/reminder/break phase, remaining time, and that round's effective lengths and content. It also preserves manual pause. Time while the app is closed does not count toward work, breaks, or auto-reset thresholds, and does not catch up rounds.
-
-Stale progress is ignored after changing dates or periods, or when the original schedule is disabled, deleted, or no longer active. Start the first round of the currently applicable period, or stay idle without one. An existing manual pause still needs manual resuming.
-
-Switching modes or disabling and reenabling scheduled timing still means starting fresh; quitting and reopening does not undo that choice. If a break was already started when switching, finish it first, then continue with the latest choice. Scheduled timer starts from the first round of the period active then.
-
-## Computer Sleep While the App Is Running
-
-Sleep does not count as work. Waking does not deduct sleep time from work or replay missed reminders. With Auto-reset when away enabled, sleep counts as absence. The current break length determines whether work should reset or a reminder should count as rested. A continuous absence does not skip several rounds.
-
-A break already started does include actual elapsed sleep time. If time remains, continue it after waking. If it has finished, complete only that round, then choose the next round in the same period, the first round of a new period, or idle. Do not catch up several rounds. Period boundaries still apply; expired work and pending reminders do not resume.
-
-During manual pause, sleep does not advance the countdown or trigger auto-reset. Period boundaries still apply, and an already started break remains until manually resumed. Quitting freezes remaining time, so reopening differs from waking while the app stayed running.
-
-Developer validation results and remaining native checks are recorded in the [schedule verification record](schedule-verification.md), maintained in Simplified Chinese.
+See the [schedule verification record](schedule-verification.md), maintained in Simplified Chinese, for developer checks and native test coverage.

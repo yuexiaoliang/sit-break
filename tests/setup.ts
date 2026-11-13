@@ -18,6 +18,8 @@ globalThis.ResizeObserver = class {
   unobserve() {}
   disconnect() {}
 };
+if (!document.fonts)
+  Object.defineProperty(document, "fonts", { value: new EventTarget() });
 Element.prototype.scrollIntoView = vi.fn();
 Object.defineProperty(window, "scrollTo", { value: vi.fn() });
 CSS.escape ??= (value: string) => value.replaceAll('"', '\\"');

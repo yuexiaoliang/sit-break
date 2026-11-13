@@ -1,6 +1,16 @@
 # 日程验证记录
 
-本记录区分自动化、浏览器展示样例和原生执行证据。已实现的退出恢复与电脑睡眠规则见 [日程与休息安排](schedules.md)，相关决策见 [ADR 0003](adr/0003-restore-round-progress.md)。
+本记录区分自动化、浏览器展示样例和原生执行证据。当前规则见 [日程与休息安排](schedules.md) 与 [ADR 0012](adr/0012-full-scheduled-break-duration.md)。
+
+## v0.6.0 按本地钟点计时
+
+本机 107 项 Rust 库测试和 15 项前端测试通过，覆盖晚启动、没有开始休息、推迟与提前结束、暂停提醒、休眠唤醒、旧版进度升级及预览与实际计划的一致性。前端生产构建与 Rust Clippy 检查通过。
+
+独立 macOS debug 包使用 `com.sitbreak.nativecheck` 和受控本地时间，读取真实应用的持久化状态。09:00–12:00、每轮 55/5 分钟：10:20 启动是第 2 轮工作、剩 35 分钟；10:55 显示第 2 轮提醒；不处理提醒，11:00 自动进入第 3 轮；11:56 重开显示第 3 轮休息窗口、剩 4 分钟；12:00 待机。此结果不包含物理睡眠或窗口外观验收，也未操作用户已安装的应用。
+
+发布前，计时改动的提交 `7b55dcc` 通过了 [macOS 和 Windows CI](https://github.com/yuexiaoliang/sit-break/actions/runs/43164511463) 及 [Windows WebView2 原生验收](https://github.com/yuexiaoliang/sit-break/actions/runs/43164513170)。Windows 验收用受控钟点验证了休息浮窗、剩余时间、退出重开、提前结束和到点换轮。
+
+以下为 v0.4.0 时期的历史记录，使用当时按实际休息推进的规则。
 
 ## 自动化与构建
 

@@ -146,6 +146,78 @@ export function errorKey(
     "/",
   );
 }
+
+function prepareInteger(
+  raw: NumericDraft | undefined,
+  min: number,
+  max: number,
+  onInvalid: () => void,
+) {
+  const value = Number(raw);
+  if (raw === "" || !Number.isInteger(value) || value < min || value > max)
+    onInvalid();
+  return value;
+}
+
+function preparePeriod(
+  period: PeriodDraft,
+  report: (field: string, code: string) => void,
+) {
+  const start = clockMinutes(period.start, false);
+  const end = clockMinutes(period.end);
+  if (start === undefined) report("start", "invalid_time");
+  if (end === undefined) report("end", "invalid_time");
+  if (start !== undefined && end !== undefined && end <= start)
+    report("end", "end_before_start");
+  period.work_minutes = prepareInteger(period.work_minutes, 1, 240, () =>
+    report("work_minutes", "work_range"),
+  );
+  period.break_minutes = prepareInteger(period.break_minutes, 1, 60, () =>
+    report("break_minutes", "break_range"),
+  );
+  (period.overrides ?? []).forEach((round, index) => {
+    round.round = prepareInteger(round.round, 1, 4294967295, () =>
+      report(`overrides.${index}.round`, "round_number"),
+    );
+    for (const [key, max, code] of [
+      ["work_minutes", 240, "work_range"],
+      ["break_minutes", 60, "break_range"],
+    ] as const) {
+      if (round[key] === "" || round[key] === undefined) delete round[key];
+      else
+        round[key] = prepareInteger(round[key], 1, max, () =>
+          report(`overrides.${index}.${key}`, code),
+        );
+    }
+  });
+}
+
+export function preparePeriodTiming(draft: PeriodDraft): PeriodDraft | null {
+  const period: PeriodDraft = {
+    id: draft.id,
+    start: draft.start,
+    end: draft.end,
+    work_minutes: draft.work_minutes,
+    break_minutes: draft.break_minutes,
+    overrides: (draft.overrides ?? [])
+      .map(({ round, work_minutes, break_minutes }) => ({
+        round,
+        work_minutes,
+        break_minutes,
+      }))
+      .filter((round) =>
+        [round.work_minutes, round.break_minutes].some(
+          (value) => value !== "" && value !== undefined,
+        ),
+      ),
+  };
+  let valid = true;
+  preparePeriod(period, () => {
+    valid = false;
+  });
+  return valid ? period : null;
+}
+
 /** 只转换可序列化的表单值；冲突与运行规则仍由 Rust 统一校验。 */
 export function prepareSettings(draft: SettingsDraft): {
   settings?: Settings;
@@ -161,45 +233,14 @@ export function prepareSettings(draft: SettingsDraft): {
   ) {
     errors.push({ schedule_id: sid, period_id: pid, field, code });
   }
-  function integer(
-    raw: NumericDraft | undefined,
-    min: number,
-    max: number,
-    field: string,
-    code: string,
-    sid: string | null = null,
-    pid: string | null = null,
-  ) {
-    if (
-      raw === "" ||
-      raw === undefined ||
-      !Number.isInteger(Number(raw)) ||
-      Number(raw) < min ||
-      Number(raw) > max
-    )
-      report(field, code, sid, pid);
-    return Number(raw);
-  }
-  value.work_minutes = integer(
-    value.work_minutes,
-    1,
-    240,
-    "work_minutes",
-    "work_range",
+  value.work_minutes = prepareInteger(value.work_minutes, 1, 240, () =>
+    report("work_minutes", "work_range"),
   );
-  value.break_minutes = integer(
-    value.break_minutes,
-    1,
-    60,
-    "break_minutes",
-    "break_range",
+  value.break_minutes = prepareInteger(value.break_minutes, 1, 60, () =>
+    report("break_minutes", "break_range"),
   );
-  value.widget_size = integer(
-    value.widget_size,
-    40,
-    140,
-    "widget_size",
-    "widget_range",
+  value.widget_size = prepareInteger(value.widget_size, 40, 140, () =>
+    report("widget_size", "widget_range"),
   );
   value.tips.forEach((tip, index) => {
     if (!tip.text.trim() && !tip.guidance)
@@ -213,61 +254,10 @@ export function prepareSettings(draft: SettingsDraft): {
       report("date", "invalid_date", schedule.id);
     if (schedule.repeat.kind === "weekly" && !schedule.repeat.weekdays?.length)
       report("weekdays", "invalid_weekdays", schedule.id);
-    for (const period of schedule.periods) {
-      const sid = schedule.id,
-        pid = period.id;
-      const start = clockMinutes(period.start, false),
-        end = clockMinutes(period.end);
-      if (start === undefined) report("start", "invalid_time", sid, pid);
-      if (end === undefined) report("end", "invalid_time", sid, pid);
-      if (start !== undefined && end !== undefined && end <= start)
-        report("end", "end_before_start", sid, pid);
-      period.work_minutes = integer(
-        period.work_minutes,
-        1,
-        240,
-        "work_minutes",
-        "work_range",
-        sid,
-        pid,
+    for (const period of schedule.periods)
+      preparePeriod(period, (field, code) =>
+        report(field, code, schedule.id, period.id),
       );
-      period.break_minutes = integer(
-        period.break_minutes,
-        1,
-        60,
-        "break_minutes",
-        "break_range",
-        sid,
-        pid,
-      );
-      (period.overrides ?? []).forEach((round, index) => {
-        round.round = integer(
-          round.round,
-          1,
-          4294967295,
-          `overrides.${index}.round`,
-          "round_number",
-          sid,
-          pid,
-        );
-        for (const [key, max, code] of [
-          ["work_minutes", 240, "work_range"],
-          ["break_minutes", 60, "break_range"],
-        ] as const) {
-          if (round[key] === "" || round[key] === undefined) delete round[key];
-          else
-            round[key] = integer(
-              round[key],
-              1,
-              max,
-              `overrides.${index}.${key}`,
-              code,
-              sid,
-              pid,
-            );
-        }
-      });
-    }
   }
   return errors.length ? { errors } : { settings: value as Settings, errors };
 }

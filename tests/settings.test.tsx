@@ -7,6 +7,12 @@ const backend = vi.hoisted(() => ({
   listeners: new Map<string, Set<(e: any) => void>>(),
   calls: [] as string[],
   saveGate: null as null | Promise<void>,
+  capacities: [] as Array<{
+    complete_rounds: number;
+    last_adjustable_round: number;
+    remaining_minutes: number;
+  }>,
+  preview: null as null | ((mode: string) => unknown),
 }));
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (id: string) => "/" + id,
@@ -15,6 +21,8 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (name === "get_settings") return structuredClone(backend.settings);
     if (name === "timer_info") return timer;
     if (name === "get_platform") return "macos";
+    if (name === "preview_schedule") return backend.preview?.(args.mode);
+    if (name === "schedule_period_capacities") return backend.capacities;
     if (name === "save_settings") {
       await backend.saveGate;
       backend.settings = structuredClone(args.settings);
@@ -47,8 +55,142 @@ beforeEach(() => {
   backend.calls = [];
   backend.listeners.clear();
   backend.saveGate = null;
+  backend.capacities = [];
+  backend.preview = null;
 });
 describe("设置主要交互", () => {
+  it("草稿显示提醒时段，当前进度显示已开始的休息倒计时", async () => {
+    const date = "2026-11-11";
+    const period = { id: "p1", start: "22:00", end: "24:00" };
+    const round = {
+      number: 2,
+      work_start: 82800,
+      break_start: 86100,
+      break_end: 86400,
+      work_seconds: 3300,
+      break_seconds: 300,
+      content: "核心训练",
+      guidance: null,
+    };
+    const schedule = {
+      id: "s1",
+      name: "工作日",
+      enabled: true,
+      repeat: { kind: "weekly", weekdays: [3] },
+      date,
+      applies_today: true,
+      gaps: [],
+    };
+    backend.preview = (mode) => {
+      const progress = mode === "progress";
+      return {
+        current: progress
+          ? {
+              state: {
+                ...timer,
+                mode: "break",
+                remaining: 120,
+                round: { schedule_id: "s1", period_id: "p1", date, number: 1 },
+              },
+              break_start: 82500,
+              break_end: 82800,
+            }
+          : null,
+        schedules: [
+          {
+            ...schedule,
+            uses_progress: progress,
+            periods: [
+              {
+                ...period,
+                rounds: progress
+                  ? [{
+                      ...round,
+                      number: 2,
+                      work_start: 82800,
+                      content: "本轮休息内容",
+                    }]
+                  : [round],
+              },
+            ],
+          },
+        ],
+      };
+    };
+
+    const user = await setup();
+    await user.click(
+      screen.getByRole("button", { name: "日程安排", exact: true }),
+    );
+    const openPreview = screen.getByRole("button", { name: "预览日程" });
+    await user.click(openPreview);
+    const dialog = within(screen.getByRole("dialog"));
+    await dialog.findByText("核心训练");
+    expect(dialog.getByText("休息提醒 23:55–24:00")).toBeTruthy();
+    dialog.getByRole("radio", { name: "草稿计划" }).focus();
+    await user.keyboard("{ArrowRight}");
+    await dialog.findByText("工作 23:00–23:55");
+    expect(dialog.getByText("剩余 2:00")).toBeTruthy();
+    expect(dialog.getByText("本轮休息内容")).toBeTruthy();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(document.activeElement).toBe(openPreview));
+    await user.click(openPreview);
+    await screen.findByText("核心训练");
+    expect(backend.calls).not.toContain("save_settings");
+  });
+  it("时段排满后点击添加立即提示，并保留已有轮次", async () => {
+    const period = backend.settings.schedules[0].periods[0];
+    period.end = "12:00";
+    period.work_minutes = 55;
+    period.overrides = [{ round: 1 }, { round: 2 }, { round: 3 }];
+    backend.capacities = [
+      { complete_rounds: 3, last_adjustable_round: 3, remaining_minutes: 0 },
+    ];
+    const user = await setup();
+    await user.click(
+      screen.getByRole("button", { name: "日程安排", exact: true }),
+    );
+    await user.click(screen.getByRole("button", { name: /单轮调整（可选）/ }));
+    await user.click(await screen.findByRole("button", { name: "添加单轮调整" }));
+    await screen.findByText(/第 4 轮放不进此时段/);
+    expect(screen.getAllByLabelText("轮次序号")).toHaveLength(3);
+    expect(backend.calls).not.toContain("save_settings");
+    expect(backend.calls).not.toContain("preview_schedule");
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+    await screen.findByText("已保存");
+    expect(backend.settings.schedules[0].periods[0].overrides).toHaveLength(3);
+  });
+  it("时段有余量时添加可缩短的轮次并立即显示可用时间", async () => {
+    const period = backend.settings.schedules[0].periods[0];
+    period.end = "10:05";
+    period.overrides = [{ round: 1 }];
+    backend.capacities = [
+      { complete_rounds: 1, last_adjustable_round: 2, remaining_minutes: 15 },
+    ];
+    const user = await setup();
+    await user.click(
+      screen.getByRole("button", { name: "日程安排", exact: true }),
+    );
+    const editor = within(screen.getByRole("region", { name: "日程安排" }));
+    await user.click(editor.getByRole("button", { name: /单轮调整（可选）/ }));
+    await user.click(await editor.findByRole("button", { name: "添加单轮调整" }));
+    await editor.findByText(/第 2 轮可用 15 分钟/);
+    expect(editor.getAllByLabelText("轮次序号")).toHaveLength(2);
+    expect(backend.calls).not.toContain("save_settings");
+
+    backend.capacities = [
+      { complete_rounds: 2, last_adjustable_round: 2, remaining_minutes: 0 },
+    ];
+    await user.type(editor.getAllByLabelText("工作时长", { exact: true })[1], "10");
+    await waitFor(() => expect(editor.queryByText(/第 2 轮可用/)).toBeNull());
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+    await screen.findByText("已保存");
+    expect(backend.settings.schedules[0].periods[0].overrides[1]).toEqual({
+      round: 2,
+      work_minutes: 10,
+    });
+  });
   it("切换计时方式及编辑日程保留草稿，导航不改变所选方式", async () => {
     const user = await setup();
     await user.clear(screen.getByLabelText("工作时长"));
@@ -115,7 +257,7 @@ describe("设置主要交互", () => {
       screen.getByRole("region", { name: "日程概览" }).textContent,
     ).toContain("10:00–24:00");
     expect(screen.getByRole("switch", { name: "提示音" })).toBeTruthy();
-    expect(screen.getByRole("switch", { name: "离开自动重置" })).toBeTruthy();
+    expect(screen.queryByRole("switch", { name: "离开自动重置" })).toBeNull();
   });
   it("日程空状态可以直接添加日程，并保留选中的计时方式", async () => {
     backend.settings.schedules = [];
