@@ -656,6 +656,8 @@ label {
   padding: 24px;
 }
 .reminder-prompt h1 {
+  align-self: stretch;
+  cursor: grab;
   font-size: 23px;
   margin: 21px 0 7px;
   letter-spacing: -0.5px;
@@ -705,6 +707,7 @@ label {
   justify-content: space-between;
   gap: 12px;
   align-items: center;
+  cursor: grab;
 }
 .break-clock {
   text-align: right;

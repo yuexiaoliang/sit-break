@@ -3,6 +3,7 @@ import { Alert, Badge, Button, Progress, Text } from "@mantine/core";
 import { ClockIcon, CoffeeIcon, LightbulbIcon } from "@phosphor-icons/react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { dragWindow } from "./components";
 import { GuidanceVideo } from "./Guidance";
 import { fmt } from "./i18n";
 import { formatTime, useRuntime, useStrings } from "./runtime";
@@ -99,7 +100,7 @@ export default function ReminderApp() {
             ? fmt(S.reminderExpiresIn, { t: formatTime(timer.remaining) })
             : fmt(S.satFor, { n: timer.work_seconds / 60 })
         }`}</Badge>
-        <h1>{S.timeToMove}</h1>
+        <h1 onMouseDown={dragWindow}>{S.timeToMove}</h1>
         <Text size="sm" c="dimmed" className="reminder-subtitle">
           {S.standUp}
         </Text>
@@ -141,7 +142,7 @@ export default function ReminderApp() {
         </div>
       )}
       <div className="break-details">
-        <div className="break-header">
+        <div className="break-header" onMouseDown={dragWindow}>
           <Badge variant="light" leftSection={<CoffeeIcon size={17} />}>
             {S.onBreak}
             {timer.paused ? ` · ${S.paused}` : ""}
