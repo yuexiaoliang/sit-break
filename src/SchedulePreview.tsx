@@ -16,6 +16,7 @@ import { fmt } from "./i18n";
 import type { Strings } from "./components";
 import type { Settings, Guidance, RepeatDraft } from "./model";
 import type { TimerState } from "./timer-state";
+import { formatTime } from "./runtime";
 
 type PreviewMode = "plan" | "progress";
 
@@ -190,10 +191,12 @@ export function SchedulePreview({
                 {` · ${rhythm(current.state.work_seconds, current.state.break_seconds)}`}
               </Text>
               <Text size="sm" c="plum" mt={6}>
-                {fmt(S.previewBreakTimes, {
-                  start: clock(current.break_start),
-                  end: clock(current.break_end),
-                })}
+                {current.state.mode === "break"
+                  ? fmt(S.untilBack, { t: formatTime(current.state.remaining) })
+                  : fmt(S.previewBreakTimes, {
+                      start: clock(current.break_start),
+                      end: clock(current.break_end),
+                    })}
               </Text>
               {current.state.tip && (
                 <Text size="sm" className="pre-wrap" mt={8}>

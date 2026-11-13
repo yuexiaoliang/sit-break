@@ -4,13 +4,13 @@ use crate::timer::{Action, LocalTime, Mode, TimerApp, TimerTime};
 use crate::Settings;
 
 fn time(hour: u32, minute: u32, monotonic: u64) -> TimerTime {
-    TimerTime {
-        monotonic: Duration::from_secs(monotonic),
-        local: Some(LocalTime {
-            date: "2026-10-14".into(),
-            seconds_of_day: hour * 3600 + minute * 60,
-        }),
-    }
+    let mut time = TimerTime::at_local(LocalTime {
+        date: "2026-10-14".into(),
+        seconds_of_day: hour * 3600 + minute * 60,
+    })
+    .unwrap();
+    time.monotonic = Duration::from_secs(monotonic);
+    time
 }
 
 fn settings() -> Settings {
@@ -110,11 +110,11 @@ fn upgrading_old_progress_keeps_pause_but_cannot_restore_the_old_round() {
 }
 
 #[test]
-fn reopening_an_active_break_preserves_its_content_and_uses_the_current_deadline() {
+fn reopening_an_active_break_across_rounds_preserves_its_countdown_and_content() {
     let (settings_path, progress_path, dir) = paths();
-    let mut app = TimerApp::new_at(settings(), fastrand::Rng::with_seed(42), time(9, 50, 0));
-    app.dispatch(Action::StartBreak, time(9, 50, 0));
-    app.save_progress_to(&progress_path, time(9, 52, 120))
+    let mut app = TimerApp::new_at(settings(), fastrand::Rng::with_seed(42), time(9, 55, 0));
+    app.dispatch(Action::StartBreak, time(9, 55, 0));
+    app.save_progress_to(&progress_path, time(9, 59, 240))
         .unwrap();
     let mut edited = app.settings().clone();
     edited.schedules[0].periods[0].overrides[0].content = Some("新的提示".into());
@@ -124,11 +124,48 @@ fn reopening_an_active_break_preserves_its_content_and_uses_the_current_deadline
         Settings::load_from(&settings_path),
         &progress_path,
         fastrand::Rng::with_seed(42),
+        time(10, 2, 0),
+    );
+    assert_eq!(reopened.info().mode, Mode::Break);
+    assert_eq!(reopened.info().remaining, 180);
+    assert_eq!(reopened.info().round.unwrap().number, 1);
+    assert_eq!(reopened.info().tip.as_deref(), Some("爬楼"));
+    assert!(reopened.reminder_visible());
+
+    let expired = TimerApp::restore_from(
+        Settings::load_from(&settings_path),
+        &progress_path,
+        fastrand::Rng::with_seed(42),
+        time(10, 5, 0),
+    );
+    assert_eq!(expired.info().mode, Mode::Work);
+    assert_eq!(expired.info().remaining, 50 * 60);
+    assert_eq!(expired.info().round.unwrap().number, 2);
+    assert!(!expired.reminder_visible());
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn reopening_a_v060_break_uses_its_original_deadline() {
+    let (_, progress_path, dir) = paths();
+    let mut app = TimerApp::new_at(settings(), fastrand::Rng::with_seed(42), time(9, 55, 0));
+    app.dispatch(Action::StartBreak, time(9, 55, 0));
+    app.save_progress_to(&progress_path, time(9, 55, 0))
+        .unwrap();
+    let mut old: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&progress_path).unwrap()).unwrap();
+    old.as_object_mut().unwrap().remove("break_ends_at");
+    old["info"]["remaining"] = 300.into();
+    std::fs::write(&progress_path, serde_json::to_vec(&old).unwrap()).unwrap();
+
+    let reopened = TimerApp::restore_from(
+        settings(),
+        &progress_path,
+        fastrand::Rng::with_seed(42),
         time(9, 56, 0),
     );
     assert_eq!(reopened.info().mode, Mode::Break);
     assert_eq!(reopened.info().remaining, 240);
-    assert_eq!(reopened.info().tip.as_deref(), Some("爬楼"));
     assert!(reopened.reminder_visible());
     std::fs::remove_dir_all(dir).unwrap();
 }

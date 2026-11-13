@@ -129,13 +129,11 @@ fn scheduled_timer(idle_reset: bool, hour: u32, minute: u32) -> TimerApp {
 }
 
 fn at(date: &str, hour: u32, minute: u32) -> crate::timer::TimerTime {
-    crate::timer::TimerTime {
-        monotonic: Duration::from_secs(u64::from(hour * 3600 + minute * 60)),
-        local: Some(crate::timer::LocalTime {
-            date: date.into(),
-            seconds_of_day: hour * 3600 + minute * 60,
-        }),
-    }
+    crate::timer::TimerTime::at_local(crate::timer::LocalTime {
+        date: date.into(),
+        seconds_of_day: hour * 3600 + minute * 60,
+    })
+    .unwrap()
 }
 
 #[test]
@@ -160,19 +158,20 @@ fn waking_from_a_break_skips_elapsed_rounds_and_lunch_without_replaying_reminder
 }
 
 #[test]
-fn waking_in_the_same_break_uses_its_remaining_clock_time() {
-    let mut app = scheduled_timer(true, 9, 50);
-    app.dispatch(Action::StartBreak, at("2026-10-14", 9, 50));
-    app.dispatch(Action::Suspend { idle_secs: 0 }, at("2026-10-14", 9, 51));
+fn waking_past_the_planned_window_can_continue_the_started_break() {
+    let mut app = scheduled_timer(true, 9, 55);
+    app.dispatch(Action::StartBreak, at("2026-10-14", 9, 55));
+    app.dispatch(Action::Suspend { idle_secs: 0 }, at("2026-10-14", 9, 56));
     let woke = app.dispatch(
         Action::Resume {
             elapsed_secs: 300,
             idle_secs: 300,
         },
-        at("2026-10-14", 9, 56),
+        at("2026-10-14", 10, 1),
     );
     assert_eq!(app.info().mode, Mode::Break);
     assert_eq!(app.info().remaining, 240);
+    assert_eq!(app.info().round.unwrap().number, 1);
     assert!(app.reminder_visible());
     assert!(woke.events.is_empty());
 }

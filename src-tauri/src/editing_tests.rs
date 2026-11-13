@@ -1,16 +1,12 @@
-use std::time::Duration;
-
 use crate::timer::{Action, LocalTime, Mode, TimerApp, TimerTime};
 use crate::Settings;
 
 fn at(hour: u32, minute: u32) -> TimerTime {
-    TimerTime {
-        monotonic: Duration::from_secs(u64::from(hour * 3600 + minute * 60)),
-        local: Some(LocalTime {
-            date: "2026-10-14".into(),
-            seconds_of_day: hour * 3600 + minute * 60,
-        }),
-    }
+    TimerTime::at_local(LocalTime {
+        date: "2026-10-14".into(),
+        seconds_of_day: hour * 3600 + minute * 60,
+    })
+    .unwrap()
 }
 
 fn settings() -> Settings {
@@ -137,7 +133,7 @@ fn disabling_a_schedule_closes_its_break_and_reenabling_aligns_to_the_clock() {
 }
 
 #[test]
-fn saved_time_changes_apply_immediately_and_same_round_keeps_its_content() {
+fn saving_new_times_preserves_the_active_break_then_rejoins_the_updated_plan() {
     let mut app = started_break();
     let before = app.info();
     let mut draft = app.settings().clone();
@@ -147,9 +143,10 @@ fn saved_time_changes_apply_immediately_and_same_round_keeps_its_content() {
     round.content = Some("下次显示".into());
     round.guidance = None;
 
-    app.dispatch(Action::SaveSettings(draft.clone()), at(9, 54));
+    app.dispatch(Action::SaveSettings(draft), at(9, 57));
     assert_eq!(app.info().round, before.round);
-    assert_eq!(app.info().remaining, 60);
+    assert_eq!(app.info().mode, Mode::Break);
+    assert_eq!(app.info().remaining, 8 * 60);
     assert_eq!(app.info().tip, before.tip);
     assert_eq!(app.info().guidance, before.guidance);
 
@@ -158,14 +155,19 @@ fn saved_time_changes_apply_immediately_and_same_round_keeps_its_content() {
             elapsed_secs: 1,
             idle_secs: 0,
         },
-        at(9, 55),
+        at(10, 5),
     );
     assert!(boundary.update_windows);
+    assert_eq!(app.info().mode, Mode::Work);
+    assert_eq!(app.info().remaining, 10 * 60);
     assert_eq!(app.info().round.unwrap().number, 2);
     assert_eq!(app.info().tip.as_deref(), Some("深蹲"));
 
-    let mut next_day = at(9, 0);
-    next_day.local.as_mut().unwrap().date = "2026-10-15".into();
+    let next_day = TimerTime::at_local(LocalTime {
+        date: "2026-10-15".into(),
+        seconds_of_day: 9 * 3600,
+    })
+    .unwrap();
     app.dispatch(
         Action::Tick {
             elapsed_secs: 1,
