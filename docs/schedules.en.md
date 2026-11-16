@@ -35,6 +35,20 @@ For a morning period with defaults of 55 minutes of work and a 5-minute break:
 
 Break content can describe multiple activities. Line breaks and special characters remain as entered. The whole break shares one countdown; the app neither splits activities nor translates your text. A round can also import one local MP4/M4V video, with or without text. If both text and video are absent, the app randomly selects a complete global reminder entry. The same content remains throughout snoozing, reminding, and resting in that round.
 
+## Workday Break Example
+
+In Schedules, create a schedule that repeats Monday through Friday. Add two time periods, **09:00–12:00** and **13:30–17:30**. Set both to 55 minutes of work and a 5-minute break. Leave lunch unscheduled for a quiet gap.
+
+Open Round adjustments (optional) in each period and enter the rounds below. Leave the durations blank to use the period defaults.
+
+| Period | Round and reminder time | Break content |
+| --- | --- | --- |
+| Morning | Round 1 at 09:55 | Enter two lines, “Walk around” and “Refill your water bottle”. Both activities share one countdown. |
+| Morning | Round 2 at 10:55 | Add a reminder for an exercise you already do, such as a pelvic floor exercise or a standing stretch. |
+| Afternoon | Round 1 at 14:25 | Enter “Follow my movement video” and import a local MP4 of your choice. |
+
+Use Preview schedule to check the times. Then select Scheduled timer in Work & breaks and save. Choose Take a break when a reminder appears. If you added a video, it plays in the break window.
+
 ## Preview the Plan
 
 Select Preview schedule beside the page heading to open Draft plan, which shows the draft’s complete rounds and gaps. Switch to Current progress to see the active round and the saved upcoming rounds. It shows the countdown once a break starts. Unsaved changes do not affect the timer. Use `Tab` and the arrow keys to switch views or scroll. Close with the close button, `Esc`, or by clicking outside. Focus returns to the preview button and your edits stay in place.

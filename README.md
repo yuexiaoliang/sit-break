@@ -14,7 +14,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.6.1 release notes](docs/releases/v0.6.1.en.md) · [Schedule guide](docs/schedules.en.md)
+[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.6.1 release notes](docs/releases/v0.6.1.en.md) · [Workday break example](docs/schedules.en.md#workday-break-example)
 
 ## Scheduled Timer in v0.6.1
 

@@ -14,7 +14,7 @@
 
 [English](README.md) | **简体中文**
 
-[下载最新正式版](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.6.1 更新说明](docs/releases/v0.6.1.md) · [日程使用说明](docs/schedules.md)
+[下载最新正式版](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.6.1 更新说明](docs/releases/v0.6.1.md) · [工作日休息示例](docs/schedules.md#工作日休息示例)
 
 ## v0.6.1 日程计时
 
