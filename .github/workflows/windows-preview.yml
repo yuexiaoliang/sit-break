@@ -35,21 +35,8 @@ jobs:
       - name: 安装前端依赖
         run: npm ci
 
-      - name: 配置独立测试版
-        shell: pwsh
-        run: |
-          @{
-            productName = "Sit Break Preview"
-            identifier = "com.sitbreak.preview"
-            bundle = @{
-              windows = @{
-                nsis = @{ languages = @("SimpChinese", "English") }
-              }
-            }
-          } | ConvertTo-Json -Depth 5 | Set-Content "$env:RUNNER_TEMP/sit-break-preview.json" -Encoding utf8
-
       - name: 构建 Windows 安装包
-        run: npm run tauri build -- --bundles nsis --config "$env:RUNNER_TEMP/sit-break-preview.json" -- --locked
+        run: npm run tauri build -- --bundles nsis --config src-tauri/tauri.preview.conf.json -- --locked
 
       - name: 整理下载文件
         shell: pwsh
@@ -60,6 +47,8 @@ jobs:
           Copy-Item $installers[0].FullName "$output/Sit-Break-Preview-x64-setup.exe"
           Copy-Item src-tauri/target/release/sit-break.exe "$output/Sit-Break-Preview-x64-portable.exe"
           $commit = git rev-parse HEAD
+          $preview = Get-Content src-tauri/tauri.preview.conf.json -Raw | ConvertFrom-Json
+          $previewData = "%APPDATA%\$($preview.identifier)"
           @"
           # Sit Break Windows 测试版
 
@@ -70,7 +59,8 @@ jobs:
 
           推荐运行 Sit-Break-Preview-x64-setup.exe 安装；也可直接运行 portable.exe。
           安装前请先退出正在运行的 Sit Break，避免同时出现多份提醒。
-          应用名为 Sit Break Preview，配置保存在 %APPDATA%\com.sitbreak.preview，与正式版分开。
+          应用名为 $($preview.productName)，配置保存在 $previewData，与正式版分开。
+          更新时用新版覆盖同名应用，沿用原有测试配置。
           启动后点击右下角托盘图标或悬浮计时条，在“计时与休息”顶部选择“简单计时”或“日程计时”。
           日程模式通过“编辑日程”进入详细安排，保存后生效。
           快速测试可先设置工作 1 分钟、休息 1 分钟。
@@ -88,7 +78,8 @@ jobs:
 
           Run Sit-Break-Preview-x64-setup.exe to install, or use the portable executable.
           Quit other Sit Break instances first to avoid duplicate reminders.
-          The app is named Sit Break Preview. Data is stored separately under %APPDATA%\com.sitbreak.preview.
+          The app is named $($preview.productName). Preview data is stored under $previewData.
+          Install each update over the existing preview to keep its settings.
           Open settings through the tray icon or floating timer. Choose Simple timer or Scheduled timer in Work & breaks.
           In scheduled mode, open Edit schedules and save to apply your plan.
           For a quick test, set both work and break lengths to 1 minute.

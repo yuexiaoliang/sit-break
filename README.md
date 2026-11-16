@@ -69,7 +69,7 @@ Visit the [latest release](https://github.com/yuexiaoliang/sit-break/releases/la
 
 macOS builds use local ad-hoc signing and are not notarized by Apple. Windows installers are not code-signed.
 
-Quit the old version before upgrading. Replacing a regular installation preserves its settings and schedules. Separate test builds, such as `Sit Break Preview` and `Sit Break UI Check`, use different data directories; their schedules do not migrate automatically to the regular release.
+Quit the old version before upgrading. Replacing a regular installation preserves its settings and schedules. `Sit Break Preview` stores its settings and schedules separately from the regular release.
 
 ## Getting Started
 

@@ -6,7 +6,7 @@ PR 更新后，[Windows 测试版工作流](https://github.com/yuexiaoliang/sit-
 
 解压后运行 `Sit-Break-Preview-x64-setup.exe` 安装；也可运行 `Sit-Break-Preview-x64-portable.exe`。建议先退出正在运行的 Sit Break，避免多份提醒同时出现。安装程序会按需安装 WebView2，可能需要联网；免安装版本要求电脑已安装 WebView2 Runtime。测试包未使用 Windows 代码签名证书。
 
-应用名为 **Sit Break Preview**，标识为 `com.sitbreak.preview`，设置和运行进度保存在 `%APPDATA%\com.sitbreak.preview`，与正式版分开。解压目录中的中英文使用说明记录完整源码提交，`SHA256SUMS.txt` 用于核对安装包和可执行文件。
+应用名为 **Sit Break Preview**，标识为 `com.sitbreak.preview`，设置和运行进度保存在 `%APPDATA%\com.sitbreak.preview`，与正式版分开。用新版覆盖同名测试版即可沿用测试配置。解压目录中的中英文使用说明记录完整源码提交，`SHA256SUMS.txt` 用于核对安装包和可执行文件。
 
 启动后点击右下角托盘图标或悬浮计时条，进入设置。在「计时与休息」顶部选择「简单计时」或「日程计时」。通过「编辑日程」设置执行时段和单轮安排，保存后按本地钟点进入当前轮次。在提醒有效时点击「开始休息」，倒计时从本轮完整的休息时长开始。用「预览日程」查看完整草稿或已生效的进度，点击「添加单轮调整」可检查时段余量提示。想快速体验提醒，可在简单计时里设置工作 1 分钟、休息 1 分钟。实机验收范围见[日程验证记录](schedule-verification.md)。
 
