@@ -3,6 +3,7 @@ import { Alert, Badge, Button, Progress, Text } from "@mantine/core";
 import { ClockIcon, CoffeeIcon, LightbulbIcon } from "@phosphor-icons/react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { dragWindowFromBackground } from "./components";
 import { GuidanceVideo } from "./Guidance";
 import { fmt } from "./i18n";
 import { formatTime, useRuntime, useStrings } from "./runtime";
@@ -90,7 +91,12 @@ export default function ReminderApp() {
   if (hideForPause) return null;
   if (timer.mode !== "break")
     return (
-      <div className="reminder-surface reminder-prompt" id="cardRemind">
+      <div
+        className="reminder-surface reminder-prompt"
+        id="cardRemind"
+        data-window-drag-background
+        onMouseDown={dragWindowFromBackground}
+      >
         <Badge
           variant="light"
           leftSection={<ClockIcon size={15} />}
@@ -116,7 +122,7 @@ export default function ReminderApp() {
             {failure}
           </Alert>
         )}
-        <div className="reminder-actions">
+        <div className="reminder-actions" data-window-drag-background>
           <Button id="btnBreak" onClick={() => void command("start_break")}>
             {fmt(S.startBreak, { n: timer.break_seconds / 60 })}
           </Button>
@@ -134,14 +140,16 @@ export default function ReminderApp() {
     <div
       className={`reminder-surface break-card${timer.guidance ? " has-guidance" : ""}`}
       id="cardBreak"
+      data-window-drag-background
+      onMouseDown={dragWindowFromBackground}
     >
       {timer.guidance && (
         <div className="guidance-content" id="guidanceContent">
           <GuidanceVideo guidance={timer.guidance} S={S} />
         </div>
       )}
-      <div className="break-details">
-        <div className="break-header">
+      <div className="break-details" data-window-drag-background>
+        <div className="break-header" data-window-drag-background>
           <Badge variant="light" leftSection={<CoffeeIcon size={17} />}>
             {S.onBreak}
             {timer.paused ? ` · ${S.paused}` : ""}
@@ -177,6 +185,7 @@ export default function ReminderApp() {
           id="stretchText"
           tabIndex={0}
           ref={viewport}
+          data-window-drag-background="if-content-fits"
           hidden={Boolean(timer.guidance) && !timer.tip?.trim()}
         >
           <div id="stretchContent" ref={content}>

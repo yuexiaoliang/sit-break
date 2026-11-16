@@ -37,7 +37,7 @@ import "dayjs/locale/zh-cn";
 import {
   AppearancePicker,
   PreferenceRow,
-  dragWindow,
+  WindowTitleBar,
   plainLabel,
   type ClockRegistry,
 } from "./components";
@@ -331,15 +331,21 @@ export default function SettingsApp() {
         className="settings-shell"
         id="settingsForm"
       >
-        <aside className="settings-sidebar">
-          <div
-            className="sidebar-brand"
-            onMouseDown={dragWindow}
-            data-tauri-drag-region
+        <WindowTitleBar>
+          <ActionIcon
+            type="button"
+            className="settings-close"
+            aria-label={S.closeSettings}
+            onClick={() =>
+              void invoke("hide_settings").catch(() =>
+                setFailure(S.operationFailed),
+              )
+            }
           >
-            <ClockIcon size={29} />
-            <Text fw={650}>Sit Break</Text>
-          </div>
+            <XIcon size={21} />
+          </ActionIcon>
+        </WindowTitleBar>
+        <aside className="settings-sidebar">
           <nav aria-label={S.settingsTitle}>
             {items.map((item) => (
               <Tooltip
@@ -371,17 +377,6 @@ export default function SettingsApp() {
           </div>
         </aside>
         <main className="settings-main">
-          <ActionIcon
-            className="settings-close"
-            aria-label={S.closeSettings}
-            onClick={() =>
-              void invoke("hide_settings").catch(() =>
-                setFailure(S.operationFailed),
-              )
-            }
-          >
-            <XIcon size={21} />
-          </ActionIcon>
           <ScrollArea
             className="settings-scroll"
             viewportRef={viewport}
@@ -396,11 +391,7 @@ export default function SettingsApp() {
                 hidden={section !== item.id}
                 aria-label={item.label}
               >
-                <header
-                  className="settings-heading"
-                  onMouseDown={dragWindow}
-                  data-tauri-drag-region
-                >
+                <header className="settings-heading">
                   <div>
                     <Title order={1} tabIndex={-1} id={`heading-${item.id}`}>
                       {item.label}

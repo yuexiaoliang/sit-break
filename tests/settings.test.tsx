@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { settings, timer } from "./fixtures";
 const backend = vi.hoisted(() => ({
@@ -13,6 +20,7 @@ const backend = vi.hoisted(() => ({
     remaining_minutes: number;
   }>,
   preview: null as null | ((mode: string) => unknown),
+  startDragging: vi.fn(async () => {}),
 }));
 vi.mock("@tauri-apps/api/core", () => ({
   convertFileSrc: (id: string) => "/" + id,
@@ -38,6 +46,9 @@ vi.mock("@tauri-apps/api/event", () => ({
     return () => backend.listeners.get(name)?.delete(fn);
   },
 }));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ startDragging: backend.startDragging }),
+}));
 import SettingsApp from "../src/SettingsApp";
 import { AppTheme } from "../src/theme";
 import { initializeRuntime } from "../src/runtime";
@@ -57,8 +68,21 @@ beforeEach(() => {
   backend.saveGate = null;
   backend.capacities = [];
   backend.preview = null;
+  backend.startDragging.mockClear();
 });
 describe("设置主要交互", () => {
+  it("从标题栏移动窗口，页面标题和关闭按钮保留鼠标操作", async () => {
+    const user = await setup();
+
+    fireEvent.mouseDown(screen.getByText("Sit Break"), { button: 0 });
+    expect(backend.startDragging).toHaveBeenCalledOnce();
+
+    fireEvent.mouseDown(screen.getByRole("heading", { level: 1 }), { button: 0 });
+    await user.click(screen.getByRole("button", { name: "关闭设置" }));
+    expect(backend.calls).toContain("hide_settings");
+    expect(backend.startDragging).toHaveBeenCalledOnce();
+  });
+
   it("草稿显示提醒时段，当前进度显示已开始的休息倒计时", async () => {
     const date = "2026-11-11";
     const period = { id: "p1", start: "22:00", end: "24:00" };

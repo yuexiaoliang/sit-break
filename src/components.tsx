@@ -13,6 +13,7 @@ import {
 } from "@mantine/core";
 import { TimePicker } from "@mantine/dates";
 import {
+  ClockIcon,
   DesktopIcon,
   MinusIcon,
   MoonIcon,
@@ -23,7 +24,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { Appearance, NumericDraft } from "./model";
 
 export type Strings = Record<string, string>;
-export function dragWindow(event: React.MouseEvent) {
+function dragWindow(event: React.MouseEvent) {
   if (
     event.button !== 0 ||
     (event.target as HTMLElement).closest(
@@ -34,6 +35,34 @@ export function dragWindow(event: React.MouseEvent) {
   event.preventDefault();
   void getCurrentWindow().startDragging().catch(console.error);
 }
+
+export function dragWindowFromBackground(event: React.MouseEvent) {
+  const { target } = event;
+  if (!(target instanceof HTMLElement)) return;
+  const background = target.dataset.windowDragBackground;
+  // 只处理命中的留白节点。可滚动的正文区域还需要接收鼠标焦点。
+  if (
+    background === undefined ||
+    (background === "if-content-fits" &&
+      (target.scrollHeight > target.clientHeight ||
+        target.scrollWidth > target.clientWidth))
+  )
+    return;
+  dragWindow(event);
+}
+
+export function WindowTitleBar({ children }: { children?: ReactNode }) {
+  return (
+    <header className="window-titlebar" onMouseDown={dragWindow}>
+      <span className="window-titlebar-name">
+        <ClockIcon size={16} aria-hidden="true" />
+        Sit Break
+      </span>
+      {children}
+    </header>
+  );
+}
+
 export function AppearancePicker({
   value,
   onChange,
