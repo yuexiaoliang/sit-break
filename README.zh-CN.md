@@ -14,7 +14,12 @@
 
 [English](README.md) | **简体中文**
 
-[下载最新正式版](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.7.0 更新说明](docs/releases/v0.7.0.md) · [工作日休息示例](docs/schedules.md#工作日休息示例)
+[下载最新正式版](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.8.0 更新说明](docs/releases/v0.8.0.md) · [工作日休息示例](docs/schedules.md#工作日休息示例)
+
+## v0.8.0 有什么变化
+
+- macOS 菜单栏显示图标和简短状态，用圆角背景表示剩余时间。点击菜单栏项即可查看精确倒计时。
+- 简单计时暂停后进度停住。日程计时暂停提醒时，图标换成静音铃，进度继续走。
 
 ## v0.7.0 有什么变化
 
@@ -70,7 +75,7 @@ macOS 使用本地 ad-hoc 签名，尚未经过 Apple 公证；Windows 安装包
 
 安装后启动应用：
 
-- **macOS**：点击顶部菜单栏的标志或倒计时，打开“设置”；应用不显示 Dock 图标或桌面悬浮计时条。
+- **macOS**：菜单栏显示图标和简短状态。倒计时期间，圆角背景的填充从右向左缩短。点击菜单栏项可查看精确倒计时或打开“设置”。应用不显示 Dock 图标或桌面悬浮计时条。
 - **Windows**：点击系统托盘图标或桌面悬浮计时条，打开“设置”；托盘图标可能位于展开箭头中。
 
 ### 简单计时

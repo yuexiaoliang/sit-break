@@ -32,11 +32,16 @@ tauri = { version = "2", features = ["test"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6", default-features = false, features = ["std"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = [
-    "NSWindow", "NSFont", "NSFontDescriptor", "NSStatusItem", "NSStatusBarButton",
-    "NSControl", "NSButton", "NSView", "NSResponder", "NSWorkspace", "objc2-core-foundation",
+    "NSAccessibilityProtocols", "NSAppearance", "NSAttributedString", "NSBezierPath",
+    "NSButton", "NSCell", "NSColor", "NSControl", "NSFont", "NSGraphics", "NSGraphicsContext",
+    "NSImage", "NSImageView", "NSResponder", "NSStatusBarButton", "NSStatusItem", "NSStringDrawing",
+    "NSUserInterfaceItemIdentification", "NSView", "NSWindow", "NSWorkspace", "block2",
+    "objc2-core-foundation", "objc2-core-graphics",
 ] }
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["CGContext"] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
-    "std", "NSNotification", "NSOperation", "NSString", "NSObject", "block2",
+    "std", "NSArray", "NSAttributedString", "NSData", "NSDictionary", "NSNotification",
+    "NSOperation", "NSObject", "NSString", "block2",
 ] }
 block2 = { version = "0.6", default-features = false, features = ["std"] }
 

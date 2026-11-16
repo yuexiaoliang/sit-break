@@ -14,7 +14,12 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.7.0 release notes](docs/releases/v0.7.0.en.md) · [Workday break example](docs/schedules.en.md#workday-break-example)
+[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.8.0 release notes](docs/releases/v0.8.0.en.md) · [Workday break example](docs/schedules.en.md#workday-break-example)
+
+## What's New in v0.8.0
+
+- On macOS, the menu bar shows an icon and a short status over a rounded background that shows the remaining time. Click the item to see the exact countdown.
+- Pausing the simple timer freezes the progress. Pausing scheduled reminders changes the icon to a muted bell while the progress continues.
 
 ## What's New in v0.7.0
 
@@ -70,7 +75,7 @@ Quit the old version before upgrading. Replacing a regular installation preserve
 
 After launching the app:
 
-- **macOS:** Click the menu bar icon or countdown, then open Settings. The app has no Dock icon or desktop floating timer.
+- **macOS:** The menu bar shows an icon and a short status. During a countdown, the rounded background fill shrinks from right to left. Click the item to see the exact countdown or open Settings. The app has no Dock icon or desktop floating timer.
 - **Windows:** Click the system tray icon or desktop floating timer, then open Settings. The tray icon may be inside the hidden-icons menu.
 
 ### Simple Timer

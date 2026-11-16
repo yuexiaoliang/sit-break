@@ -86,26 +86,6 @@ mod macos {
 pub use macos::idle_secs;
 
 #[cfg(target_os = "macos")]
-pub fn configure_menu_bar(tray: &tauri::tray::TrayIcon) -> tauri::Result<()> {
-    use objc2::MainThreadMarker;
-    use objc2_app_kit::{NSFont, NSFontWeightRegular};
-
-    // Tauri runs this closure on the main thread. Monospaced digits prevent the
-    // status item and adjacent menu-bar icons from shifting with every second.
-    tray.with_inner_tray_icon(|native| {
-        if let (Some(item), Some(mtm)) = (native.ns_status_item(), MainThreadMarker::new()) {
-            if let Some(button) = item.button(mtm) {
-                let size = button.font().map(|font| font.pointSize()).unwrap_or(13.0);
-                // SAFETY: AppKit defines this symbol as an immutable font-weight constant.
-                let weight = unsafe { NSFontWeightRegular };
-                let font = NSFont::monospacedDigitSystemFontOfSize_weight(size, weight);
-                button.setFont(Some(&font));
-            }
-        }
-    })
-}
-
-#[cfg(target_os = "macos")]
 pub fn configure_overlay(window: &tauri::WebviewWindow) -> tauri::Result<()> {
     use objc2_app_kit::{NSWindow, NSWindowCollectionBehavior};
 

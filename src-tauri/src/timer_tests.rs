@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use crate::menu_bar::{Fill, Icon, Status};
 use crate::timer::{Action, Mode, TimerApp, TimerEvent, TimerInfo};
 use crate::Settings;
 
@@ -835,6 +836,102 @@ fn at(hour: u32, minute: u32) -> crate::timer::TimerTime {
         seconds_of_day: hour * 3600 + minute * 60,
     })
     .unwrap()
+}
+
+#[test]
+fn simple_menu_bar_follows_the_active_countdown_and_freezes_on_pause() {
+    let mut app = simple_timer();
+    let tick = |elapsed_secs| Action::Tick {
+        elapsed_secs,
+        idle_secs: 0,
+    };
+    app.dispatch(Action::ApplyInterval(10), Duration::ZERO);
+    assert_eq!(
+        Status::from_timer(&app, true),
+        Status {
+            label: "工作".into(),
+            icon: Icon::Ring,
+            progress: Some((Fill::Work, 1.0)),
+        }
+    );
+
+    let work_end = Duration::from_secs(600);
+    app.dispatch(tick(600), work_end);
+    let reminder = Status::from_timer(&app, true);
+    assert_eq!(reminder.label, "起身");
+    assert_eq!(reminder.progress, None);
+
+    app.dispatch(Action::Postpone, work_end);
+    assert_eq!(
+        Status::from_timer(&app, false).progress,
+        Some((Fill::Work, 1.0))
+    );
+    let halfway = Duration::from_secs(750);
+    app.dispatch(tick(150), halfway);
+    app.dispatch(Action::TogglePause, halfway);
+    app.dispatch(tick(60), Duration::from_secs(810));
+    assert_eq!(
+        Status::from_timer(&app, false),
+        Status {
+            label: "Work".into(),
+            icon: Icon::Paused,
+            progress: Some((Fill::Paused, 0.5)),
+        }
+    );
+
+    app.dispatch(Action::TogglePause, Duration::from_secs(810));
+    let reminder_time = Duration::from_secs(960);
+    app.dispatch(tick(150), reminder_time);
+    app.dispatch(Action::StartBreak, reminder_time);
+    app.dispatch(tick(30), Duration::from_secs(990));
+    let on_break = Status::from_timer(&app, true);
+    assert_eq!(on_break.label, "休息");
+    assert_eq!(on_break.progress, Some((Fill::Break, 0.5)));
+}
+
+#[test]
+fn scheduled_menu_bar_keeps_progress_while_muted_and_marks_a_finished_break() {
+    let mut app = TimerApp::new_at(
+        scheduled_settings("12:00"),
+        fastrand::Rng::with_seed(42),
+        at(10, 25),
+    );
+    let tick = || Action::Tick {
+        elapsed_secs: 0,
+        idle_secs: 0,
+    };
+    assert_eq!(Status::from_timer(&app, true).label, "第 2 轮");
+    assert_eq!(Status::from_timer(&app, false).label, "R2");
+    assert_eq!(
+        Status::from_timer(&app, true).progress,
+        Some((Fill::Work, 0.5))
+    );
+
+    app.dispatch(Action::TogglePause, at(10, 25));
+    app.dispatch(tick(), at(10, 55));
+    assert_eq!(
+        Status::from_timer(&app, true),
+        Status {
+            label: "起身".into(),
+            icon: Icon::Muted,
+            progress: Some((Fill::Reminder, 0.5)),
+        }
+    );
+
+    app.dispatch(Action::TogglePause, at(10, 55));
+    app.dispatch(Action::StartBreak, at(10, 55));
+    let on_break = Status::from_timer(&app, false);
+    assert_eq!(on_break.label, "Break");
+    assert_eq!(on_break.progress, Some((Fill::Break, 1.0)));
+    app.dispatch(Action::EndBreak, at(10, 56));
+    let finished = Status::from_timer(&app, true);
+    assert_eq!(finished.label, "已休息");
+    assert_eq!(finished.progress, Some((Fill::Reminder, 0.4)));
+
+    app.dispatch(tick(), at(12, 0));
+    let idle = Status::from_timer(&app, true);
+    assert_eq!(idle.label, "待机");
+    assert_eq!(idle.progress, None);
 }
 
 #[test]

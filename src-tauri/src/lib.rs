@@ -17,6 +17,8 @@ mod editing_tests;
 #[cfg(test)]
 mod guidance_resource_tests;
 pub mod guidance_resources;
+#[cfg(any(target_os = "macos", test))]
+mod menu_bar;
 mod platform;
 mod power;
 mod window_geometry;
@@ -631,44 +633,19 @@ fn apply_timer_output(app: &AppHandle, output: TimerOutput) {
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 fn fmt_mmss(secs: u64) -> String {
     format!("{}:{:02}", secs / 60, secs % 60)
 }
 
-#[cfg(any(target_os = "macos", test))]
-fn menu_bar_title(mode: Mode, remaining: u64, paused: bool, zh: bool) -> String {
-    let time = format!("{:02}:{:02}", remaining / 60, remaining % 60);
-    let title = match mode {
-        Mode::Work => time,
-        Mode::Remind if remaining == 0 => if zh { "起身" } else { "Move" }.to_string(),
-        Mode::Break | Mode::Remind => format!("{} {time}", if zh { "休息" } else { "Break" }),
-        Mode::Idle => if zh { "待机" } else { "Idle" }.to_string(),
-    };
-    if paused {
-        format!("⏸ {title}")
-    } else {
-        title
-    }
-}
+#[cfg(target_os = "macos")]
+use menu_bar::update as update_tray;
 
+#[cfg(not(target_os = "macos"))]
 fn update_tray(app: &AppHandle) {
     let st = app.state::<Mutex<TimerApp>>();
     let st = st.lock().unwrap();
     let info = st.info();
-    #[cfg(target_os = "macos")]
-    let title = {
-        let status = menu_bar_title(info.mode, info.remaining, info.paused, is_zh(st.settings()));
-        info.round.as_ref().map_or(status.clone(), |round| {
-            format!(
-                "{} {status}",
-                if is_zh(st.settings()) {
-                    format!("第{}轮", round.number)
-                } else {
-                    format!("R{}", round.number)
-                }
-            )
-        })
-    };
     let tooltip = match info.mode {
         _ if info.paused => {
             if is_zh(st.settings()) {
@@ -737,8 +714,6 @@ fn update_tray(app: &AppHandle) {
     };
     drop(st);
     if let Some(tray) = app.tray_by_id("main-tray") {
-        #[cfg(target_os = "macos")]
-        let _ = tray.set_title(Some(title));
         let _ = tray.set_tooltip(Some(tooltip));
     }
 }
@@ -1251,18 +1226,22 @@ pub fn run() {
                     // 否则一次点击会 toggle 两次导致面板闪现后消失
                     if let tauri::tray::TrayIconEvent::Click {
                         position,
-                        button_state: tauri::tray::MouseButtonState::Up,
+                        button_state,
                         ..
                     } = event
                     {
-                        // 直接用点击时的光标位置定位，图标 rect 在部分场景（任务栏溢出区等）会不准
-                        toggle_panel(tray.app_handle(), Some(position));
+                        #[cfg(target_os = "macos")]
+                        menu_bar::set_pressed(
+                            tray,
+                            button_state == tauri::tray::MouseButtonState::Down,
+                        );
+                        if button_state == tauri::tray::MouseButtonState::Up {
+                            // 直接用点击时的光标位置定位，图标 rect 在部分场景（任务栏溢出区等）会不准
+                            toggle_panel(tray.app_handle(), Some(position));
+                        }
                     }
                 })
                 .build(&handle)?;
-
-            #[cfg(target_os = "macos")]
-            platform::configure_menu_bar(&_tray)?;
 
             // ---- 窗口事件：关闭一律隐藏 ----
             reminder.on_window_event({
@@ -1491,39 +1470,6 @@ mod tip_tests {
         settings.tips = vec!["New tip".into(), "Another new tip".into()];
         let tip = choose_tip(&settings, Some(&previous), &mut rng);
         assert!(settings.tips.iter().any(|entry| entry.text == tip));
-    }
-}
-
-#[cfg(test)]
-mod menu_bar_tests {
-    use super::{menu_bar_title, Mode};
-
-    #[test]
-    fn working_countdown_shows_seconds_and_padded_minutes() {
-        assert_eq!(menu_bar_title(Mode::Work, 2700, false, true), "45:00");
-        assert_eq!(menu_bar_title(Mode::Work, 2699, false, true), "44:59");
-        assert_eq!(menu_bar_title(Mode::Work, 59, false, false), "00:59");
-        assert_eq!(menu_bar_title(Mode::Work, 14400, false, false), "240:00");
-    }
-
-    #[test]
-    fn pause_is_visible_during_work_and_breaks() {
-        assert_eq!(menu_bar_title(Mode::Work, 120, true, true), "⏸ 02:00");
-        assert_eq!(
-            menu_bar_title(Mode::Break, 120, true, false),
-            "⏸ Break 02:00"
-        );
-    }
-
-    #[test]
-    fn break_and_reminder_status_follow_the_selected_language() {
-        assert_eq!(menu_bar_title(Mode::Break, 285, false, true), "休息 04:45");
-        assert_eq!(
-            menu_bar_title(Mode::Break, 285, false, false),
-            "Break 04:45"
-        );
-        assert_eq!(menu_bar_title(Mode::Remind, 0, false, true), "起身");
-        assert_eq!(menu_bar_title(Mode::Remind, 0, false, false), "Move");
     }
 }
 

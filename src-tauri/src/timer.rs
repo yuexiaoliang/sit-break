@@ -202,6 +202,7 @@ impl SavedProgress {
 pub struct TimerApp {
     info: TimerInfo,
     settings: Settings,
+    simple_work_countdown_seconds: u64,
     break_ended_at: Option<Duration>,
     tip_rng: fastrand::Rng,
     previous_tip: Option<String>,
@@ -332,6 +333,7 @@ impl TimerApp {
                 guidance: None,
             },
             settings,
+            simple_work_countdown_seconds: 0,
             break_ended_at: None,
             tip_rng,
             previous_tip: None,
@@ -353,6 +355,22 @@ impl TimerApp {
     pub fn info(&self) -> TimerInfo {
         self.info.clone()
     }
+
+    pub fn countdown_total_seconds(&self) -> u64 {
+        match self.info.mode {
+            Mode::Work if self.settings.use_schedule => self.info.work_seconds,
+            Mode::Work => self.simple_work_countdown_seconds,
+            Mode::Remind if self.settings.use_schedule => self.info.break_seconds,
+            Mode::Break => self.info.break_seconds,
+            Mode::Remind | Mode::Idle => 0,
+        }
+    }
+
+    #[cfg(any(target_os = "macos", test))]
+    pub(crate) fn scheduled_break_finished(&self) -> bool {
+        self.info.mode == Mode::Remind && self.scheduled_rest == ScheduledRest::Dismissed
+    }
+
     pub fn settings(&self) -> &Settings {
         &self.settings
     }
@@ -425,7 +443,7 @@ impl TimerApp {
                 } else if self.info.mode != Mode::Break {
                     self.info.work_seconds = u64::from(minutes) * 60;
                     if self.info.mode == Mode::Work {
-                        self.info.remaining = self.info.work_seconds;
+                        self.start_simple_countdown(self.info.work_seconds);
                     }
                 }
                 output.persist_settings = Some(self.settings.clone());
@@ -486,7 +504,7 @@ impl TimerApp {
             if self.info.mode == Mode::Work
                 && (work_changed || self.info.remaining > self.info.work_seconds)
             {
-                self.info.remaining = self.info.work_seconds;
+                self.start_simple_countdown(self.info.work_seconds);
             }
         }
     }
@@ -528,7 +546,7 @@ impl TimerApp {
                                 < Duration::from_secs(self.info.break_seconds)
                         });
                         if away && !in_grace {
-                            self.info.remaining = self.info.work_seconds;
+                            self.start_simple_countdown(self.info.work_seconds);
                         } else if !resuming {
                             self.info.remaining = self.info.remaining.saturating_sub(elapsed_secs);
                         }
@@ -565,7 +583,7 @@ impl TimerApp {
             Action::Reset => self.start_simple_work(),
             Action::Postpone if self.info.mode == Mode::Remind => {
                 self.info.mode = Mode::Work;
-                self.info.remaining = self.postpone_seconds();
+                self.start_simple_countdown(self.postpone_seconds());
             }
             Action::EndBreak if self.info.mode == Mode::Break => self.finish_simple_break(now),
             _ => {}
@@ -776,10 +794,15 @@ impl TimerApp {
         self.info.mode = Mode::Work;
         self.info.work_seconds = u64::from(self.settings.work_minutes) * 60;
         self.info.break_seconds = u64::from(self.settings.break_minutes) * 60;
-        self.info.remaining = self.info.work_seconds;
+        self.start_simple_countdown(self.info.work_seconds);
         self.info.round = None;
         self.info.tip = None;
         self.info.guidance = None;
+    }
+
+    fn start_simple_countdown(&mut self, seconds: u64) {
+        self.simple_work_countdown_seconds = seconds;
+        self.info.remaining = seconds;
     }
 
     fn finish_simple_break(&mut self, now: &TimerTime) {
