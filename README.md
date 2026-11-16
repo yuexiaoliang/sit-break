@@ -14,7 +14,12 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.6.1 release notes](docs/releases/v0.6.1.en.md) · [Workday break example](docs/schedules.en.md#workday-break-example)
+[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.7.0 release notes](docs/releases/v0.7.0.en.md) · [Workday break example](docs/schedules.en.md#workday-break-example)
+
+## What's New in v0.7.0
+
+- Move a reminder or break window by dragging its blank space. Move Settings by dragging the title bar.
+- Follow a [workday schedule example](docs/schedules.en.md#workday-break-example) with a lunch gap, text reminders, and a round with your own video.
 
 ## Scheduled Timer in v0.6.1
 
@@ -109,6 +114,7 @@ After you start the break, videos loop muted by default. Play/pause, seeking, an
 
 Choose Light, Dark, or System from the sidebar footer or General settings. Saving applies the appearance across windows. Changing the theme preserves drafts and video playback. System reduced-motion preferences reduce nonessential transitions.
 
+- **Move a window.** Drag the top title bar in Settings. In a reminder or break window, drag the blank space along the edge or between content. The pointer shows a grab cursor in these areas. The next pop-up opens at the bottom right of its screen.
 - **Pause and reset:** Simple timer can pause or reset its countdown. Scheduled timer can hide and mute reminders while a break countdown keeps running.
 - **Auto-reset when away:** In Simple timer, being away for the break length resets work or dismisses the reminder.
 - **Resume after quitting:** Scheduled timer remembers your pause preference on reopening. A break still in progress continues and then rejoins the schedule.
