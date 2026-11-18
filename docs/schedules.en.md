@@ -49,6 +49,16 @@ Open Round adjustments (optional) in each period and enter the rounds below. Lea
 
 Use Preview schedule to check the times. Then select Scheduled timer in Work & breaks and save. Choose Take a break when a reminder appears. If you added a video, it plays in the break window.
 
+At 09:57, starting the morning break gives you a full 5:00 for both walking and refilling your water bottle.
+
+![Windows break window showing 5:00 and two lines of text for walking around and refilling your water bottle](screenshots/workday-example/walk-and-water-windows.png)
+
+When you start the afternoon break, the local video plays beside the countdown.
+
+![Windows break window playing a local exercise video beside the countdown](screenshots/workday-example/local-video-windows.png)
+
+The screenshots show the Chinese interface on Windows v0.8.0.
+
 ## Preview the Plan
 
 Select Preview schedule beside the page heading to open Draft plan, which shows the draft’s complete rounds and gaps. Switch to Current progress to see the active round and the saved upcoming rounds. It shows the countdown once a break starts. Unsaved changes do not affect the timer. Use `Tab` and the arrow keys to switch views or scroll. Close with the close button, `Esc`, or by clicking outside. Focus returns to the preview button and your edits stay in place.
