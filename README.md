@@ -14,7 +14,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.8.0 release notes](docs/releases/v0.8.0.en.md) · [Workday break example](docs/schedules.en.md#workday-break-example)
+[Download the latest release](https://github.com/yuexiaoliang/sit-break/releases/latest) · [v0.8.0 release notes](docs/releases/v0.8.0.en.md) · [Try your first break](#try-your-first-break) · [Workday break example](docs/schedules.en.md#workday-break-example)
 
 ## What's New in v0.8.0
 
@@ -82,7 +82,18 @@ After launching the app:
 
 Open Work & breaks, choose Simple timer, set the work and break lengths, and save. The initial defaults are 45 minutes of work and a 5-minute break. Preset buttons provide quick choices. Work lengths must be whole minutes from 1–240; break lengths from 1–60.
 
-When work ends, a reminder appears first. The break countdown starts only after you select Take a break. Choose Snooze if you are not ready. After the break, the next round begins. To try it quickly, set both lengths to 1 minute.
+When work ends, a reminder appears first. The break countdown starts only after you select Take a break. Choose Snooze if you are not ready. After the break, the next round begins.
+
+### Try your first break
+
+1. Open Settings and choose **Simple timer** under **Work & breaks**.
+2. Enter **1 minute** for both work and break. Turn off **Auto-reset when away** for this trial, then select **Save settings**.
+3. After about a minute, select **Take a break (1 min)** in the reminder. Stand up and walk a few steps or refill your water bottle while the break window shows the remaining time.
+4. The next round starts when the timer reaches zero. Select **End break** to return sooner. After trying it, set the durations and **Auto-reset when away** to your usual preferences.
+
+The screenshot shows the Chinese interface on Windows v0.8.0.
+
+![Sit Break on Windows showing the start of a one-minute break with two activity prompts](docs/screenshots/first-break/windows-countdown.png)
 
 ### Scheduled Timer
 
